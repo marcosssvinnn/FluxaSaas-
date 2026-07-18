@@ -1080,6 +1080,9 @@ function lsOrcProxNum(){ return lsOrcLer().reduce((a,o)=>Math.max(a,o.numero||0)
 //  BOOT
 // ──────────────────────────────────────────────────
 ;(async () => {
+  // Define EMPRESA_ID cedo (chave global, sem prefixo) para que o cache lido a
+  // seguir (empresa_cfg, lojas, orçamentos…) use o namespace da empresa certa.
+  EMPRESA_ID = localStorage.getItem('fluxa_empresa_id') || null;
   carregarCFGlocal();
   aplicarCFG();
   initEmailJS(); // inicializa EmailJS com chave local se configurada
@@ -3120,13 +3123,13 @@ function atualizarDash(){
 function dispensarAlertaEstoque(){
   // Salva timestamp de dismiss — oculta reposição por 7 dias.
   // Encomendas urgentes (estoque negativo) sempre aparecem, ignoram o dismiss.
-  localStorage.setItem('fluxa_estoque_dismiss', String(Date.now()));
+  lsSet('fluxa_estoque_dismiss', String(Date.now()));
   const card=document.getElementById('dash-estoque-card');
   if(card) card.style.display='none';
   toast('🔕 Alertas de reposição ocultados por 7 dias');
 }
 function _estoqueDismissAtivo(){
-  const t=parseInt(localStorage.getItem('fluxa_estoque_dismiss')||'0');
+  const t=parseInt(ls('fluxa_estoque_dismiss')||'0');
   return t>0 && (Date.now()-t) < 7*24*60*60*1000; // 7 dias em ms
 }
 
@@ -3171,8 +3174,8 @@ function renderEstoqueDash(){
   }
   // Rodapé: aviso de dismiss ativo
   if(_estoqueDismissAtivo()&&baixo.length){
-    const dias=Math.ceil((7*86400000-(Date.now()-parseInt(localStorage.getItem('fluxa_estoque_dismiss'))))/86400000);
-    html+=`<div style="font-size:11px;color:var(--gray);margin-top:8px;padding-top:8px;border-top:1px solid var(--gray-light)">🔕 ${baixo.length} produto(s) com reposição pendente · oculto por mais ${dias} dia(s) <button class="ba" style="font-size:10px;padding:2px 8px;margin-left:6px" onclick="localStorage.removeItem('fluxa_estoque_dismiss');renderEstoqueDash()">Mostrar</button></div>`;
+    const dias=Math.ceil((7*86400000-(Date.now()-parseInt(ls('fluxa_estoque_dismiss'))))/86400000);
+    html+=`<div style="font-size:11px;color:var(--gray);margin-top:8px;padding-top:8px;border-top:1px solid var(--gray-light)">🔕 ${baixo.length} produto(s) com reposição pendente · oculto por mais ${dias} dia(s) <button class="ba" style="font-size:10px;padding:2px 8px;margin-left:6px" onclick="lsDel('fluxa_estoque_dismiss');renderEstoqueDash()">Mostrar</button></div>`;
   }
   body.innerHTML=html;
 }
@@ -4732,8 +4735,20 @@ function show(id){ const el=document.getElementById(id); if(el) el.style.display
 function hide(id){ const el=document.getElementById(id); if(el) el.style.display='none'; }
 function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 function safeKey(s){ return btoa(unescape(encodeURIComponent(s))).replace(/[^a-zA-Z0-9]/g,''); }
-function ls(k){ try{return localStorage.getItem(k);}catch(e){return null;} }
-function lsSet(k,v){ try{localStorage.setItem(k,v);}catch(e){} }
+// v2 multi-tenant: o cache do localStorage é NAMESPACED por empresa
+// (fluxa:<EMPRESA_ID>:chave), para que duas empresas no mesmo aparelho não
+// misturem dados. Chaves globais (identidade do tenant + prefs de dispositivo)
+// ficam sem prefixo. Sem EMPRESA_ID (antes do login) usa a chave crua.
+// _lsKey é function declaration (hoisted) — pode ser chamada no boot antes daqui.
+function _lsKey(k){
+  if(!EMPRESA_ID) return k;
+  if(k==='fluxa_empresa_id'||k==='sb_url'||k==='sb_key'||k==='fluxa_sbar_col'
+     ||k==='fluxa_filtroSt'||k==='fluxa_filtroOSSt') return k; // globais de dispositivo
+  return 'fluxa:'+EMPRESA_ID+':'+k;
+}
+function ls(k){ try{return localStorage.getItem(_lsKey(k));}catch(e){return null;} }
+function lsSet(k,v){ try{localStorage.setItem(_lsKey(k),v);}catch(e){ console.warn('[lsSet]',e?.message||e); } }
+function lsDel(k){ try{localStorage.removeItem(_lsKey(k));}catch(e){ console.warn('[lsDel]',e?.message||e); } }
 let _toastTimer=null;
 function toast(msg){
   const t=document.getElementById('toast'); if(!t) return;
@@ -4784,7 +4799,7 @@ function restaurarRascunho(pagina){
 }
 function limparRascunho(pagina){
   try{
-    localStorage.removeItem(DRAFT_KEYS[pagina]);
+    lsDel(DRAFT_KEYS[pagina]);
     if(pagina === 'form'){ const ind = document.getElementById('draft-indicator'); if(ind) ind.style.display='none'; }
   }catch(e){ console.warn('[limparRascunho]', e?.message||e); }
 }
@@ -6756,13 +6771,13 @@ let locaisVisMesRef = '';  // currently viewed month in locais tab, e.g. '2026-0
 let _visCache=null;
 function lsVisLer(){
   if(_visCache) return _visCache;
-  try{ _visCache=JSON.parse(localStorage.getItem(LS_VIS)||'[]'); }catch(e){ _visCache=[]; }
+  try{ _visCache=JSON.parse(ls(LS_VIS)||'[]'); }catch(e){ _visCache=[]; }
   return _visCache;
 }
 function lsVisSalvar(lista){
   _visCache=Array.isArray(lista)?lista:null; // mantém o cache coerente com o que foi gravado
   try{
-    localStorage.setItem(LS_VIS, JSON.stringify(lista));
+    lsSet(LS_VIS, JSON.stringify(lista));
   }catch(e){
     if(e.name==='QuotaExceededError'||e.name==='NS_ERROR_DOM_QUOTA_REACHED'||(e.message||'').includes('quota')){
       // tenta salvar sem fotos para não perder os dados da vistoria
@@ -6771,7 +6786,7 @@ function lsVisSalvar(lista){
           ...v,
           equipamentos:(v.equipamentos||[]).map(eq=>({...eq,fotos:[]}))
         }));
-        localStorage.setItem(LS_VIS, JSON.stringify(semFotos));
+        lsSet(LS_VIS, JSON.stringify(semFotos));
         toast('⚠️ Armazenamento cheio — vistoria salva sem fotos. As fotos ficam na nuvem.');
       }catch(e2){
         console.warn('[lsVisSalvar] localStorage cheio mesmo sem fotos:', e2?.message||e2);
@@ -6810,7 +6825,7 @@ function escopoEmpresaMatch(lojaId){
 function loadLocais(){
   // Lê localStorage
   let local=[];
-  try{ local=JSON.parse(localStorage.getItem(LS_LOCAIS_VIS)||'[]'); }catch(e){ console.warn('[loadLocais]',e); }
+  try{ local=JSON.parse(ls(LS_LOCAIS_VIS)||'[]'); }catch(e){ console.warn('[loadLocais]',e); }
   // Merge com dados do Supabase (vindos via CFG.locais_vistoria)
   const remoto=CFG?.locais_vistoria||[];
   if(remoto.length){
@@ -6831,14 +6846,14 @@ function loadLocais(){
     if(kNome) _vistosNome.add(kNome);
     return true;
   });
-  localStorage.setItem(LS_LOCAIS_VIS, JSON.stringify(locaisVistoria));
+  lsSet(LS_LOCAIS_VIS, JSON.stringify(locaisVistoria));
 }
 // null = ainda não sabemos se a tabela dedicada existe; true/false após 1ª tentativa.
 let _locaisTabelaOk=null;
 function _tabelaAusente(msg){ return /relation .* does not exist|could not find the table|schema cache|does not exist/i.test(msg||''); }
 
 async function saveLocais(){
-  localStorage.setItem(LS_LOCAIS_VIS, JSON.stringify(locaisVistoria));
+  lsSet(LS_LOCAIS_VIS, JSON.stringify(locaisVistoria));
   CFG.locais_vistoria=locaisVistoria;
   lsSet('empresa_cfg', JSON.stringify(CFG));
   if(!dbOk||!db) return;
@@ -6885,7 +6900,7 @@ async function loadLocaisRemoto(){
       remoto.filter(r=>_tomb.has(r.id)).forEach(r=>{ try{ db.from('locais_vistoria').delete().eq('id',r.id).then(()=>{}).catch(()=>{}); }catch(e){ console.warn('[locTomb]',e?.message||e); } });
       remoto=remoto.filter(r=>!_tomb.has(r.id));
     }
-    let local=[]; try{ local=JSON.parse(localStorage.getItem(LS_LOCAIS_VIS)||'[]'); }catch(e){ console.warn('[loadLocaisRemoto:ls]', e?.message||e); }
+    let local=[]; try{ local=JSON.parse(ls(LS_LOCAIS_VIS)||'[]'); }catch(e){ console.warn('[loadLocaisRemoto:ls]', e?.message||e); }
     const remotoIds=new Set(remoto.map(r=>r.id));
     // A TABELA é a fonte da verdade. Um plano que está só no aparelho e NÃO está
     // no banco só é mantido/reenviado se foi criado offline e ainda não sincronizou
@@ -6897,7 +6912,7 @@ async function loadLocaisRemoto(){
       catch(e){ console.warn('[loadLocaisRemoto:migra]', e?.message||e); }
     }
     locaisVistoria=[...remoto, ...soLocalPend];
-    localStorage.setItem(LS_LOCAIS_VIS, JSON.stringify(locaisVistoria));
+    lsSet(LS_LOCAIS_VIS, JSON.stringify(locaisVistoria));
     CFG.locais_vistoria=locaisVistoria;
     if(document.getElementById('vis-view-locais')?.style.display!=='none') renderLocaisTab();
   }catch(e){ console.warn('[loadLocaisRemoto]', e?.message||e); }
