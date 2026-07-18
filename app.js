@@ -409,6 +409,8 @@ async function _aplicarContextoEmpresa(){
   if(typeof populaLojaSelect==='function') populaLojaSelect();
   if(typeof popularSelectsLojaForm==='function') popularSelectsLojaForm();
   if(typeof atualizarHeaderLoja==='function') atualizarHeaderLoja();
+  // Re-filtra o realtime para a empresa ativa (ao trocar de empresa no mesmo login)
+  if(dbOk && db && typeof iniciarRealtimeSync==='function') iniciarRealtimeSync();
 }
 
 // Carrega as unidades (lojas) da empresa ativa. Campos cor/grupo/tecs vêm da tabela.
@@ -4661,10 +4663,17 @@ function imprimirDoc(modo){
 //  REALTIME SYNC (Supabase)
 // ──────────────────────────────────────────────────
 let realtimeChannel = null;
+// Config de uma subscription realtime, filtrada pela empresa ativa. Sem EMPRESA_ID
+// (contexto ainda não carregado) cai só na RLS (que já escopa às empresas do usuário).
+function _rtCfg(event, table){
+  const c = { event, schema:'public', table };
+  if(EMPRESA_ID) c.filter = 'empresa_id=eq.'+EMPRESA_ID;
+  return c;
+}
 function iniciarRealtimeSync(){
   if(realtimeChannel){ try{ db.removeChannel(realtimeChannel); }catch(e){} }
   realtimeChannel = db.channel('fluxa-sync')
-    .on('postgres_changes',{event:'INSERT',schema:'public',table:'orcamentos'}, p=>{
+    .on('postgres_changes',_rtCfg('INSERT','orcamentos'), p=>{
       const novo=p.new;
       if(todosOrc.find(x=>x.id===novo.id)) return;
       todosOrc.unshift(novo);
@@ -4673,7 +4682,7 @@ function iniciarRealtimeSync(){
       if(document.getElementById('page-history').classList.contains('on')) renderTabela();
       toast('🔔 Novo orçamento #'+String(novo.numero||'').padStart(3,'0')+' (outro dispositivo)');
     })
-    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'orcamentos'}, p=>{
+    .on('postgres_changes',_rtCfg('UPDATE','orcamentos'), p=>{
       const novo=p.new;
       lsOrcUpsert(novo);
       const idx=todosOrc.findIndex(x=>x.id===novo.id);
@@ -4681,40 +4690,40 @@ function iniciarRealtimeSync(){
       atualizarDash();
       if(document.getElementById('page-history').classList.contains('on')) renderTabela();
     })
-    .on('postgres_changes',{event:'DELETE',schema:'public',table:'orcamentos'}, p=>{
+    .on('postgres_changes',_rtCfg('DELETE','orcamentos'), p=>{
       const id=p.old.id;
       todosOrc=todosOrc.filter(x=>x.id!==id);
       lsOrcRemover(id);
       atualizarDash();
       if(document.getElementById('page-history').classList.contains('on')) renderTabela();
     })
-    .on('postgres_changes',{event:'INSERT',schema:'public',table:'equipamentos'}, p=>{
+    .on('postgres_changes',_rtCfg('INSERT','equipamentos'), p=>{
       if(todosEq.find(x=>x.id===p.new.id)) return;
       todosEq.unshift(p.new); lsEqSalvar(todosEq);
       if(document.getElementById('page-equipamentos').classList.contains('on')) renderEqGrid();
     })
-    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'equipamentos'}, p=>{
+    .on('postgres_changes',_rtCfg('UPDATE','equipamentos'), p=>{
       const idx=todosEq.findIndex(x=>x.id===p.new.id);
       if(idx>=0) todosEq[idx]={...todosEq[idx],...p.new}; else todosEq.unshift(p.new);
       lsEqSalvar(todosEq);
       if(document.getElementById('page-equipamentos').classList.contains('on')) renderEqGrid();
     })
-    .on('postgres_changes',{event:'DELETE',schema:'public',table:'equipamentos'}, p=>{
+    .on('postgres_changes',_rtCfg('DELETE','equipamentos'), p=>{
       todosEq=todosEq.filter(x=>x.id!==p.old.id); lsEqSalvar(todosEq);
       if(document.getElementById('page-equipamentos').classList.contains('on')) renderEqGrid();
     })
-    .on('postgres_changes',{event:'INSERT',schema:'public',table:'despesas'}, p=>{
+    .on('postgres_changes',_rtCfg('INSERT','despesas'), p=>{
       if(todasDesp.find(x=>x.id===p.new.id)) return;
       todasDesp.unshift(p.new); lsDespSalvar(todasDesp);
       if(document.getElementById('page-despesas').classList.contains('on')) renderDespesas();
     })
-    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'despesas'}, p=>{
+    .on('postgres_changes',_rtCfg('UPDATE','despesas'), p=>{
       const idx=todasDesp.findIndex(x=>x.id===p.new.id);
       if(idx>=0) todasDesp[idx]={...todasDesp[idx],...p.new}; else todasDesp.unshift(p.new);
       lsDespSalvar(todasDesp);
       if(document.getElementById('page-despesas').classList.contains('on')) renderDespesas();
     })
-    .on('postgres_changes',{event:'DELETE',schema:'public',table:'despesas'}, p=>{
+    .on('postgres_changes',_rtCfg('DELETE','despesas'), p=>{
       todasDesp=todasDesp.filter(x=>x.id!==p.old.id); lsDespSalvar(todasDesp);
       if(document.getElementById('page-despesas').classList.contains('on')) renderDespesas();
     })

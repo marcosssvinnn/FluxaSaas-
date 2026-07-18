@@ -339,6 +339,13 @@ BEGIN
   END LOOP;
 END $$;
 
+-- Filtro de realtime por empresa_id em eventos DELETE precisa da linha antiga
+-- completa (o padrão só traz a PK). REPLICA IDENTITY FULL garante que o filtro
+-- empresa_id=eq.<id> funcione também no DELETE, nas tabelas com sub de exclusão.
+ALTER TABLE orcamentos   REPLICA IDENTITY FULL;
+ALTER TABLE equipamentos REPLICA IDENTITY FULL;
+ALTER TABLE despesas     REPLICA IDENTITY FULL;
+
 -- ───────── STORAGE (PDFs e fotos de vistoria, por empresa) ─────────
 -- Dois buckets públicos p/ leitura; escrita só na PASTA da empresa (1º segmento
 -- do caminho = empresa_id do usuário). Ex.: <empresa_id>/<vistoria>.pdf.
