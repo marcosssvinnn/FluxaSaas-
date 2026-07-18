@@ -1560,8 +1560,10 @@ async function carregarClientesRemoto(){
 // Depois de autenticar + carregar a empresa, aplicarCFG aplica o tema da empresa.
 // Assim o pré-login nunca herda cor/nome/logo de uma empresa (ou do cache).
 const SAAS_C1 = '#F07820', SAAS_C2 = '#2B3244';
-// true quando o SaaS tem credenciais mas ainda não há conta/empresa (tela de conta).
-function _estaPreLogin(){ return !authUser && SUPABASE_URL!=='PREENCHER_DEPOIS' && !EMPRESA_ID; }
+// true quando o SaaS tem credenciais mas NÃO há sessão de conta autenticada (tela
+// de conta). Baseado só em authUser — o EMPRESA_ID pode estar no cache (offline)
+// de um login anterior e NÃO pode "vazar" o tema da empresa antes de re-autenticar.
+function _estaPreLogin(){ return !authUser && SUPABASE_URL!=='PREENCHER_DEPOIS'; }
 function resetMarcaSaaS(){
   try{
     document.documentElement.style.setProperty('--c1', SAAS_C1);
