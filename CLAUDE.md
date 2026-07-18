@@ -1028,10 +1028,27 @@ Sem isso, vistorias/planos sincronizam SEM o vínculo local_id (degradado, mas n
 - **GAP de schema 🔴 (`orcamentos`)** — commit `ccd797d`; **SQL rodado no banco por Marcos** (confirmado: as 4 colunas existem). Faltavam `pag_cod`, `pag_parcelas`, `pag_entrada`, `data_aprovacao` — o `dbInsert` resiliente as removia e os detalhes de pagamento/aprovação **não persistiam** (só no localStorage). Adicionadas ao `setup-v2.sql` e ao `setup-v2-delta.sql`. Validado: orçamento com "Cartão parcelado 6x" gravou `pag_cod='cartao-parc'`, `pag_parcelas=6`.
 - **Lição p/ o protocolo:** ao criar registro num tenant novo, testar o **ciclo real** (salvar → recarregar → ver na lista → conferir a linha no Supabase). O "salvou mas não aparece" (filtro) e o "salvou em dobro" (corrida) só aparecem exercitando o fluxo inteiro, não no caminho feliz da função isolada.
 
+### QA dos demais fluxos (OS, estoque, clientes/portal, agendamentos, equipamentos, despesas, usuários)
+
+- **OS** ✅ end-to-end: salva com `empresa_id`+`loja_id`, numeração RPC, aparece no histórico, **não duplica** (não tem `_reenviar`). `ordens_servico` schema completo.
+- **Estoque — ciclo integrado** ✅: criar produto (+ saldo inicial) → **aprovar → reserva** (`sincronizarReservaOrcamento`) → **entregar → baixa física** (`entregarOrcamento`). Ledger com `empresa_id`, refs `res:orc:`/`baixa:orc:`/`libres:orc:`, matemática física/reservado/disponível correta.
+- **Clientes + Portal** ✅: cliente persiste; RPC `portal_dados` como **anon** retorna cliente+empresa+listas. *(Menor: o insert de cliente NÃO envia `portal_token` — o banco gera o dele; `carregarClientesRemoto` reconcilia no reload.)*
+- **Agendamentos / Equipamentos / Despesas / Usuários internos** ✅ após o fix de id (abaixo). Nomes de coluna do payload batem com o schema (despesas usa `tipo`/`foto_base64`/`status`; equipamentos usa `cliente_nome`/`garantia_vencimento`).
+
+### 🔴 GAPS DE SCHEMA v2 corrigidos (setup-v2.sql + setup-v2-delta.sql) — Marcos rodou o SQL
+
+> O `setup-v2.sql` divergiu do que o app grava. 3 classes achadas e corrigidas. **Todas rodadas no banco de produção nesta sessão.**
+
+1. **`orcamentos`** faltavam `pag_cod`, `pag_parcelas`, `pag_entrada`, `data_aprovacao` — commit `ccd797d`.
+2. **`produtos`** faltavam `categoria` (obrigatória no form!), `fornecedor_id`, `lead_time_dias`, `estoque_seguranca`, `lote_minimo`, `lote`, `validade` — commit `dfdc34d`.
+3. **🔴 `id uuid` × id texto (CRÍTICO)** — commit `a513222`. `clientes`, `agendamentos`, `equipamentos`, `despesas`, `usuarios` foram criadas com `id uuid`, mas o app gera id **texto** (`cli_`/`ag_`/`eq_`/`desp_`/`usr_`) → **todo insert falhava** (`invalid input syntax for type uuid`) e os registros ficavam só no localStorage. Corrigido p/ `id text` (+ `ordens_servico.agendamento_id`→text). **Regra:** orcamentos/OS funcionam porque **OMITEM** o id (banco gera uuid); as demais enviam id texto e precisam de coluna `text`. As tabelas de id-app já existentes (produtos, vistorias, locais_vistoria, estoque_movimentos, fornecedores, ordens_compra, auditoria) já eram `text`.
+
+> **Lição permanente:** ao criar tabela nova no v2, o tipo do `id` tem que casar com o gerador do app — `text` se o app manda `prefixo_...`; `uuid` só se o app OMITE o id (banco gera). Conferir SEMPRE com um insert real antes de dar por pronto.
+
 ### ⚠️ Pendências desta sessão
-- **Dados de teste no banco** (a limpar): ~11 orçamentos de teste (Cliente Teste QA, Fix Dupe OK, Pagamento Persiste, ISO_*, Dupe*, Cont Chamadas…), 2 empresas de teste (*Empresa QA App*, *Empresa Teste QA*) e usuários `@exemplo.com`/`qa_app_1@…` no Auth.
-- **Fluxo de OS** ainda não testado end-to-end no v2 (usa `dbInsertNumerado` mas **não** tem `_reenviar` próprio, então provavelmente não duplica — confirmar).
+- **Dados de teste no banco** (a limpar): orçamentos de teste (Cliente Teste QA, Fix Dupe OK, Pagamento Persiste, ISO_*, Dupe*, Cont Chamadas…), produtos (Motobomba Teste 1cv, Motobomba DBG, Produto Categoria OK), OS (OS UI Test, OS ISO Test), clientes/agendamentos/equipamentos/despesas/usuários `*_dbg*`/`*DBG*`, movimentos de estoque de teste, 2 empresas (*Empresa QA App*, *Empresa Teste QA*) e usuários `@exemplo.com`/`qa_app_1@…` no Auth.
 - **`criar_empresa`** não semeia `config.nome` nem um usuário gestor inicial (fica no fallback `__gestor__`/PIN 1234).
+- **`clientes` insert não envia `portal_token`** (banco gera o seu) — link do portal só fica certo após o reload que reconcilia o token do banco. Avaliar enviar o token local no insert.
 
 ---
 
