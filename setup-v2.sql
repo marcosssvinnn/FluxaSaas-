@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS lojas (
 );
 
 CREATE TABLE IF NOT EXISTS usuarios (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  id text PRIMARY KEY,  -- app gera id texto (ex.: 'usr_...'); NÃO usar uuid
   empresa_id uuid NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
   nome text NOT NULL, pin text, perfil text DEFAULT 'tecnico',
   loja_id uuid, loja_nome text,
@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
 );
 
 CREATE TABLE IF NOT EXISTS clientes (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  id text PRIMARY KEY,  -- app gera id texto (ex.: 'cli_...'); NÃO usar uuid
   empresa_id uuid NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
   nome text, telefone text, endereco text,
   portal_token uuid DEFAULT gen_random_uuid(), portal_ativo boolean DEFAULT true,
@@ -124,14 +124,14 @@ CREATE TABLE IF NOT EXISTS ordens_servico (
   total numeric(10,2) DEFAULT 0,
   valor_recebido numeric(10,2) DEFAULT 0,
   status text DEFAULT 'agendado',
-  fotos jsonb DEFAULT '[]', video_link text, agendamento_id uuid,
+  fotos jsonb DEFAULT '[]', video_link text, agendamento_id text,
   checkin_time timestamptz, checkout_time timestamptz, duracao_min integer,
   cnpj text, loja_id text, checklist text,
   data_criacao timestamptz DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS agendamentos (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  id text PRIMARY KEY,  -- app gera id texto (ex.: 'ag_...'); NÃO usar uuid
   empresa_id uuid NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
   cliente text, local_servico text, tecnico text,
   tipo_servico text, periodicidade text,
@@ -167,7 +167,7 @@ CREATE TABLE IF NOT EXISTS locais_vistoria (
 );
 
 CREATE TABLE IF NOT EXISTS equipamentos (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  id text PRIMARY KEY,  -- app gera id texto (ex.: 'eq_...'); NÃO usar uuid
   empresa_id uuid NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
   cliente_id uuid, cliente_nome text,
   tipo text, marca text, modelo text, potencia text,
@@ -179,7 +179,7 @@ CREATE TABLE IF NOT EXISTS equipamentos (
 );
 
 CREATE TABLE IF NOT EXISTS despesas (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  id text PRIMARY KEY,  -- app gera id texto (ex.: 'desp_...'); NÃO usar uuid
   empresa_id uuid NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
   os_id uuid, os_numero integer, tecnico text,
   data text, tipo text, valor numeric(10,2),

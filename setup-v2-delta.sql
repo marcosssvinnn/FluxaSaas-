@@ -154,5 +154,23 @@ ALTER TABLE produtos ADD COLUMN IF NOT EXISTS lote_minimo numeric(10,2) DEFAULT 
 ALTER TABLE produtos ADD COLUMN IF NOT EXISTS lote text;
 ALTER TABLE produtos ADD COLUMN IF NOT EXISTS validade text;
 
+-- ───────── PK id: uuid → text (5 tabelas) — CRÍTICO ─────────
+-- O app gera ids TEXTO com prefixo (cli_/ag_/eq_/desp_/usr_), mas estas 5 tabelas
+-- foram criadas com id uuid → TODO insert falhava ("invalid input syntax for type
+-- uuid") e os registros ficavam só no localStorage (clientes, agendamentos,
+-- equipamentos, despesas e usuários internos NÃO sincronizavam). Alinha o schema
+-- ao app (as demais tabelas de id-app já são text). Seguro: tabelas vazias (os
+-- inserts falhavam). Idempotente (re-rodar num id já text é no-op).
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['usuarios','clientes','agendamentos','equipamentos','despesas'] LOOP
+    EXECUTE format('ALTER TABLE %I ALTER COLUMN id DROP DEFAULT;', t);
+    EXECUTE format('ALTER TABLE %I ALTER COLUMN id TYPE text USING id::text;', t);
+  END LOOP;
+END $$;
+-- FK-livre: ordens_servico.agendamento_id aponta pra agendamentos.id (agora text)
+ALTER TABLE ordens_servico ALTER COLUMN agendamento_id TYPE text USING agendamento_id::text;
+
 -- Recarrega o schema cache do PostgREST (para as novas tabelas/views aparecerem no REST)
 NOTIFY pgrst, 'reload schema';
