@@ -252,6 +252,7 @@ function authToggleModo(){
   authModo = (authModo==='login') ? 'criar' : 'login';
   const criar = authModo==='criar';
   document.getElementById('auth-empresa-wrap').style.display = criar ? '' : 'none';
+  document.getElementById('auth-seu-nome-wrap').style.display = criar ? '' : 'none';
   document.getElementById('auth-title').textContent = criar ? 'Criar minha empresa' : 'Entrar na sua conta';
   document.getElementById('auth-sub').textContent   = criar ? 'Comece grátis — leva 1 minuto' : 'Acesse com seu e-mail e senha';
   document.getElementById('auth-btn').textContent   = criar ? 'Criar empresa →' : 'Entrar →';
@@ -276,7 +277,7 @@ async function authLogin(email, senha){
   return data;
 }
 
-async function authCriarEmpresa(nome, email, senha){
+async function authCriarEmpresa(nome, nomeUsuario, email, senha){
   const { data:su, error:e1 } = await db.auth.signUp({ email, password: senha });
   if(e1) throw e1;
   // Se a confirmação de e-mail estiver ligada, signUp não devolve sessão → tenta login.
@@ -285,7 +286,9 @@ async function authCriarEmpresa(nome, email, senha){
     if(e2) throw new Error('confirm'); // cai em _msgAuthErro → "confirme o e-mail"
   }
   authUser = (await db.auth.getUser()).data?.user || su.user;
-  const { data:empId, error:e3 } = await db.rpc('criar_empresa', { p_nome: nome });
+  // p_nome_usuario fica em membros.nome — usado no auto-login (sem tela de PIN
+  // pra quem já provou quem é via e-mail+senha da conta).
+  const { data:empId, error:e3 } = await db.rpc('criar_empresa', { p_nome: nome, p_nome_usuario: nomeUsuario||null });
   if(e3) throw e3;
   return empId;
 }
@@ -300,14 +303,22 @@ async function authSubmit(){
   try{
     if(authModo==='criar'){
       const nome=(gV('auth-empresa')||'').trim();
+      const nomeUsuario=(gV('auth-seu-nome')||'').trim();
       if(!nome){ err.textContent='Informe o nome da empresa.'; return; }
-      await authCriarEmpresa(nome, email, senha);
+      if(!nomeUsuario){ err.textContent='Informe o seu nome.'; return; }
+      await authCriarEmpresa(nome, nomeUsuario, email, senha);
     } else {
       await authLogin(email, senha);
     }
     await conectarDB();          // conecta/realtime já autenticado
+    await checarAdminPlataforma();
+    if(isPlataformaAdmin){ entrarModoPlataforma(); return; }
     await definirEmpresaAtiva(); // contexto da empresa (T3)
     esconderTelaAuth();
+    // Quem autenticou com e-mail+senha já provou quem é — entra direto como
+    // gestor da empresa, sem passar pela tela de PIN interno (essa é só para
+    // perfis criados DEPOIS pelo gestor: vendas/técnico/gestores adicionais).
+    if(await _autoLoginMembroDaConta()) return;
     try{ todosUsuarios=JSON.parse(ls('fluxa_usuarios')||'[]'); }catch(e){ todosUsuarios=[]; }
     renderLoginUsers();
   }catch(e){
@@ -1150,6 +1161,10 @@ function lsOrcProxNum(){ return lsOrcLer().reduce((a,o)=>Math.max(a,o.numero||0)
         document.getElementById('login-overlay').style.display='none';
         atualizarBadgeUsuario();
         aplicarPermissoesPerfil();
+      } else if(authUser && await _autoLoginMembroDaConta()){
+        // Sessão interna (sessionStorage) não sobrevive a fechar a aba, mas a
+        // conta (Supabase Auth) sim — quem já provou quem é por e-mail+senha
+        // entra direto como membro da empresa, sem PIN.
       } else {
         try{ todosUsuarios=JSON.parse(ls('fluxa_usuarios')||'[]'); }catch(e){ todosUsuarios=[]; }
         renderLoginUsers();
@@ -4718,6 +4733,26 @@ let realtimeChannel = null;
 // RPCs admin_* (SECURITY DEFINER, checam is_platform_admin() internamente — a
 // RLS de isolamento por empresa nas tabelas de negócio não é alterada).
 let isPlataformaAdmin = false;
+
+// Quem autenticou por e-mail+senha (Supabase Auth) já provou quem é — se for
+// membro da empresa ativa (membros.user_id), entra direto nessa persona, sem a
+// tela de PIN interno. O PIN continua existindo só para perfis que o gestor
+// cria DEPOIS pelo app (vendas/técnico/gestores adicionais em usuarios), que não
+// têm conta de e-mail própria — pensados para dispositivo compartilhado em campo.
+async function _autoLoginMembroDaConta(){
+  if(!db || !authUser || !EMPRESA_ID) return false;
+  try{
+    const { data, error } = await db.from('membros').select('perfil,nome')
+      .eq('user_id', authUser.id).eq('empresa_id', EMPRESA_ID).maybeSingle();
+    if(error) throw error;
+    if(!data) return false;
+    setSessao({ perfil: data.perfil||'gestor', loja_id: null, nome: data.nome||'Gestor' });
+    document.getElementById('login-overlay').style.display='none';
+    atualizarBadgeUsuario();
+    aplicarPermissoesPerfil();
+    return true;
+  }catch(e){ console.warn('[_autoLoginMembroDaConta]', e?.message||e); return false; }
+}
 
 async function checarAdminPlataforma(){
   isPlataformaAdmin = false;

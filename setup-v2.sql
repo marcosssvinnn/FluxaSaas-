@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS membros (
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   empresa_id uuid NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
   perfil text DEFAULT 'gestor',
+  nome text, -- nome da pessoa (capturado no onboarding) — usado no auto-login sem PIN
   created_at timestamptz DEFAULT now(),
   PRIMARY KEY (user_id, empresa_id)
 );
@@ -26,7 +27,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   SELECT empresa_id FROM membros WHERE user_id = auth.uid();
 $$;
 
-CREATE OR REPLACE FUNCTION criar_empresa(p_nome text)
+CREATE OR REPLACE FUNCTION criar_empresa(p_nome text, p_nome_usuario text DEFAULT NULL)
 RETURNS uuid
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE v_id uuid;
@@ -42,7 +43,9 @@ BEGIN
     jsonb_build_object('nome', p_nome, 'appName', p_nome)
   )
   RETURNING id INTO v_id;
-  INSERT INTO membros (user_id, empresa_id, perfil) VALUES (auth.uid(), v_id, 'gestor');
+  -- p_nome_usuario fica em membros.nome — quem cria a conta já provou quem é
+  -- (e-mail+senha), então entra direto como esse nome, sem tela de PIN interno.
+  INSERT INTO membros (user_id, empresa_id, perfil, nome) VALUES (auth.uid(), v_id, 'gestor', COALESCE(p_nome_usuario,'Gestor'));
   INSERT INTO lojas (empresa_id, nome) VALUES (v_id, p_nome);
   RETURN v_id;
 END $$;
