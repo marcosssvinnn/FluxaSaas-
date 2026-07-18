@@ -482,6 +482,13 @@ async function escolherEmpresa(id){
 const SUPABASE_URL      = 'https://auoklaiffalbdgazrbdu.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF1b2tsYWlmZmFsYmRnYXpyYmR1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzNDU5OTMsImV4cCI6MjA5OTkyMTk5M30.VvEhdTy0wsV0VkRM_rY6sYBSaVTRx9_Xb9WGfFMp-WY';
 
+// Marca neutra do PRODUTO (SaaS Fluxa) — cores da tela de CONTA, ANTES do login.
+// Declaradas AQUI (topo) e não mais tarde: resetMarcaSaaS()/aplicarCFG() rodam no
+// boot antes da posição original (~l.1562) e um `const` em TDZ estourava
+// ("Cannot access 'SAAS_C1' before initialization"), abortando o reset da cor —
+// então o --c1 da empresa (cache) vazava no pré-login. Ver resetMarcaSaaS/aplicarCFG.
+const SAAS_C1 = '#F07820', SAAS_C2 = '#2B3244';
+
 // ══════════════════════════════════════════════════
 //  CONTEXTO DA EMPRESA (tenant ativo) — populado APÓS o login
 // ══════════════════════════════════════════════════
@@ -1559,7 +1566,8 @@ async function carregarClientesRemoto(){
 // Marca neutra do PRODUTO (SaaS Fluxa) — usada na tela de CONTA, ANTES do login.
 // Depois de autenticar + carregar a empresa, aplicarCFG aplica o tema da empresa.
 // Assim o pré-login nunca herda cor/nome/logo de uma empresa (ou do cache).
-const SAAS_C1 = '#F07820', SAAS_C2 = '#2B3244';
+// (SAAS_C1/SAAS_C2 são declaradas no topo do arquivo — junto das constantes
+//  SUPABASE_* — para evitar TDZ, pois resetMarcaSaaS roda cedo no boot.)
 // true quando o SaaS tem credenciais mas NÃO há sessão de conta autenticada (tela
 // de conta). Baseado só em authUser — o EMPRESA_ID pode estar no cache (offline)
 // de um login anterior e NÃO pode "vazar" o tema da empresa antes de re-autenticar.
