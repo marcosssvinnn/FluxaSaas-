@@ -1932,6 +1932,7 @@ function go(p){
   if(p==='despesas') loadDespesas();
   if(p==='estoque') loadEstoque();
   if(p==='produtividade'){ loadProdutividade(); setTimeout(renderRelatorioFinanceiro,300); }
+  if(p==='analises') loadAnalises();
   if(p==='usuarios') loadUsuarios();
   if(p==='auditoria') loadAuditoria();
   if(p==='minhas-os') loadMinhasOS();
@@ -4683,6 +4684,92 @@ function imprimirDoc(modo){
 //  REALTIME SYNC (Supabase)
 // ──────────────────────────────────────────────────
 let realtimeChannel = null;
+// ══════════════════════════════════════════════════
+//  ANÁLISES (só gestor) — consulta VIEWS agregadas (não baixa tabelas)
+// ══════════════════════════════════════════════════
+let _analiseCharts = { fin:null, abc:null };
+async function loadAnalises(){
+  const kpis=document.getElementById('analises-kpis');
+  if(kpis) kpis.innerHTML='<div style="color:var(--gray);font-size:13px;padding:8px">Carregando…</div>';
+  if(!dbOk||!db||!EMPRESA_ID){ _renderAnaliseVazio(); return; }
+  try{
+    const [orc, fin, prod, ins] = await Promise.all([
+      db.from('vw_analise_orcamentos').select('*').eq('empresa_id',EMPRESA_ID).maybeSingle(),
+      db.from('vw_analise_financeiro_mensal').select('*').eq('empresa_id',EMPRESA_ID).order('mes',{ascending:true}),
+      db.from('vw_analise_produtos').select('*').eq('empresa_id',EMPRESA_ID),
+      db.from('insights').select('*').eq('empresa_id',EMPRESA_ID).order('created_at',{ascending:false}).limit(1)
+    ]);
+    renderAnalises({
+      orc: orc.data||null,
+      fin: fin.data||[],
+      prod: prod.data||[],
+      insight: (ins.data&&ins.data[0])||null
+    });
+  }catch(e){ console.warn('[loadAnalises]', e?.message||e); _renderAnaliseVazio(); }
+}
+function _renderAnaliseVazio(){
+  const kpis=document.getElementById('analises-kpis'); if(kpis) kpis.innerHTML='';
+  const empty=document.getElementById('analises-empty'); if(empty) empty.style.display='block';
+}
+function _kpiTile(label, valor, cor){
+  return `<div class="card" style="text-align:center;padding:12px 8px">
+    <div style="font-size:11px;color:var(--gray);text-transform:uppercase;letter-spacing:.03em">${esc(label)}</div>
+    <div style="font-size:20px;font-weight:800;color:${cor||'var(--c2)'};margin-top:4px">${valor}</div></div>`;
+}
+function renderAnalises(d){
+  const empty=document.getElementById('analises-empty');
+  const temDados = (d.orc && d.orc.total) || (d.fin&&d.fin.length) || (d.prod&&d.prod.length);
+  if(empty) empty.style.display = temDados ? 'none' : 'block';
+  // Card de insight de IA (lido da tabela insights; escrito pelo backend futuro)
+  const ic=document.getElementById('analises-insight');
+  if(ic){
+    if(d.insight && d.insight.conteudo){
+      const c=d.insight.conteudo;
+      ic.style.display='block';
+      ic.innerHTML=`<div style="font-weight:700;margin-bottom:6px">🤖 Análise inteligente</div>
+        <div style="font-size:13px;color:var(--c2)">${esc(c.resumo||'')}</div>`;
+    } else ic.style.display='none';
+  }
+  // KPIs
+  const o=d.orc||{};
+  const kpis=document.getElementById('analises-kpis');
+  if(kpis) kpis.innerHTML =
+    _kpiTile('Taxa de aprovação', (o.taxa_aprovacao_pct||0)+'%', 'var(--green)')+
+    _kpiTile('Ticket médio', brl(o.ticket_medio||0))+
+    _kpiTile('Faturado', brl(o.total_faturado||0))+
+    _kpiTile('Inadimplência', brl(o.inadimplencia||0), 'var(--red)');
+  // Chart receita x despesa mensal
+  const fin=d.fin||[];
+  if(_analiseCharts.fin){ try{_analiseCharts.fin.destroy();}catch(e){} _analiseCharts.fin=null; }
+  const cf=document.getElementById('analises-chart-fin');
+  if(cf && fin.length){
+    _analiseCharts.fin=new Chart(cf,{ type:'bar', data:{
+      labels:fin.map(x=>x.mes),
+      datasets:[
+        {label:'Receita', data:fin.map(x=>+x.receita||0), backgroundColor:'#16a34a'},
+        {label:'Despesas', data:fin.map(x=>+x.despesas||0), backgroundColor:'#ef4444'}
+      ]}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom'}}} });
+  }
+  // Chart ABC — top 10 produtos por receita de saída
+  const prod=(d.prod||[]).slice().sort((a,b)=>(+b.receita_saida||0)-(+a.receita_saida||0)).slice(0,10);
+  if(_analiseCharts.abc){ try{_analiseCharts.abc.destroy();}catch(e){} _analiseCharts.abc=null; }
+  const ca=document.getElementById('analises-chart-abc');
+  if(ca && prod.length){
+    const corABC={A:'#16a34a',B:'#f59e0b',C:'#9ca3af'};
+    _analiseCharts.abc=new Chart(ca,{ type:'bar', data:{
+      labels:prod.map(x=>x.nome||'—'),
+      datasets:[{label:'Receita de saída', data:prod.map(x=>+x.receita_saida||0), backgroundColor:prod.map(x=>corABC[x.abc]||'#9ca3af')}]
+    }, options:{indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}} });
+  }
+  // Produtos parados (sem saída há 30+ dias)
+  const parados=(d.prod||[]).filter(x=>x.dias_sem_saida!=null && x.dias_sem_saida>=30).sort((a,b)=>b.dias_sem_saida-a.dias_sem_saida).slice(0,15);
+  const pd=document.getElementById('analises-parados');
+  if(pd) pd.innerHTML = parados.length ? parados.map(x=>
+      `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--gray-light)">
+        <span>${esc(x.nome||'—')}</span><span style="color:var(--gray)">${x.dias_sem_saida} dias</span></div>`).join('')
+      : '<div style="color:var(--gray)">Nenhum produto parado 🎉</div>';
+}
+
 // Config de uma subscription realtime, filtrada pela empresa ativa. Sem EMPRESA_ID
 // (contexto ainda não carregado) cai só na RLS (que já escopa às empresas do usuário).
 function _rtCfg(event, table){

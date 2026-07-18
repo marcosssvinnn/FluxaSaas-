@@ -436,3 +436,89 @@ END $$;
 
 GRANT EXECUTE ON FUNCTION portal_dados(uuid) TO anon;
 GRANT EXECUTE ON FUNCTION portal_responder_orcamento(uuid, uuid, boolean, jsonb) TO anon;
+
+-- ═════════════════════════════════════════════════════════════════════
+--  ANALYTICS — agregações no SQL (a análise consulta a VIEW, nunca baixa
+--  tabelas inteiras pro navegador). security_invoker = true → a RLS das
+--  tabelas-base se aplica: cada empresa só vê os próprios números.
+--  O app ainda adiciona .eq('empresa_id', EMPRESA_ID) por defesa em profundidade.
+-- ═════════════════════════════════════════════════════════════════════
+
+-- Por produto: margem, giro (saídas), entradas, saldo físico, dias sem saída, ABC.
+CREATE OR REPLACE VIEW vw_analise_produtos WITH (security_invoker = true) AS
+WITH mov AS (
+  SELECT produto_id,
+         SUM(CASE WHEN tipo IN ('saida') THEN abs(quantidade) ELSE 0 END)          AS saida_qtd,
+         SUM(CASE WHEN tipo IN ('entrada','transf_entrada') THEN quantidade ELSE 0 END) AS entrada_qtd,
+         SUM(CASE WHEN tipo IN ('entrada','saida','ajuste','transf_entrada','transf_saida') THEN quantidade ELSE 0 END) AS saldo_fisico,
+         MAX(CASE WHEN tipo='saida' THEN data END)                                  AS ultima_saida
+  FROM estoque_movimentos GROUP BY produto_id
+)
+SELECT p.empresa_id, p.id AS produto_id, p.nome, p.loja_id,
+       p.custo, p.preco_venda,
+       (p.preco_venda - p.custo)                                                    AS margem_unit,
+       CASE WHEN p.preco_venda > 0 THEN round((p.preco_venda - p.custo)/p.preco_venda*100, 1) ELSE 0 END AS margem_pct,
+       COALESCE(m.saida_qtd,0)    AS giro_saida_qtd,
+       COALESCE(m.entrada_qtd,0)  AS entrada_qtd,
+       COALESCE(m.saldo_fisico,0) AS saldo_fisico,
+       COALESCE(m.saida_qtd,0) * p.preco_venda                                       AS receita_saida,
+       m.ultima_saida,
+       CASE WHEN m.ultima_saida IS NULL THEN NULL
+            ELSE (CURRENT_DATE - m.ultima_saida::date) END                          AS dias_sem_saida,
+       -- Curva ABC por receita de saída (A = top ~80% acumulado, B ~15%, C resto)
+       CASE
+         WHEN sum(COALESCE(m.saida_qtd,0)*p.preco_venda) OVER (PARTITION BY p.empresa_id) = 0 THEN 'C'
+         WHEN sum(COALESCE(m.saida_qtd,0)*p.preco_venda) OVER (
+                PARTITION BY p.empresa_id ORDER BY COALESCE(m.saida_qtd,0)*p.preco_venda DESC
+                ROWS UNBOUNDED PRECEDING)
+              / NULLIF(sum(COALESCE(m.saida_qtd,0)*p.preco_venda) OVER (PARTITION BY p.empresa_id),0) <= 0.80 THEN 'A'
+         WHEN sum(COALESCE(m.saida_qtd,0)*p.preco_venda) OVER (
+                PARTITION BY p.empresa_id ORDER BY COALESCE(m.saida_qtd,0)*p.preco_venda DESC
+                ROWS UNBOUNDED PRECEDING)
+              / NULLIF(sum(COALESCE(m.saida_qtd,0)*p.preco_venda) OVER (PARTITION BY p.empresa_id),0) <= 0.95 THEN 'B'
+         ELSE 'C'
+       END AS abc
+FROM produtos p
+LEFT JOIN mov m ON m.produto_id = p.id
+WHERE p.ativo = true;
+
+-- Financeiro mensal: receita (recebido) x despesas x resultado, por mês.
+CREATE OR REPLACE VIEW vw_analise_financeiro_mensal WITH (security_invoker = true) AS
+WITH rec AS (
+  SELECT empresa_id, to_char(data_criacao,'YYYY-MM') AS mes,
+         SUM(COALESCE(valor_recebido,0)) AS receita,
+         SUM(COALESCE(total,0))          AS faturado
+  FROM orcamentos WHERE status IN ('aprovado','pago','concluido') GROUP BY 1,2
+),
+desp AS (
+  SELECT empresa_id, to_char(COALESCE(data::timestamptz, data_criacao),'YYYY-MM') AS mes,
+         SUM(COALESCE(valor,0)) AS despesas
+  FROM despesas GROUP BY 1,2
+)
+SELECT COALESCE(r.empresa_id,d.empresa_id) AS empresa_id,
+       COALESCE(r.mes,d.mes)               AS mes,
+       COALESCE(r.receita,0)               AS receita,
+       COALESCE(r.faturado,0)              AS faturado,
+       COALESCE(d.despesas,0)              AS despesas,
+       COALESCE(r.receita,0) - COALESCE(d.despesas,0) AS resultado
+FROM rec r FULL OUTER JOIN desp d ON r.empresa_id=d.empresa_id AND r.mes=d.mes;
+
+-- Orçamentos: taxa de aprovação, ticket médio, faturado x recebido (inadimplência).
+CREATE OR REPLACE VIEW vw_analise_orcamentos WITH (security_invoker = true) AS
+SELECT empresa_id,
+       COUNT(*)                                                        AS total,
+       COUNT(*) FILTER (WHERE status='aprovado')                       AS aprovados,
+       COUNT(*) FILTER (WHERE status='pendente')                       AS pendentes,
+       COUNT(*) FILTER (WHERE status='recusado')                       AS recusados,
+       CASE WHEN COUNT(*) FILTER (WHERE status IN ('aprovado','recusado')) > 0
+            THEN round(COUNT(*) FILTER (WHERE status='aprovado')::numeric
+                       / COUNT(*) FILTER (WHERE status IN ('aprovado','recusado')) * 100, 1)
+            ELSE 0 END                                                 AS taxa_aprovacao_pct,
+       COALESCE(round(AVG(total) FILTER (WHERE status='aprovado'), 2),0) AS ticket_medio,
+       COALESCE(SUM(total) FILTER (WHERE status='aprovado'),0)         AS total_faturado,
+       COALESCE(SUM(valor_recebido) FILTER (WHERE status='aprovado'),0) AS total_recebido,
+       COALESCE(SUM(total) FILTER (WHERE status='aprovado'),0)
+         - COALESCE(SUM(valor_recebido) FILTER (WHERE status='aprovado'),0) AS inadimplencia
+FROM orcamentos GROUP BY empresa_id;
+
+GRANT SELECT ON vw_analise_produtos, vw_analise_financeiro_mensal, vw_analise_orcamentos TO authenticated;
