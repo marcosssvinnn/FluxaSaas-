@@ -1037,6 +1037,50 @@ Sem isso, vistorias/planos sincronizam SEM o vínculo local_id (degradado, mas n
 
 ---
 
+## Sessão 2026-07-18 (continuação) — SaaS multi-tenant completo: 14 tarefas + painel admin + login sem PIN
+
+> Sessão longa, mesmo dia da anterior. Cobre: as 14 tarefas originais da migração v1→v2
+> (multi-tenant/RLS/Auth — ver seção "FLUXA V2 — SaaS MULTI-TENANT" acima, onde cada
+> uma está documentada), MAIS todo o trabalho interativo depois de conectar no banco
+> real (`auoklaiffalbdgazrbdu`) e publicar em `github.com/marcosssvinnn/FluxaSaas-`.
+
+### Deploy e credenciais
+- `SUPABASE_URL`/`SUPABASE_ANON_KEY` preenchidos em `app.js` (projeto `auoklaiffalbdgazrbdu`).
+- Repo do v2 renomeado pelo Marcos (Pages continua servindo via redirect do nome antigo `FluxaSaas-`).
+- `main`/`dev` sempre sincronizadas (fast-forward) — todo commit vai pras duas.
+
+### Schema: 4 deltas aplicados ao banco (além do `setup-v2.sql` original)
+1. **`setup-v2-delta.sql`** — faltavam `fornecedores`, `ordens_compra` (módulo de compras) e as 3 views de analytics (`vw_analise_*`). Todas criadas com RLS/índice/realtime no padrão das demais.
+2. **`setup-v2-delta2.sql`** — `criar_empresa` passou a semear `empresas.config` com `{nome, appName}` a partir do nome do onboarding (antes nascia `{}` e o cabeçalho mostrava "Minha Empresa"). UPDATE retroativo só nas empresas com `config.nome` ainda vazio.
+3. **`setup-v2-delta3.sql`** — **painel ROOT da plataforma**: tabela `plataforma_admins` (sem policy de leitura — só populada manualmente via SQL/PAT) + `is_platform_admin()`/`sou_admin_plataforma()` + RPCs `admin_listar_empresas`/`admin_uso_plataforma`/`admin_set_empresa_ativo`/`admin_set_flag_empresa` (todas `SECURITY DEFINER`, checam admin **dentro** da função — RLS das 15 tabelas de tenant **intacta**).
+4. **`setup-v2-delta4.sql`** — `membros` ganha coluna `nome`; `criar_empresa(p_nome, p_nome_usuario)` (assinatura mudou de 1→2 parâmetros; a versão antiga foi **derrubada** com `DROP FUNCTION` para não coexistir como overload).
+
+`setup-v2.sql` foi atualizado em paralelo pra refletir os 4 deltas — instalação nova a partir dele já nasce completa, sem precisar rodar deltas.
+
+### Bugs corrigidos nesta sessão (fora do schema)
+- **`portal_token` não ia no insert de cliente** — os 6 pontos que chamam `dbInsert('clientes', ...)` geravam o token localmente mas esqueciam de enviá-lo; corrigido nos 6 (`_autoSalvarCliente` e afins).
+- **`checarAdminPlataforma()` exigia `dbOk===true`** — mas `dbOk` só liga depois do fluxo de conexão do TENANT, que a conta admin pula por completo. Resultado: a checagem nunca rodava de verdade e a conta admin caía no fluxo antigo de PIN. Reproduzido ao vivo pelo Marcos, corrigido (só depende de `db` existir).
+- **Painel admin virou modo separado, não aba escondida**: por pedido do Marcos ("não pode misturar com o app da empresa"), o boot agora checa `isPlataformaAdmin` **antes** de `definirEmpresaAtiva()` e, se for admin, desvia pra `entrarModoPlataforma()` — esconde `.hdr`/sidebar/`mob-nav`/login-overlay do tenant e mostra só `#admin-topbar` + `#page-plataforma`. Pula PIN, `go('form')`, `tentarConectar`.
+- **Login exigia PIN mesmo pra quem tem conta própria** (feedback do Marcos: "não faz sentido cadastro→login→admin de novo"). Fix: `_autoLoginMembroDaConta()` — se `auth.uid()` é `membros` da empresa ativa, estabelece a sessão interna direto (usa `perfil`/`nome` de `membros`), sem passar pelo PIN. O PIN interno (`usuarios`, tela Usuários) passa a ser **só** para perfis que o gestor cria depois (vendas/técnico/outros gestores) — pensado pra dispositivo compartilhado, não pra quem já tem conta.
+
+### Limpeza de dados de teste (era pendência da sessão anterior — RESOLVIDA)
+`limpeza-dados-teste.sql` rodado pelo Marcos: `DELETE FROM empresas WHERE nome IN ('Empresa QA App','Empresa Teste QA')` (cascata limpa) + usuários de teste apagados manualmente em Authentication → Users. **Cuidado:** nessa limpeza manual o Marcos apagou TODOS os usuários do Auth por engano (achou que eram todos de teste) — isso derrubou também a conta placeholder "Admin" que tínhamos acabado de criar; foi recriada em seguida sem problema (empresa de teste, não dado real). Lição registrada: ao apagar em massa no painel do Supabase, conferir e-mail por e-mail, nunca "selecionar tudo".
+
+### Primeira empresa REAL criada: Fluxa Piscinas
+`empresa_id 1b2b5a31-6af9-4a9e-b888-e41091f958f7`, gestor `marcossilv.04@gmail.com` (membros.nome = "Marcos Vinicius"), plano free, ativa. Verificado isolamento: `is_platform_admin()` = `false` pra essa conta, zero vínculo com a conta admin. **Marcada como piloto de IA futura** (ver Roadmap de IA) — é a empresa em que o copiloto de dados (fase 1) vai ser testado primeiro.
+
+### Conta ROOT da plataforma
+`marcos.vinicius.04@hotmail.com` — conta separada, **sem nenhuma empresa vinculada** (por desenho — só existe pra dar acesso ao painel admin via `plataforma_admins`). Criada via onboarding normal com uma empresa placeholder ("Admin"), que foi apagada logo depois (cascata limpa) — a conta ficou só com o registro em `plataforma_admins`.
+
+### ⚠️ Pendências (atualizado — 3 antigas resolvidas, nenhuma nova crítica)
+- ~~Dados de teste no banco~~ → **resolvido** (limpeza rodada e confirmada).
+- ~~`criar_empresa` não semeia `config.nome`~~ → **resolvido** (delta2 + delta4: semeia nome da empresa E nome da pessoa).
+- ~~`clientes` insert não envia `portal_token`~~ → **resolvido** (6 call sites corrigidos).
+- **Login end-to-end não foi testado por mim (Claude) com credenciais reais** — não posso digitar senha/criar conta; toda validação de login foi via mock local + confirmação do Marcos ao vivo. Se algo quebrar no fluxo real, precisa ser reproduzido por ele (como aconteceu com os 2 bugs desta sessão).
+- **SMTP próprio ainda não configurado** (ver aviso no Roadmap — e-mail de confirmação/recovery do Supabase é limitado; só afeta quando houver clientes externos de verdade).
+
+---
+
 ## Sessão 2026-07-18 — banco v2 conectado, pré-login neutro (TDZ) + QA do onboarding (3 bugs graves)
 
 - **Credenciais Supabase v2 preenchidas** (projeto `auoklaiffalbdgazrbdu`) em `app.js` (`SUPABASE_URL`/`SUPABASE_ANON_KEY`) — commit `9ccd7aa` (feito pela outra guia). Repo v2 = `github.com/marcosssvinnn/FluxaSaas-`.
