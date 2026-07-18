@@ -223,31 +223,39 @@ function fazerLogout(){
 }
 
 // ══════════════════════════════════════════════════
-//  LOJAS — 3 empresas do grupo
+//  CONEXÃO SUPABASE (multi-tenant) — ÚNICO ponto de credenciais
 // ══════════════════════════════════════════════════
-// Config da empresa: usa window.FLUXA_CONFIG (config.js) e, se ausente, os
-// defaults da Fortemp/Aquamotor — assim o deploy atual segue idêntico.
-const FLUXA_CONFIG = Object.assign({
-  appName: 'Fluxa',
-  supabaseUrl: 'https://lbxwclwzeqqtnwvlxsxs.supabase.co',
-  supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxieHdjbHd6ZXFxdG53dmx4c3hzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1MDc3MTUsImV4cCI6MjA5MTA4MzcxNX0.M1ET8Ho-AFJP9Fh-EtYHt4tdQMZj9zdIayYddrwIlhk',
-  lojaPadrao: 'fortemp-camboriu',
-  todasLabel: 'Forthemp — Todas',
-  grupoPrincipal: ['fortemp-camboriu','fortemp-itapema'],
-  // Acesso a grupos "separados": grupos NÃO listados (ex.: forthemp) são abertos
-  // a todos os gestores. A Aquamotor é restrita — só estes usuários (por nome).
-  acessoGrupo: { aquamotor: ['Marcos','Tamara'] },
-  lojas: [
-    { id:'fortemp-camboriu', nome:'Fortemp Camboriú',  cor:'loja-0', grupo:'forthemp', tecs:['Marcos','Josimar','Eldecir','Bruno'] },
-    { id:'fortemp-itapema',  nome:'Fortemp Itapema',   cor:'loja-1', grupo:'forthemp', tecs:['Marcos','Josimar','Eldecir','Bruno'] },
-    { id:'aquamotor',        nome:'Aquamotor',          cor:'loja-2', grupo:'aquamotor', tecs:['Marcos','Bruno'] }
-  ]
-}, (typeof window!=='undefined' && window.FLUXA_CONFIG) || {});
+// Fluxa v2 é um SaaS pool: UM deploy + UM banco servindo N empresas, isoladas por
+// RLS. Preencher as duas constantes quando o projeto Supabase existir (o banco é
+// criado depois do código pronto). Ativar o app = só preencher aqui.
+const SUPABASE_URL      = 'PREENCHER_DEPOIS';
+const SUPABASE_ANON_KEY = 'PREENCHER_DEPOIS';
 
-const LOJAS = FLUXA_CONFIG.lojas;
-const GRUPO_FORTHEMP = FLUXA_CONFIG.grupoPrincipal;
-const LOJA_PADRAO_ID = FLUXA_CONFIG.lojaPadrao; // loja padrão — usada como fallback em todo o app
-try{ if(FLUXA_CONFIG.appName) document.title = FLUXA_CONFIG.appName; }catch(e){ console.warn('[appName]', e?.message||e); }
+// ══════════════════════════════════════════════════
+//  CONTEXTO DA EMPRESA (tenant ativo) — populado APÓS o login
+// ══════════════════════════════════════════════════
+// NADA de empresa fica chumbado no código. Depois de autenticar (Supabase Auth),
+// carregamos a(s) empresa(s) do usuário (a RLS devolve só as dele) e preenchemos:
+//   • EMPRESA_ID  — uuid da empresa ativa (vai em todo insert/update e no namespace)
+//   • FLUXA_CONFIG — espelho de empresas.config (jsonb): appName, lojaPadrao,
+//                    todasLabel, grupoPrincipal, flags, emailjs…
+//   • LOJAS        — unidades da empresa (tabela lojas): {id,nome,cor,grupo,tecs}
+// Ver "contexto da empresa" (definirEmpresaAtiva) mais abaixo.
+let EMPRESA_ID = null;     // uuid da empresa ativa
+let EMPRESA    = null;     // linha da tabela empresas (nome, slug, config, plano…)
+let FLUXA_CONFIG = {
+  appName: 'Fluxa',
+  lojaPadrao: '',
+  todasLabel: 'Todas',
+  grupoPrincipal: [],
+  flags: {},
+  lojas: []
+};
+
+let LOJAS = FLUXA_CONFIG.lojas;          // unidades da empresa (preenchido no contexto da empresa)
+let GRUPO_PRINCIPAL = FLUXA_CONFIG.grupoPrincipal; // ids das unidades vistas juntas em "Todas"
+let LOJA_PADRAO_ID = FLUXA_CONFIG.lojaPadrao;      // unidade padrão — fallback em todo o app
+try{ document.title = FLUXA_CONFIG.appName || 'Fluxa'; }catch(e){ console.warn('[appName]', e?.message||e); }
 
 let lojaAtiva = ''; // '' = todas do grupo; string = empresa específica
 // Empresa escolhida pelo técnico no login ('forthemp' | 'aquamotor').
@@ -279,7 +287,7 @@ function filtrarPorLoja(lista, campo='loja_id'){
     // dados antigos.
     return lista.filter(o=>(o[campo]||'')===lojaAtiva);
   }
-  if(isMainGestor()) return lista.filter(o=>GRUPO_FORTHEMP.includes(o[campo])||!o[campo]);
+  if(isMainGestor()) return lista.filter(o=>GRUPO_PRINCIPAL.includes(o[campo])||!o[campo]);
   // company gestor ou técnico — lojaAtiva já está definido na sua empresa
   return lista;
 }
@@ -301,9 +309,9 @@ function getOrigemBadge(origem){
 // Preenche o <select> do header com todas as lojas (gestor principal vê tudo)
 function populaLojaSelect(){
   const sel=document.getElementById('hdr-loja-select'); if(!sel) return;
-  const principais=LOJAS.filter(l=>GRUPO_FORTHEMP.includes(l.id));
+  const principais=LOJAS.filter(l=>GRUPO_PRINCIPAL.includes(l.id));
   // Empresas separadas (ex.: Aquamotor) só entram se o usuário tiver acesso ao grupo
-  const outros=LOJAS.filter(l=>!GRUPO_FORTHEMP.includes(l.id) && podeAcessarGrupo(l.grupo));
+  const outros=LOJAS.filter(l=>!GRUPO_PRINCIPAL.includes(l.id) && podeAcessarGrupo(l.grupo));
   sel.innerHTML=
     `<option value="">${esc(FLUXA_CONFIG.todasLabel||'Todas')}</option>`+
     principais.map(l=>`<option value="${l.id}">${esc(l.nome)}</option>`).join('')+
@@ -879,10 +887,9 @@ function lsOrcProxNum(){ return lsOrcLer().reduce((a,o)=>Math.max(a,o.numero||0)
     document.getElementById('login-overlay').style.display='flex';
   }
 
-  // ── Credenciais do Supabase (vêm do config.js da empresa; fallback nos defaults) ──
-  const sbUrl = FLUXA_CONFIG.supabaseUrl;
-  const sbKey = FLUXA_CONFIG.supabaseKey;
-  lsSet('sb_url', sbUrl); lsSet('sb_key', sbKey);
+  // ── Credenciais do Supabase (ponto único: constantes SUPABASE_URL/ANON_KEY) ──
+  const sbUrl = SUPABASE_URL;
+  const sbKey = SUPABASE_ANON_KEY;
   go('form');
 
   async function tentarConectar(tentativa){
@@ -4667,10 +4674,9 @@ async function checkPortalHash(){
 
   go('portal');
 
-  // Conecta ao banco se não conectado
+  // Conecta ao banco se não conectado (portal usa RPCs públicas — ver T11)
   if(!dbOk||!db){
-    const sbUrl=ls('sb_url'), sbKey=ls('sb_key');
-    if(sbUrl&&sbKey) await conectarDB(sbUrl,sbKey,false);
+    if(SUPABASE_URL!=='PREENCHER_DEPOIS') await conectarDB(SUPABASE_URL,SUPABASE_ANON_KEY,false);
   }
 
   // Busca cliente pelo token
@@ -6497,7 +6503,9 @@ function lsVisSalvar(lista){
 // Fonte única de verdade para "este local/vistoria pertence à empresa em foco?".
 // Usado por renderLocaisTab E renderVisHistorico para nunca divergirem.
 function _normLojaId(lid){ return (!lid||lid==='default')?LOJA_PADRAO_ID:lid; }
-function _grupoDaLoja(lid){ const L=LOJAS.find(x=>x.id===_normLojaId(lid)); return L?L.grupo:'forthemp'; }
+// Grupo padrão da empresa ativa (unidade padrão ou a primeira) — sem nome chumbado.
+function _grupoPadrao(){ const L=getLoja(LOJA_PADRAO_ID)||LOJAS[0]; return L?L.grupo:''; }
+function _grupoDaLoja(lid){ const L=LOJAS.find(x=>x.id===_normLojaId(lid)); return L?L.grupo:_grupoPadrao(); }
 // Empresa atualmente em foco: técnico → grupo escolhido no login; gestor sem
 // loja → grupo forthemp (Aquamotor não mistura); gestor em loja específica → aquela loja.
 function _empresaEmFoco(){
@@ -7574,8 +7582,8 @@ async function _uploadFotoStorage(base64, path){
     const arr = new Uint8Array(bytes.length);
     for(let i=0;i<bytes.length;i++) arr[i]=bytes.charCodeAt(i);
     const blob = new Blob([arr], {type:mime});
-    const sbUrl = FLUXA_CONFIG.supabaseUrl;
-    const sbKey = FLUXA_CONFIG.supabaseKey;
+    const sbUrl = SUPABASE_URL;
+    const sbKey = SUPABASE_ANON_KEY;
     const res = await fetch(`${sbUrl}/storage/v1/object/vistorias-fotos/${path}`, {
       method:'POST',
       headers:{ 'apikey':sbKey, 'Authorization':'Bearer '+sbKey, 'Content-Type':mime, 'x-upsert':'true' },
@@ -8807,7 +8815,7 @@ function fisicaProduto(produtoId){ return (_getSaldoCache()[produtoId]||{fisico:
 
 function _saldoPorLoja(produtoId){
   const r={};
-  (todosMovEstoque||[]).filter(m=>m.produto_id===produtoId&&GRUPO_FORTHEMP&&GRUPO_FORTHEMP.includes(m.loja_id||'')).forEach(m=>{
+  (todosMovEstoque||[]).filter(m=>m.produto_id===produtoId&&GRUPO_PRINCIPAL&&GRUPO_PRINCIPAL.includes(m.loja_id||'')).forEach(m=>{
     const lid=m.loja_id||''; if(!r[lid]) r[lid]={fisico:0,reservado:0};
     const q=parseFloat(m.quantidade)||0;
     if(_TIPOS_FISICOS.includes(m.tipo)) r[lid].fisico+=q;
@@ -8975,9 +8983,9 @@ function produtosVisiveis(){
   const ativos=todosProdutos.filter(p=>p.ativo!==false);
   if(!lojaAtiva) return filtrarPorLoja(ativos); // "Todas" → grupo
   const comMov=new Set(todosMovEstoque.filter(m=>(m.loja_id||'')===lojaAtiva).map(m=>m.produto_id));
-  if(GRUPO_FORTHEMP&&GRUPO_FORTHEMP.includes(lojaAtiva)){
+  if(GRUPO_PRINCIPAL&&GRUPO_PRINCIPAL.includes(lojaAtiva)){
     // Catálogo compartilhado: mostra produtos de qualquer loja do grupo Forthemp
-    return ativos.filter(p=>GRUPO_FORTHEMP.includes(p.loja_id||'')||comMov.has(p.id));
+    return ativos.filter(p=>GRUPO_PRINCIPAL.includes(p.loja_id||'')||comMov.has(p.id));
   }
   // Loja isolada (Acquamotor etc.): só produtos próprios
   return ativos.filter(p=>(p.loja_id||'')===lojaAtiva||comMov.has(p.id));
@@ -9179,9 +9187,9 @@ function renderEstoque(){
 
       // Por loja — sempre visível para lojas do grupo Forthemp
       let porLoja='';
-      if(GRUPO_FORTHEMP&&GRUPO_FORTHEMP.length>1&&(!lojaAtiva||GRUPO_FORTHEMP.includes(lojaAtiva))){
+      if(GRUPO_PRINCIPAL&&GRUPO_PRINCIPAL.length>1&&(!lojaAtiva||GRUPO_PRINCIPAL.includes(lojaAtiva))){
         const spl=_saldoPorLoja(p.id);
-        porLoja=`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">`+LOJAS.filter(l=>GRUPO_FORTHEMP.includes(l.id)).map(l=>{
+        porLoja=`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">`+LOJAS.filter(l=>GRUPO_PRINCIPAL.includes(l.id)).map(l=>{
           const s=spl[l.id]||{fisico:0,reservado:0}; const d=s.fisico-s.reservado;
           const isAtiva=l.id===lojaAtiva;
           return `<span class="loja-badge ${l.cor}" style="font-size:10px${isAtiva?';outline:2px solid currentColor;outline-offset:1px':''}">${esc(l.nome)}: <strong style="color:${d<0?'#b91c1c':d===0?'var(--gray)':'inherit'}">${fmtQtd(d)}</strong></span>`;
@@ -9279,9 +9287,9 @@ function produtosVisiveisInativos(){
 function _metricsLoja(lojaId){
   const ativos=(todosProdutos||[]).filter(p=>p.ativo!==false);
   // Forthemp: catálogo compartilhado entre as lojas do grupo
-  const ehGrupo=GRUPO_FORTHEMP&&GRUPO_FORTHEMP.includes(lojaId);
+  const ehGrupo=GRUPO_PRINCIPAL&&GRUPO_PRINCIPAL.includes(lojaId);
   const prods=ehGrupo
-    ? ativos.filter(p=>GRUPO_FORTHEMP.includes(p.loja_id||''))
+    ? ativos.filter(p=>GRUPO_PRINCIPAL.includes(p.loja_id||''))
     : ativos.filter(p=>(p.loja_id||'')===lojaId);
   const movs=(todosMovEstoque||[]).filter(m=>(m.loja_id||'')===lojaId);
   const lim90=Date.now()-90*86400000;
@@ -9310,8 +9318,8 @@ function renderInsightsEstoque(abc, parados){
   let h='';
 
   // ── Comparativo entre lojas (só quando gestor vê todas as lojas) ──
-  if(isMainGestor()&&!lojaAtiva&&GRUPO_FORTHEMP&&GRUPO_FORTHEMP.length>1){
-    const lojasGrupo=LOJAS.filter(l=>GRUPO_FORTHEMP.includes(l.id));
+  if(isMainGestor()&&!lojaAtiva&&GRUPO_PRINCIPAL&&GRUPO_PRINCIPAL.length>1){
+    const lojasGrupo=LOJAS.filter(l=>GRUPO_PRINCIPAL.includes(l.id));
     if(lojasGrupo.length>1){
       const dados=lojasGrupo.map(l=>({l,m:_metricsLoja(l.id)}));
       const row=(label,vals,fn)=>`<tr><td style="font-size:12px;color:var(--gray);padding:6px 0 6px 0;border-bottom:1px solid var(--gray-light);white-space:nowrap">${label}</td>${vals.map(({l,m})=>`<td style="text-align:right;font-size:13px;font-weight:600;padding:6px 0 6px 12px;border-bottom:1px solid var(--gray-light)">${fn(m,l)}</td>`).join('')}</tr>`;
@@ -9678,7 +9686,7 @@ function abrirProdutoModal(id){
       wrap.innerHTML=`<div style="display:flex;align-items:center;gap:8px;background:var(--gray-light);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:var(--gray)">🏪 ${rotulo} ${getLojaBadge(lojaFixa)}</div>`;
     } else {
       // Master no painel geral → precisa escolher a unidade
-      const opcs=LOJAS.filter(l=>GRUPO_FORTHEMP.includes(l.id)).map(l=>`<option value="${l.id}">${esc(l.nome)}</option>`).join('');
+      const opcs=LOJAS.filter(l=>GRUPO_PRINCIPAL.includes(l.id)).map(l=>`<option value="${l.id}">${esc(l.nome)}</option>`).join('');
       wrap.innerHTML=`<div style="margin-bottom:12px"><label style="font-size:11px;font-weight:700;color:var(--c1);text-transform:uppercase;letter-spacing:.5px">🏪 Em qual unidade cadastrar?</label><select id="prod-loja-select" style="width:100%;margin-top:4px;padding:9px 12px;border:2px solid var(--c1);border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;color:var(--c2)">${opcs}</select></div>`;
     }
   }
