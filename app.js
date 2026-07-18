@@ -2558,6 +2558,11 @@ const _orcSyncInFlight = new Set();
 // ex.: criados enquanto o insert falhava pela coluna origem_cliente ausente.
 async function _reenviarOrcamentosLocais(soLocal){
   if(!dbOk||!db||!soLocal||!soLocal.length) return false;
+  // Guard central: nunca reenvia um tempId cujo insert já está EM VOO (salvarApenas).
+  // Protege TODOS os chamadores (loadHist, sync periódico de 90s, visibilitychange)
+  // contra a duplicata — o insert de background já vai gravar esse registro.
+  soLocal=soLocal.filter(r=>!_orcSyncInFlight.has(r.id));
+  if(!soLocal.length) return false;
   let mudou=false;
   for(const rec of soLocal){
     try{
