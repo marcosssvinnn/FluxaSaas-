@@ -210,6 +210,11 @@ CREATE TABLE IF NOT EXISTS produtos (
   preco_venda numeric(10,2) DEFAULT 0,
   custo numeric(10,2) DEFAULT 0,
   estoque_minimo numeric(10,2) DEFAULT 0,
+  categoria text,
+  fornecedor_id text, lead_time_dias integer,
+  estoque_seguranca numeric(10,2) DEFAULT 0,
+  lote_minimo numeric(10,2) DEFAULT 1,
+  lote text, validade text,
   ncm text, cest text, cfop_padrao text, origem text, gtin_ean text,
   ativo boolean DEFAULT true,
   data_criacao timestamptz DEFAULT now()

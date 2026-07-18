@@ -143,5 +143,16 @@ ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS pag_parcelas integer;
 ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS pag_entrada numeric(10,2);
 ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS data_aprovacao timestamptz;
 
+-- ───────── PRODUTOS: categoria + campos de compras/reposição + lote (faltavam) ─────────
+-- salvarProduto grava estes campos; sem as colunas o dbUpsert as REMOVIA. categoria
+-- é OBRIGATÓRIA no form e não persistia. Aditivo e idempotente.
+ALTER TABLE produtos ADD COLUMN IF NOT EXISTS categoria text;
+ALTER TABLE produtos ADD COLUMN IF NOT EXISTS fornecedor_id text;
+ALTER TABLE produtos ADD COLUMN IF NOT EXISTS lead_time_dias integer;
+ALTER TABLE produtos ADD COLUMN IF NOT EXISTS estoque_seguranca numeric(10,2) DEFAULT 0;
+ALTER TABLE produtos ADD COLUMN IF NOT EXISTS lote_minimo numeric(10,2) DEFAULT 1;
+ALTER TABLE produtos ADD COLUMN IF NOT EXISTS lote text;
+ALTER TABLE produtos ADD COLUMN IF NOT EXISTS validade text;
+
 -- Recarrega o schema cache do PostgREST (para as novas tabelas/views aparecerem no REST)
 NOTIFY pgrst, 'reload schema';
