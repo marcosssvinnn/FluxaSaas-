@@ -1,5 +1,12 @@
 # Fluxa App — Contexto do Projeto
 
+> ## 🟢 ESTE É O FLUXA v2 (SaaS multi-tenant)
+> UM deploy + UM banco servindo N empresas, isoladas por RLS (ver **"FLUXA V2 — SaaS MULTI-TENANT"** abaixo). Workspace `~/Documents/fluxa`, repo próprio, **branch `dev`** (main = produção do v2). Schema em `setup-v2.sql`. Credenciais: constantes `SUPABASE_URL`/`SUPABASE_ANON_KEY` no topo de `app.js`.
+>
+> **⚠️ Seções v1 abaixo são referência de COMPORTAMENTO (módulos), mas as instruções v1 de infraestrutura NÃO valem no v2:** ignore "config.js", o repo/URL `fluxa-app`, o "git push para main do fluxa-app", o protocolo das "duas IAs" e a tabela `empresa_config` — tudo isso é do v1. Deploy v2 = merge `dev`→`main` do repo do v2 (validado antes). O v1 continua em produção separado e **não é tocado**.
+>
+> **Validação sem banco:** sintaxe via `osascript`/`new Function` (não há Node); runtime via `python3 -m http.server 8778 --directory ~/Documents/fluxa` + `http://localhost:8778` (o preview de `file://` não roda o JS).
+
 ---
 
 ## 🛡️ PROTOCOLO DE VERIFICAÇÃO — OBRIGATÓRIO ANTES DE ENTREGAR QUALQUER MUDANÇA
@@ -20,6 +27,16 @@
 9. **Auto-update** — mudou algo que o usuário precisa ver na hora? O app se atualiza sozinho via ETag, mas confirme que não quebrou o `index.html` (network-first).
 10. **Sintaxe** — validou o JS inteiro antes do commit? (`new Function(script)` via JXA, ou equivalente.)
 
+### Checklist MULTI-TENANT (v2) — obrigatório a cada feature
+11. **empresa_id** — todo insert/update leva `empresa_id`? (use os wrappers `dbInsert`/`dbUpdate`/`dbUpsert`, que injetam via `_injetarEmpresa`; nunca insert cru.)
+12. **localStorage namespaced** — toda chave passa por `ls`/`lsSet`/`lsDel` (prefixo `fluxa:<EMPRESA_ID>:`)? Nada de `localStorage.setItem` cru para dados de empresa.
+13. **RLS** — a feature respeita a RLS? Leituras de lista escopam `.eq('empresa_id', EMPRESA_ID)` (a RLS traz TODAS as empresas do usuário; o `.eq` fixa na ativa).
+14. **Portal** — o portal (`#portal/<token>`) continua funcionando só com as RPCs `portal_dados`/`portal_responder_orcamento`? Nenhuma query direta no fluxo do portal.
+15. **Sem segredo no cliente** — nenhum token/chave de API (fiscal, IA, service_role) no código do cliente. Só a anon key. Segredos vivem em Edge Function.
+16. **Migração aditiva** — a mudança de schema é SÓ aditiva (nova tabela/coluna)? Nunca renomear/apagar/mudar tipo junto com uma feature (rollback tem que rodar com o schema atual).
+17. **Feature flag** — feature grande/arriscada está atrás de `flagAtiva('nome')` (empresas.config.flags), ativada 1º na empresa de teste?
+18. **Análise via view** — dashboard/análise consulta VIEW agregada (`vw_analise_*`), não baixa tabela inteira pro navegador?
+
 ### Quando criar uma feature NOVA, pergunte explicitamente:
 - "Que coluna/tabela isso grava? Ela existe?"
 - "O que acontece se o banco estiver offline? E se a coluna faltar?"
@@ -30,16 +47,50 @@ Se a resposta de qualquer uma for "não sei", **verifique antes de entregar** �
 
 ---
 
-## 🏢 MULTI-EMPRESA — código compartilhado, config por empresa
+## 🏢 FLUXA V2 — SaaS MULTI-TENANT (pool: 1 banco, N empresas)
 
-Cada empresa usa os **mesmos `index.html` + `app.js` + `styles.css`**; só o **`config.js`** muda. NÃO chumbe nada específico de empresa nos arquivos compartilhados.
+**Modelo (v2):** UM deploy + UM banco Supabase servindo **N empresas**, isoladas por **RLS**. Nada de `config.js`, nada de banco por empresa. O v1 (repo `fluxa-app`) continua em produção separado e **não é tocado**. Schema alvo em `setup-v2.sql`.
 
-- `config.js` define `window.FLUXA_CONFIG = { appName, supabaseUrl, supabaseKey, lojaPadrao, todasLabel, grupoPrincipal, lojas[] }`.
-- No `index.html`, `FLUXA_CONFIG = Object.assign({defaults Fortemp}, window.FLUXA_CONFIG||{})`. Os defaults reproduzem a Fortemp, então o deploy atual roda igual mesmo sem config.js.
-- Daqui saem: `LOJAS`, `GRUPO_FORTHEMP` (= grupoPrincipal), `LOJA_PADRAO_ID`, as credenciais Supabase do boot, o `document.title`, o seletor do cabeçalho (`populaLojaSelect`) e os selects de empresa dos forms (`popularSelectsLojaForm` preenche `#orc-loja`, `#os-loja`, `#usr-loja-id`).
-- **Nunca** adicione `<option value="fortemp-...">` chumbada no HTML nem `const LOJAS = [...]` fixo — use a config.
-- **Empresa nova:** Supabase próprio → roda `setup.sql` (tabelas+RLS+realtime+storage) → edita `config.js` → deploy próprio. Passo a passo em `NOVA-EMPRESA.md`.
-- **Manutenção:** corrige em `app.js`/`styles.css`/`index.html` e copia os MESMOS arquivos para o repo de cada empresa (o `config.js` de cada uma não muda).
+- **Credenciais:** `SUPABASE_URL` / `SUPABASE_ANON_KEY` são constantes no topo de `app.js` (ponto único). Preencher quando o banco existir. Só a anon key vai no cliente.
+- **Isolamento:** toda tabela de dados tem `empresa_id`. A RLS (`empresa_id IN (SELECT minhas_empresas())`) garante que o usuário só acessa linhas das empresas em que é membro (tabela `membros`). `go()`/`eGestor()` continuam sendo guardrails de UI — a segurança real é a RLS.
+- **Contexto:** `EMPRESA_ID` (global) é a empresa ativa. `FLUXA_CONFIG` (em memória) e `CFG` vêm de `empresas.config` (jsonb); `LOJAS` vêm da tabela `lojas`. Ver `definirEmpresaAtiva` / `_aplicarContextoEmpresa` / `carregarLojas`. Seletor quando o usuário é membro de >1 empresa.
+- **Escrita/leitura:** `dbInsert`/`dbUpdate`/`dbUpsert` injetam `empresa_id` (`_injetarEmpresa`; exceto `empresas`/`membros`/`contadores`). Leituras de lista escopam `.eq('empresa_id', EMPRESA_ID)`.
+- **Numeração:** `dbInsertNumerado` usa a RPC `proximo_numero(EMPRESA_ID, tipo)` (contador atômico por empresa). Offline: número provisório local reconciliado no sync.
+- **localStorage:** namespaced por empresa via `ls`/`lsSet`/`lsDel` (`fluxa:<EMPRESA_ID>:chave`). Globais: `fluxa_empresa_id`, `sb_*`, prefs de dispositivo.
+- **Storage:** uploads em `vistorias-pdf` e `vistorias-fotos` vão para a pasta `${EMPRESA_ID}/…` (a política exige a pasta). Leitura pública mantida.
+- **Realtime:** subscriptions com `filter:'empresa_id=eq.'+EMPRESA_ID` (`_rtCfg`); reaplicado ao trocar de empresa. DELETE precisa de `REPLICA IDENTITY FULL` (já no setup).
+
+### Autenticação (Supabase Auth) — 2 camadas
+- **Conta (externa):** e-mail/senha (`signInWithPassword`) ou onboarding "Criar minha empresa" (`signUp` + `rpc criar_empresa`). Boot faz `auth.getSession()`; sem sessão mostra a tela de conta.
+- **Usuário interno (PIN):** o fluxo antigo de PIN NÃO morreu — vira a etapa seguinte (escolher persona gestor/vendas/técnico dentro da empresa). `authLogout` encerra a conta; `fazerLogout` só troca o usuário interno.
+
+### Arquitetura fiscal (FUTURA — não implementar agora)
+Emissão fiscal client-side está **desativada** (`emitirNota` só avisa "em breve"; nenhuma chamada à API fiscal parte do cliente; nenhum `focusnfe_token` no cliente). No multi-tenant a conta fiscal é **única da plataforma** (o token master dá acesso às notas de TODAS as empresas — jamais no cliente). Futuro: emissão via **Edge Function** (token master como secret; valida JWT + membro da empresa; chama a API pelo CNPJ da empresa) + **webhook** de retorno da SEFAZ (outra Edge Function atualiza `notas_fiscais`) + onboarding do **certificado A1** por empresa (enviado direto ao provedor, nunca gravado em tabela legível pelo cliente). Mantidos: tabela `notas_fiscais`, campos fiscais de `lojas` e a UI (só a emissão fica "em breve").
+
+### Versionamento e rollback (deploy único = bug atinge todas as empresas)
+- **Branches:** trabalhe sempre em `dev`. `main` é produção (sai o deploy); só recebe merge validado. Rollback = reverter o merge na `main`.
+- **Tags:** a cada versão estável, criar tag (`v2.0`, `v2.1`…) para rollback de emergência.
+- **Migrações SÓ ADITIVAS:** criar tabela/coluna nova, ok; NUNCA renomear/apagar/mudar tipo junto com uma feature (o código revertido precisa rodar com o schema atual).
+- **Feature flags:** `flagAtiva(nome)` lê `empresas.config.flags`. Feature grande nasce atrás de flag: ativa na empresa de teste, depois para todas; bug = desligar a flag no banco, sem deploy.
+- **Empresa de teste:** validar toda atualização logado numa empresa "Fluxa Teste" (cadastrada pelo fluxo normal) antes do merge na `main`.
+
+### Portal do cliente (público, sem login) — só RPCs
+O portal (`#portal/<token>`) usa **apenas** `rpc('portal_dados',{p_token})` (devolve cliente + orçamentos + OS + vistorias + equipamentos) e `rpc('portal_responder_orcamento',{p_token,p_orc_id,p_aprovar,p_assinatura})`. **Nenhuma query direta** no fluxo do portal (a RLS `authenticated` retornaria vazio). A **reserva de estoque** na aprovação NÃO roda no portal (anon): roda no app do **gestor** ao receber o UPDATE por realtime (`sincronizarReservaOrcamento`, idempotente).
+
+### Camada de inteligência (Analytics + IA futura)
+- **Agregação no SQL, nunca no cliente:** views `vw_analise_produtos` (margem/giro/ABC/parados), `vw_analise_financeiro_mensal` (receita×despesa), `vw_analise_orcamentos` (taxa de aprovação/ticket médio/inadimplência), com `security_invoker=true`. Aba **Análises** (só gestor) consulta as views + tabela `insights`. Regra permanente: dashboard consulta view agregada, não baixa tabela inteira.
+- **IA generativa (FUTURA):** chave da API de IA (Anthropic) é segredo da PLATAFORMA — jamais no cliente. Edge Function `gerar-insights` (secret; valida JWT + empresa; lê as views; chama o LLM; grava em `insights`), agendada 1x/dia por empresa e/ou sob demanda, com quota por empresa. O app só LÊ `insights`.
+
+### 🤖 Roadmap de IA (documentar; implementar depois — o código de hoje já deixa os dados prontos)
+1. **Copiloto de dados (fase 1):** chat onde o gestor pergunta em linguagem natural e um agente LLM responde usando as views/RPCs de analytics como ferramentas (tool use). Edge Function `copiloto` (chave da plataforma como secret; quota mensal por empresa).
+2. **Orçamento gerado por IA (fase 2):** vendedor descreve o serviço (voz/texto/foto) e a IA monta o orçamento a partir do histórico da própria empresa. Requisito de dados: `orcamentos.servicos` bem estruturado, itens vinculados a `produto_id` — manter esse padrão.
+3. **Manutenção preditiva (fase 3):** cruza `equipamentos` × `vistorias` × OS para prever falha e sugerir OS preventiva. Requisito: vistoria sempre vinculando o equipamento; OS vinculando `agendamento_id`/equipamento — não degradar esses vínculos.
+4. **Atendente IA no WhatsApp (fase 4):** agente que responde o cliente final via WhatsApp Business API + Edge Function, usando as RPCs do portal como ferramentas.
+
+Regras permanentes: chave de IA NUNCA no cliente; agente acessa dados SÓ via views/RPCs; custo por uso com quota por empresa; features de IA nascem atrás de flag e viram plano premium. Estratégia: API da Anthropic (créditos pré-pagos), modelo **Haiku** para o rotineiro, prompt caching, insights salvos 1x/dia (não recalculados a cada leitura), spend limit no console. Piloto: flag de IA só na empresa **Fluxa**.
+
+### Empresas piloto do v2 (dados, não código — nada chumbado)
+Fluxa (principal, piloto de IA), Fortemp (2 lojas/unidades no mesmo tenant), Aquamotor. No v1 dividiam o mesmo banco (filtro por loja no cliente); no v2 são empresas independentes de verdade. Migração dos dados do v1 → v2 (com `empresa_id` atribuído) é etapa futura, fora do escopo atual.
 
 ---
 
