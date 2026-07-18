@@ -2549,6 +2549,11 @@ async function dbInsertNumerado(table, payload, tentativas=6){
 // Compat: helpers de orçamento agora delegam ao wrapper genérico
 async function orcSyncInsert(payload){ return dbInsert('orcamentos', payload); }
 async function orcSyncUpdate(id, payload){ return dbUpdate('orcamentos', payload, 'id', id); }
+// tempIds (local_*) cujo insert em background está EM VOO. loadHist/_reenviarOrcamentos
+// Locais pulam esses — senão o go('history') do próprio salvarApenas reenviava o
+// registro antes do insert de background terminar de removê-lo, gerando DUPLICATA
+// (2 linhas com o mesmo numero). Ver salvarApenas (novo) e loadHist.
+const _orcSyncInFlight = new Set();
 // Reenvia ao banco orçamentos que ficaram presos só no aparelho (id local_*),
 // ex.: criados enquanto o insert falhava pela coluna origem_cliente ausente.
 async function _reenviarOrcamentosLocais(soLocal){
@@ -2617,6 +2622,7 @@ async function salvarApenas(){
       toast('✅ Orçamento #'+String(num).padStart(3,'0')+' salvo!');
       // 2. Tenta sincronizar com BD em background
       if(dbOk&&db){
+        _orcSyncInFlight.add(tempId); // trava reenvio concorrente (loadHist) até terminar
         (async()=>{
           try{
             const {data:ins,error:insErr}=await dbInsertNumerado('orcamentos',{...camposBase,status:'pendente',data_criacao:now});
@@ -2631,6 +2637,7 @@ async function salvarApenas(){
               atualizarDash(); renderTabela();
             }
           }catch(e){ console.warn('Sync BD falhou — salvo local:', e?.message||e); }
+          finally{ _orcSyncInFlight.delete(tempId); }
         })();
       }
     }
@@ -3060,7 +3067,8 @@ async function loadHist(){
       if(error) throw error;
       // Merge: BD é fonte de verdade + mantém registros local-only ainda não sincronizados
       const dbIds=new Set(data.map(x=>x.id));
-      const soLocal=todosOrc.filter(x=>String(x.id).startsWith('local_')&&!dbIds.has(x.id));
+      // exclui tempIds cujo insert já está EM VOO (salvarApenas) — senão duplica
+      const soLocal=todosOrc.filter(x=>String(x.id).startsWith('local_')&&!dbIds.has(x.id)&&!_orcSyncInFlight.has(x.id));
       todosOrc=[...data,...soLocal];
       lsOrcSalvar(todosOrc);
       verificarVencidos();
