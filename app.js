@@ -236,6 +236,7 @@ function criarClienteSupabase(){
 }
 
 function mostrarTelaAuth(){
+  resetMarcaSaaS(); // pré-login = marca neutra do produto (não herda tema de empresa)
   const a=document.getElementById('login-step-auth'); if(a) a.style.display='';
   const u=document.getElementById('login-step-users'); if(u) u.style.display='none';
   const sl=document.getElementById('login-step-loja'); if(sl) sl.classList.remove('show');
@@ -610,6 +611,7 @@ function trocarLojaAtiva(id){
 }
 
 function atualizarHeaderLoja(){
+  if(_estaPreLogin()){ resetMarcaSaaS(); return; } // pré-login = marca neutra do produto
   const LC = getLojaConfig(lojaAtiva);
   document.documentElement.style.setProperty('--c1', LC.cor||CFG.cor);
   document.documentElement.style.setProperty('--c1-light', hexA(LC.cor||CFG.cor, .1));
@@ -1554,30 +1556,58 @@ async function carregarClientesRemoto(){
     });
   }catch(e){ console.warn('[carregarClientesRemoto]', e?.message||e); }
 }
+// Marca neutra do PRODUTO (SaaS Fluxa) — usada na tela de CONTA, ANTES do login.
+// Depois de autenticar + carregar a empresa, aplicarCFG aplica o tema da empresa.
+// Assim o pré-login nunca herda cor/nome/logo de uma empresa (ou do cache).
+const SAAS_C1 = '#F07820', SAAS_C2 = '#2B3244';
+// true quando o SaaS tem credenciais mas ainda não há conta/empresa (tela de conta).
+function _estaPreLogin(){ return !authUser && SUPABASE_URL!=='PREENCHER_DEPOIS' && !EMPRESA_ID; }
+function resetMarcaSaaS(){
+  try{
+    document.documentElement.style.setProperty('--c1', SAAS_C1);
+    document.documentElement.style.setProperty('--c1-light', hexA(SAAS_C1,.1));
+    document.documentElement.style.setProperty('--c1-mid', hexA(SAAS_C1,.2));
+    document.documentElement.style.setProperty('--c2', SAAS_C2);
+    const ln=document.getElementById('login-brand-name'); if(ln) ln.textContent='Fluxa';
+    const li=document.getElementById('login-brand-initials'); if(li){ li.textContent='F'; li.style.display='flex'; }
+    const llogo=document.getElementById('login-logo-img'); if(llogo) llogo.style.display='none';
+    const lt=document.getElementById('login-brand-tagline'); if(lt) lt.textContent='Gestão para empresas de serviços';
+    document.title='Fluxa';
+  }catch(e){ console.warn('[resetMarcaSaaS]', e?.message||e); }
+}
+
 function aplicarCFG(){
-  document.documentElement.style.setProperty('--c1', CFG.cor);
-  document.documentElement.style.setProperty('--c1-light', hexA(CFG.cor,.1));
-  document.documentElement.style.setProperty('--c1-mid', hexA(CFG.cor,.2));
-  document.documentElement.style.setProperty('--c2', CFG.cor2);
+  // Pré-login (SaaS com credenciais, sem conta/empresa) → marca NEUTRA do produto.
+  // Só depois de autenticar + carregar a empresa é que o tema da empresa é aplicado.
+  const preLogin = _estaPreLogin();
+  if(preLogin){ resetMarcaSaaS(); }
+  const cor  = preLogin ? SAAS_C1 : CFG.cor;
+  const cor2 = preLogin ? SAAS_C2 : CFG.cor2;
+  document.documentElement.style.setProperty('--c1', cor);
+  document.documentElement.style.setProperty('--c1-light', hexA(cor,.1));
+  document.documentElement.style.setProperty('--c1-mid', hexA(cor,.2));
+  document.documentElement.style.setProperty('--c2', cor2);
   document.getElementById('hdr-nome').textContent = CFG.nome;
   document.getElementById('hdr-sub').textContent  = CFG.sub || 'Serviços';
   const img = document.getElementById('hdr-logo-img');
   img.alt = CFG.nome || 'Logo';
   if(CFG.logoB64){ img.src=CFG.logoB64; img.classList.add('has-logo'); }
   else { img.classList.remove('has-logo'); }
-  // Atualiza brand no login
-  const loginLogoImg = document.getElementById('login-logo-img');
-  const loginInitials = document.getElementById('login-brand-initials');
-  const loginName = document.getElementById('login-brand-name');
-  if(loginName) loginName.textContent = CFG.nome || 'Fluxa';
-  if(loginLogoImg && loginInitials){
-    if(CFG.logoB64){ loginLogoImg.src=CFG.logoB64; loginLogoImg.style.display='block'; loginInitials.style.display='none'; }
-    else { loginLogoImg.style.display='none'; loginInitials.style.display='flex'; loginInitials.textContent=(CFG.nome||'F').charAt(0).toUpperCase(); }
+  // Brand da tela de login: pré-login fica neutro (resetMarcaSaaS acima); pós-login
+  // (conta autenticada) mostra a marca da empresa.
+  if(!preLogin){
+    const loginLogoImg = document.getElementById('login-logo-img');
+    const loginInitials = document.getElementById('login-brand-initials');
+    const loginName = document.getElementById('login-brand-name');
+    if(loginName) loginName.textContent = CFG.nome || 'Fluxa';
+    if(loginLogoImg && loginInitials){
+      if(CFG.logoB64){ loginLogoImg.src=CFG.logoB64; loginLogoImg.style.display='block'; loginInitials.style.display='none'; }
+      else { loginLogoImg.style.display='none'; loginInitials.style.display='flex'; loginInitials.textContent=(CFG.nome||'F').charAt(0).toUpperCase(); }
+    }
+    const loginTagline=document.getElementById('login-brand-tagline');
+    if(loginTagline) loginTagline.textContent=CFG.tagline||'';
+    document.title = CFG.nome + ' — Orçamentos';
   }
-  // Tagline no painel lateral do login
-  const loginTagline=document.getElementById('login-brand-tagline');
-  if(loginTagline) loginTagline.textContent=CFG.tagline||'';
-  document.title = CFG.nome + ' — Orçamentos';
   renderPresets();
   preencherFormEmpresa();
   injetarPWA();
