@@ -1120,6 +1120,32 @@ reais encontrados e corrigidos.**
 - Enter no campo de senha submete o formulário ✅. Toggle login↔criar mostra/esconde
   os campos certos, inclusive o novo "Seu nome" ✅.
 
+### 🧪 Bateria 3: personalização por empresa nos documentos gerados (a pedido do Marcos)
+> Pedido específico: confirmar que cor/nome/logo/tagline/contato ficam **100%
+> isolados por empresa** também nos DOCUMENTOS (orçamento, OS, vistoria), não só na
+> interface. Arquitetura: as 3 funções que preenchem os templates de PDF
+> (`preencherDocOrc`, `preencherDocOS`, `preencherRelatorioVistoria`) todas chamam
+> `getLojaConfig(loja_id)` — que cai no `CFG` da empresa ativa quando não há
+> override de loja específica. Mesma fonte única para os 3 documentos.
+
+- **Simulado (mock) duas empresas com marca 100% distinta** — "Fluxa Piscinas"
+  (laranja `#F07820`, logo A, tagline "Água limpa o ano todo") e depois "L&C
+  Instalações" (azul `#1e6fd6`, logo B, tagline "Segurança em primeiro lugar") — e
+  gerado orçamento+OS+vistoria pra cada uma.
+- ✅ **Empresa A:** nome/logo/cor/contato/tagline corretos nos 3 documentos.
+- ✅ **Empresa B, logo depois:** nome/logo/cor/contato/tagline corretos nos 3
+  documentos, e **confirmado que NADA da Empresa A vazou** (checagem explícita:
+  logo/tagline da B ≠ da A) — isolamento limpo na troca.
+- ✅ **Tela "Dados da Empresa"** (`preencherFormEmpresa`) carrega os campos certos
+  da empresa ativa (nome/tel/cidades/cor/cor2/tagline) — é onde o gestor edita a
+  própria marca.
+- ✅ **Header do app + tema (`aplicarCFG`)** também refletem a empresa ativa
+  (nome no cabeçalho, `--c1` da CSS).
+- ✅ **Print visual conferido:** forcei o template do orçamento a aparecer fora do
+  `@media print` (só pra screenshot) e o PDF da L&C saiu com cor azul, tagline,
+  telefone/cidade e rodapé corretos — logo apareceu quebrada só porque o teste
+  usou uma string base64 falsa, não uma imagem real (não é bug).
+
 ### ⚠️ Pendências (atualizado — 4 resolvidas nesta sessão, nenhuma nova crítica)
 - ~~Dados de teste no banco~~ → **resolvido** (limpeza rodada e confirmada).
 - ~~`criar_empresa` não semeia `config.nome`~~ → **resolvido** (delta2 + delta4: semeia nome da empresa E nome da pessoa).
