@@ -331,8 +331,149 @@ async function authLogout(){
   location.reload();
 }
 
-// Contexto da empresa — implementação real na T3. Stub para o boot/auth funcionarem.
-async function definirEmpresaAtiva(){ /* T3: carrega empresas, define EMPRESA_ID/LOJAS/FLUXA_CONFIG */ }
+// ══════════════════════════════════════════════════
+//  CONTEXTO DA EMPRESA (tenant ativo) — T3
+// ══════════════════════════════════════════════════
+// Após autenticar, a RLS devolve só as empresas do usuário (via tabela membros).
+// Definimos EMPRESA_ID e populamos CFG (de empresas.config) e LOJAS (tabela lojas).
+let _empresasDisponiveis = [];
+
+// Restaura o contexto da empresa a partir do cache local (para funcionar offline
+// depois de já ter logado uma vez). Não acessa o banco.
+function restaurarContextoCache(){
+  const eid=ls('fluxa_empresa_id'); if(eid) EMPRESA_ID=eid;
+  try{ const l=JSON.parse(ls('fluxa_lojas')||'[]'); if(l&&l.length){ LOJAS=l; } }catch(e){ console.warn('[restaurarContextoCache:lojas]', e?.message||e); }
+  FLUXA_CONFIG.lojas          = LOJAS;
+  FLUXA_CONFIG.appName        = CFG.appName || CFG.nome || 'Fluxa';
+  FLUXA_CONFIG.todasLabel     = CFG.todasLabel || 'Todas';
+  FLUXA_CONFIG.grupoPrincipal = Array.isArray(CFG.grupoPrincipal) && CFG.grupoPrincipal.length
+                                  ? CFG.grupoPrincipal
+                                  : [...new Set(LOJAS.map(l=>l.grupo).filter(Boolean))];
+  FLUXA_CONFIG.flags          = CFG.flags || {};
+  FLUXA_CONFIG.lojaPadrao     = CFG.lojaPadrao || (LOJAS[0]?.id || '');
+  LOJA_PADRAO_ID  = FLUXA_CONFIG.lojaPadrao;
+  GRUPO_PRINCIPAL = FLUXA_CONFIG.grupoPrincipal;
+}
+
+async function definirEmpresaAtiva(){
+  if(!db){ return; }
+  try{
+    const { data, error } = await db.from('empresas').select('*').eq('ativo',true).order('created_at',{ascending:true});
+    if(error) throw error;
+    _empresasDisponiveis = data || [];
+    if(!_empresasDisponiveis.length){ console.warn('[definirEmpresaAtiva] usuário sem empresa vinculada'); return; }
+    const salva = ls('fluxa_empresa_id');
+    const escolhida = _empresasDisponiveis.find(e=>e.id===salva) || _empresasDisponiveis[0];
+    // Mais de uma empresa e nenhuma escolha salva → deixa o seletor decidir.
+    if(_empresasDisponiveis.length>1 && !_empresasDisponiveis.find(e=>e.id===salva)){
+      mostrarSeletorEmpresa();
+      // aplica a primeira provisoriamente para a UI não ficar sem contexto
+    }
+    await _ativarEmpresa(escolhida);
+  }catch(e){ console.warn('[definirEmpresaAtiva]', e?.message||e); }
+}
+
+async function _ativarEmpresa(emp){
+  if(!emp) return;
+  EMPRESA = emp; EMPRESA_ID = emp.id;
+  lsSet('fluxa_empresa_id', EMPRESA_ID);
+  await _aplicarContextoEmpresa();
+}
+
+// Aplica config + lojas da empresa ativa em toda a UI/estado.
+async function _aplicarContextoEmpresa(){
+  // 1) CFG = defaults + empresas.config (jsonb) — substitui a antiga tabela empresa_config
+  const cfg = (EMPRESA && EMPRESA.config) || {};
+  CFG = { ...CFG_DEF, ...cfg };
+  if(!CFG.nome && EMPRESA?.nome) CFG.nome = EMPRESA.nome;
+  lsSet('empresa_cfg', JSON.stringify(CFG));
+  // 2) Identidade (FLUXA_CONFIG) a partir do config
+  FLUXA_CONFIG.appName        = CFG.appName || EMPRESA?.nome || 'Fluxa';
+  FLUXA_CONFIG.todasLabel     = CFG.todasLabel || 'Todas';
+  FLUXA_CONFIG.grupoPrincipal = Array.isArray(CFG.grupoPrincipal) ? CFG.grupoPrincipal : [];
+  FLUXA_CONFIG.flags          = CFG.flags || {};
+  // 3) LOJAS da tabela lojas (RLS já filtra por empresa; .eq é defesa em profundidade)
+  await carregarLojas();
+  // 4) derivados de config/lojas
+  FLUXA_CONFIG.lojaPadrao = CFG.lojaPadrao || (LOJAS[0]?.id || '');
+  LOJA_PADRAO_ID = FLUXA_CONFIG.lojaPadrao;
+  if(!FLUXA_CONFIG.grupoPrincipal.length){
+    FLUXA_CONFIG.grupoPrincipal = [...new Set(LOJAS.map(l=>l.grupo).filter(Boolean))];
+  }
+  GRUPO_PRINCIPAL = FLUXA_CONFIG.grupoPrincipal;
+  // 5) aplica na UI
+  try{ document.title = FLUXA_CONFIG.appName; }catch(e){ console.warn('[title]', e?.message||e); }
+  loadLojasExtraConfig();
+  aplicarCFG();
+  initEmailJS();
+  if(typeof populaLojaSelect==='function') populaLojaSelect();
+  if(typeof popularSelectsLojaForm==='function') popularSelectsLojaForm();
+  if(typeof atualizarHeaderLoja==='function') atualizarHeaderLoja();
+}
+
+// Carrega as unidades (lojas) da empresa ativa. Campos cor/grupo/tecs vêm da tabela.
+async function carregarLojas(){
+  if(!dbOk || !db || !EMPRESA_ID){
+    try{ LOJAS = JSON.parse(ls('fluxa_lojas')||'[]'); }catch(e){ LOJAS=[]; }
+    FLUXA_CONFIG.lojas = LOJAS; return;
+  }
+  try{
+    const { data, error } = await db.from('lojas').select('*')
+      .eq('empresa_id', EMPRESA_ID).eq('ativo', true)
+      .order('data_criacao', {ascending:true});
+    if(error) throw error;
+    LOJAS = (data||[]).map((l,i)=>({
+      ...l,
+      id: l.id,
+      nome: l.nome || 'Unidade',
+      cor: l.cor || ('loja-'+(i%3)),
+      grupo: l.grupo || 'principal',
+      tecs: Array.isArray(l.tecs) ? l.tecs : []
+    }));
+    FLUXA_CONFIG.lojas = LOJAS;
+    lsSet('fluxa_lojas', JSON.stringify(LOJAS));
+  }catch(e){
+    console.warn('[carregarLojas]', e?.message||e);
+    try{ LOJAS = JSON.parse(ls('fluxa_lojas')||'[]'); }catch(_){ LOJAS=[]; }
+    FLUXA_CONFIG.lojas = LOJAS;
+  }
+}
+
+// Persiste o CFG na coluna config da empresa ativa (substitui upsert em empresa_config).
+async function _persistirConfigEmpresa(){
+  if(!dbOk || !db || !EMPRESA_ID) return false;
+  try{
+    await dbUpdate('empresas', { config: CFG }, 'id', EMPRESA_ID);
+    if(EMPRESA) EMPRESA.config = CFG;
+    return true;
+  }catch(e){ console.warn('[_persistirConfigEmpresa]', e?.message||e); return false; }
+}
+
+// ── Seletor de empresa (quando o usuário é membro de mais de uma) ──
+function mostrarSeletorEmpresa(){
+  const list=document.getElementById('login-loja-list'); if(!list) return;
+  list.innerHTML = _empresasDisponiveis.map(e=>{
+    const ini=(e.nome||'?').trim().charAt(0).toUpperCase();
+    return `<button class="login-loja-btn" onclick="escolherEmpresa('${e.id}')">
+      <div class="login-loja-circle" style="background:var(--c1)">${esc(ini)}</div>
+      <div><div class="login-loja-info-nome">${esc(e.nome||'Empresa')}</div>
+      <div class="login-loja-info-sub">${esc(e.plano||'')}</div></div>
+    </button>`;
+  }).join('');
+  const su=document.getElementById('login-step-users'); if(su) su.style.display='none';
+  const sa=document.getElementById('login-step-auth'); if(sa) sa.style.display='none';
+  const sl=document.getElementById('login-step-loja'); if(sl) sl.classList.add('show');
+  document.getElementById('login-overlay').style.display='flex';
+}
+
+async function escolherEmpresa(id){
+  const emp=_empresasDisponiveis.find(e=>e.id===id); if(!emp) return;
+  await _ativarEmpresa(emp);
+  const sl=document.getElementById('login-step-loja'); if(sl) sl.classList.remove('show');
+  esconderTelaAuth();
+  try{ todosUsuarios=JSON.parse(ls('fluxa_usuarios')||'[]'); }catch(e){ todosUsuarios=[]; }
+  renderLoginUsers();
+}
 
 // ══════════════════════════════════════════════════
 //  CONEXÃO SUPABASE (multi-tenant) — ÚNICO ponto de credenciais
@@ -979,6 +1120,10 @@ function lsOrcProxNum(){ return lsOrcLer().reduce((a,o)=>Math.max(a,o.numero||0)
   // ── Seed técnicos iniciais (roda 1x se não houver usuários) ──
   seedTecnicosIniciais();
 
+  // ── Restaura o contexto da empresa do cache (offline após login) ──
+  // Online, definirEmpresaAtiva() sobrescreve com dados frescos do banco.
+  restaurarContextoCache();
+
   // ── Cliente Supabase (uma vez) + gate de sessão de CONTA (Auth) ──
   criarClienteSupabase();
   const temCreds = !!db;
@@ -1308,11 +1453,14 @@ function carregarCFGlocal(){
     lojasExtraConfig={...lojasExtraConfig,...CFG.lojas_extra};
   }
 }
+// v2: a config vive em empresas.config (jsonb). Recarrega a linha da empresa ativa
+// e reaplica o contexto. (Antes lia a tabela empresa_config, que não existe mais.)
 async function carregarCFGremoto(){
-  if(!dbOk||!db) return;
+  if(!dbOk||!db||!EMPRESA_ID) return;
   try{
-    const {data} = await db.from('empresa_config').select('dados').eq('id',1).single();
-    if(data?.dados){ CFG={...CFG_DEF,...data.dados}; lsSet('empresa_cfg',JSON.stringify(CFG)); }
+    const {data,error} = await db.from('empresas').select('*').eq('id',EMPRESA_ID).single();
+    if(error) throw error;
+    if(data){ EMPRESA=data; await _aplicarContextoEmpresa(); }
   }catch(e){ console.warn('[carregarCFGremoto]', e?.message||e); }
 }
 
@@ -1369,7 +1517,7 @@ async function salvarLojaConfig(lojaId){
   if(dbOk && db){
     try{
       // salva tudo junto no registro global id=1 — mesma estratégia do salvarEmpresa
-      await db.from('empresa_config').upsert([{id:1, dados:CFG, updated_at:new Date().toISOString()}]);
+      await _persistirConfigEmpresa();
       toast('✅ Branding da '+getLojaNome(lojaId)+' salvo!');
     }catch(e){
       console.warn('[salvarLojaConfig]', e?.message||e);
@@ -1618,7 +1766,7 @@ async function salvarEmpresa(){
     lsSet('empresa_cfg',JSON.stringify(CFG));
     lsSet('fluxa_lojas_extra_cfg',JSON.stringify(lojasExtraConfig));
     if(dbOk&&db){
-      try{ await db.from('empresa_config').upsert([{id:1,dados:CFG,updated_at:new Date().toISOString()}]); }
+      try{ await _persistirConfigEmpresa(); }
       catch(e){ console.warn('[salvarEmpresa:loja]',e?.message||e); toast('✅ Configurações salvas localmente (sync falhou)'); atualizarHeaderLoja(); return; }
     }
     atualizarHeaderLoja();
@@ -1656,7 +1804,7 @@ async function salvarEmpresa(){
   lsSet('empresa_cfg',JSON.stringify(CFG));
   if(CFG.emailjs_pubkey) initEmailJS();
   if(dbOk&&db){
-    try{ await db.from('empresa_config').upsert([{id:1,dados:CFG,updated_at:new Date().toISOString()}]); }catch(e){ console.warn('cfg sync:',e.message); toast('✅ Configurações salvas localmente (sync falhou)'); aplicarCFG(); return; }
+    try{ await _persistirConfigEmpresa(); }catch(e){ console.warn('cfg sync:',e.message); toast('✅ Configurações salvas localmente (sync falhou)'); aplicarCFG(); return; }
   }
   aplicarCFG();
   toast('✅ Configurações salvas!');
@@ -6713,18 +6861,10 @@ async function saveLocais(){
   await _saveLocaisLegado();
 }
 
-// Grava locais no empresa_config sem sobrescrever o que outro device salvou:
-// lê o remoto, mescla por id (versão deste device prevalece) e regrava.
-async function _saveLocaisLegado(){
-  try{
-    const {data}=await db.from('empresa_config').select('dados').eq('id',1).single();
-    const dados=(data&&data.dados)?data.dados:CFG;
-    const mapa=new Map((dados.locais_vistoria||[]).map(l=>[l.id,l]));
-    locaisVistoria.forEach(l=>mapa.set(l.id,l));
-    dados.locais_vistoria=[...mapa.values()];
-    await db.from('empresa_config').upsert([{id:1, dados, updated_at:new Date().toISOString()}]);
-  }catch(e){ console.warn('saveLocais legado sync falhou:', e?.message||e); }
-}
+// v2: a tabela dedicada locais_vistoria sempre existe (setup-v2.sql) e é a fonte de
+// verdade. O fallback legado (empresa_config) foi removido — essa tabela não existe
+// mais no schema v2. Mantido como no-op para não quebrar chamadas antigas.
+async function _saveLocaisLegado(){ /* sem fallback no v2 — locais_vistoria é a fonte */ }
 
 // Carrega locais da tabela dedicada (fonte de verdade quando existe). Reenvia ao
 // banco os locais presos só no aparelho (migra automaticamente do modo legado).
