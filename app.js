@@ -512,6 +512,15 @@ let GRUPO_PRINCIPAL = FLUXA_CONFIG.grupoPrincipal; // ids das unidades vistas ju
 let LOJA_PADRAO_ID = FLUXA_CONFIG.lojaPadrao;      // unidade padrão — fallback em todo o app
 try{ document.title = FLUXA_CONFIG.appName || 'Fluxa'; }catch(e){ console.warn('[appName]', e?.message||e); }
 
+// ── FEATURE FLAGS por empresa (rollout gradual / kill switch sem deploy) ──
+// Lê empresas.config.flags (ex.: {"flags":{"beta_estoque":true}}). Features grandes/
+// arriscadas nascem atrás de flag: ativa 1º na empresa de teste, depois para todas;
+// bug = desligar a flag no banco (empresas.config.flags), sem novo deploy.
+function flagAtiva(nome){
+  try{ return !!(FLUXA_CONFIG.flags && FLUXA_CONFIG.flags[nome]); }
+  catch(e){ console.warn('[flagAtiva]', e?.message||e); return false; }
+}
+
 let lojaAtiva = ''; // '' = todas do grupo; string = empresa específica
 // Empresa escolhida pelo técnico no login ('forthemp' | 'aquamotor').
 // Técnico atende as duas empresas, mas escolhe uma por sessão p/ não misturar vistorias.
