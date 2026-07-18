@@ -31,7 +31,7 @@ async function loadAuditoria(){
   renderAuditoria();
   if(dbOk&&db){
     try{
-      const {data}=await db.from('auditoria').select('*').order('data',{ascending:false}).limit(500);
+      const {data}=await db.from('auditoria').select('*').eq('empresa_id',EMPRESA_ID).order('data',{ascending:false}).limit(500);
       if(data){
         const ids=new Set(data.map(x=>x.id));
         const soLocal=_auditoria.filter(x=>!ids.has(x.id));
@@ -641,38 +641,15 @@ let todosUsuarios = [];
 
 // Pré-cadastra os 4 técnicos na primeira vez que o app abre
 function seedTecnicosIniciais(){
-  const TECNICOS_PADRAO = ['Marcos','Josimar','Eldecir','Bruno'];
+  // v2 multi-tenant: sem técnicos padrão chumbados. Cada empresa cria os seus na
+  // tela Usuários; o gestor entra pela conta (Auth) + vínculo membros. Apenas
+  // carrega o que já houver em cache.
   try{ todosUsuarios=JSON.parse(ls('fluxa_usuarios')||'[]'); }catch(e){ todosUsuarios=[]; }
-  if(todosUsuarios.length > 0) return; // já tem usuários, não faz nada
-  const seed = TECNICOS_PADRAO.map(nome=>({
-    id: 'tec_'+nome.toLowerCase(),
-    nome, perfil:'tecnico', loja_id:null, loja_nome:null,
-    pin:null, ativo:true, data_criacao:new Date().toISOString()
-  }));
-  todosUsuarios = seed;
-  lsSet('fluxa_usuarios', JSON.stringify(seed));
-  // Sincroniza com Supabase em background quando o banco conectar
-  lsSet('fluxa_usuarios_seed_pendente','1');
 }
 
 async function sincronizarSeedUsuarios(){
-  if(!ls('fluxa_usuarios_seed_pendente')) return;
-  if(!dbOk||!db) return;
-  try{
-    const {data:existentes}=await db.from('usuarios').select('id').limit(1);
-    if(existentes&&existentes.length>0){ lsSet('fluxa_usuarios_seed_pendente',''); return; }
-    const TECNICOS_PADRAO=['Marcos','Josimar','Eldecir','Bruno'];
-    const payload=TECNICOS_PADRAO.map(nome=>({id:'tec_'+nome.toLowerCase(),nome,perfil:'tecnico',loja_id:null,loja_nome:null,pin:null,ativo:true}));
-    const {data:ins}=await db.from('usuarios').insert(payload).select('*');
-    if(ins){
-      // Merge: preserva usuários já existentes (ex: vendedores criados offline)
-      const seedIds=payload.map(p=>p.id);
-      const naoSeed=todosUsuarios.filter(u=>!seedIds.includes(u.id));
-      todosUsuarios=[...naoSeed,...ins];
-      lsSet('fluxa_usuarios',JSON.stringify(todosUsuarios));
-    }
-    lsSet('fluxa_usuarios_seed_pendente','');
-  }catch(e){ console.warn('seed técnicos BD falhou:',e.message); }
+  // v2: não há seed de técnicos padrão para sincronizar (ver seedTecnicosIniciais).
+  return;
 }
 
 async function carregarUsuarios(){
@@ -682,7 +659,7 @@ async function carregarUsuarios(){
   // Tenta carregar do Supabase e faz merge
   try{
     if(dbOk&&db){
-      const {data}=await db.from('usuarios').select('*').eq('ativo',true).order('nome');
+      const {data}=await db.from('usuarios').select('*').eq('empresa_id',EMPRESA_ID).eq('ativo',true).order('nome');
       if(data){
         // Registros locais temporários (usr_xxx) não presentes no Supabase
         const locaisNaoSincronizados=local.filter(u=>
@@ -692,7 +669,7 @@ async function carregarUsuarios(){
         for(const u of locaisNaoSincronizados){
           try{
             const payload={nome:u.nome,perfil:u.perfil,loja_id:u.loja_id||null,loja_nome:u.loja_nome||null,pin:u.pin||null,ativo:true};
-            const {data:ins}=await db.from('usuarios').insert([payload]).select('*').single();
+            const {data:ins}=await dbInsert('usuarios', payload);
             if(ins) data.push(ins);   // sincronizado → usa registro do banco
             else    data.push(u);     // insert sem retorno → mantém local
           }catch(e2){
@@ -1568,7 +1545,7 @@ async function carregarClientesRemoto(){
     // A separação Aquamotor/Fortemp é feita em renderClientes().
     // Filtrar no banco causava sobrescrita do localStorage com só um grupo,
     // apagando os clientes do outro grupo ao trocar de contexto.
-    const {data,error}=await db.from('clientes').select('*').order('nome',{ascending:true});
+    const {data,error}=await db.from('clientes').select('*').eq('empresa_id',EMPRESA_ID).order('nome',{ascending:true});
     if(error) throw error;
     const local=lsCliLer();
     const dbIds=new Set((data||[]).map(x=>x.id));
@@ -2444,6 +2421,15 @@ function _colunaFaltante(err){
        || msg.match(/column ["']?([a-z_][a-z0-9_]*)["']? does not exist/i);
   return m?m[1]:null;
 }
+// ── MULTI-TENANT: injeta empresa_id em TODA escrita (ponto único) ──
+// A RLS no banco já isola por empresa, mas gravar empresa_id garante que o registro
+// nasça vinculado à empresa ativa. Tabelas sem a coluna empresa_id ficam de fora.
+const _TABELAS_SEM_EMPRESA = new Set(['empresas','membros','contadores']);
+function _injetarEmpresa(table, payload){
+  if(!EMPRESA_ID || _TABELAS_SEM_EMPRESA.has(table)) return {...payload};
+  if(payload && payload.empresa_id) return {...payload};
+  return { ...payload, empresa_id: EMPRESA_ID };
+}
 // Envolve uma query do Supabase num timeout — evita que o app fique preso
 // em "Salvando…" para sempre quando a rede falha sem responder.
 function _dbRace(promise, ms=12000){
@@ -2453,7 +2439,7 @@ function _dbRace(promise, ms=12000){
   ]);
 }
 async function dbInsert(table, payload, select){
-  let p={...payload};
+  let p=_injetarEmpresa(table, payload);
   for(let i=0;i<8;i++){
     let q=db.from(table).insert([p]);
     if(select) q=q.select(select).single(); else q=q.select('*').single();
@@ -2466,7 +2452,7 @@ async function dbInsert(table, payload, select){
   return { data:null, error:{ message:'dbInsert: colunas faltantes demais em '+table } };
 }
 async function dbUpdate(table, payload, idCol, idVal){
-  let p={...payload};
+  let p=_injetarEmpresa(table, payload);
   for(let i=0;i<8;i++){
     const r=await _dbRace(db.from(table).update(p).eq(idCol,idVal));
     if(!r.error) return r;
@@ -2479,7 +2465,7 @@ async function dbUpdate(table, payload, idCol, idVal){
 // Upsert resiliente — insere ou atualiza pela PK; ideal p/ tabelas com id texto (vistorias).
 // Remove coluna ausente e reenvia, como dbInsert/dbUpdate.
 async function dbUpsert(table, payload){
-  let p={...payload};
+  let p=_injetarEmpresa(table, payload);
   for(let i=0;i<8;i++){
     const r=await _dbRace(db.from(table).upsert([p]).select('*').single());
     if(!r.error) return r;
@@ -3017,7 +3003,7 @@ async function loadHist(){
   // 2. Se BD disponível: sincroniza em background e atualiza a view
   if(dbOk&&db){
     try{
-      const {data,error}=await db.from('orcamentos').select('*').order('data_criacao',{ascending:false});
+      const {data,error}=await db.from('orcamentos').select('*').eq('empresa_id',EMPRESA_ID).order('data_criacao',{ascending:false});
       if(error) throw error;
       // Merge: BD é fonte de verdade + mantém registros local-only ainda não sincronizados
       const dbIds=new Set(data.map(x=>x.id));
@@ -3792,7 +3778,7 @@ async function loadOSHist(){
   document.getElementById('osh-body').innerHTML='<div class="load"><div class="spin"></div> Carregando…</div>';
   if(dbOk&&db){
     try{
-      const {data,error}=await db.from('ordens_servico').select('*').order('data_criacao',{ascending:false});
+      const {data,error}=await db.from('ordens_servico').select('*').eq('empresa_id',EMPRESA_ID).order('data_criacao',{ascending:false});
       if(error) throw error;
       todosOS=data||[];
     }catch(e){ console.warn('loadOSHist erro:',e.message); todosOS=[]; }
@@ -4027,7 +4013,7 @@ async function loadMinhasOS(){
   if(dbOk && db){
     try{
       // Carrega TODAS e filtra no cliente (casar por nome exato no banco era frágil)
-      let q = db.from('ordens_servico').select('*').order('data_servico', {ascending:true});
+      let q = db.from('ordens_servico').select('*').eq('empresa_id',EMPRESA_ID).order('data_servico', {ascending:true});
       if(lojaAtiva) q=q.eq('loja_id', lojaAtiva);
       const {data} = await q;
       if(data) lista = data;
@@ -5296,7 +5282,7 @@ async function loadProdutividade(){
   // fix #E: não sobrescrever o cache inteiro — fazer merge para preservar OS de outras lojas no cache local
   if(dbOk&&db){
     try{
-      let qProd=db.from('ordens_servico').select('*').order('data_criacao',{ascending:false}).limit(500);
+      let qProd=db.from('ordens_servico').select('*').eq('empresa_id',EMPRESA_ID).order('data_criacao',{ascending:false}).limit(500);
       if(lojaAtiva) qProd=qProd.eq('loja_id',lojaAtiva);
       const {data}=await qProd;
       if(data&&data.length){
@@ -5517,7 +5503,7 @@ async function salvarDespesa(){
   todasDesp.unshift(rec); lsDespSalvar(todasDesp);
   if(dbOk&&db){
     (async()=>{
-      try{ const {data:ins}=await db.from('despesas').insert([dados]).select('*').single();
+      try{ const {data:ins}=await dbInsert('despesas', dados);
         if(ins){ todasDesp=todasDesp.filter(x=>x.id!==rec.id); todasDesp.unshift(ins); lsDespSalvar(todasDesp); }
       }catch(e){ console.warn('desp sync:',e.message); }
     })();
@@ -5543,7 +5529,7 @@ async function loadDespesas(){
   todasDesp=lsDespLer(); renderDespesas(); populaDespTecSelect();
   if(dbOk&&db){
     try{
-      let q=db.from('despesas').select('*').order('data_criacao',{ascending:false});
+      let q=db.from('despesas').select('*').eq('empresa_id',EMPRESA_ID).order('data_criacao',{ascending:false});
       if(lojaAtiva) q=q.eq('loja_id',lojaAtiva);
       const {data}=await q;
       if(data){ todasDesp=data; lsDespSalvar(todasDesp); renderDespesas(); }
@@ -5688,7 +5674,7 @@ async function salvarAgendamento(){
   if(dbOk&&db){
     (async()=>{
       try{
-        const {data:ins}=await db.from('agendamentos').insert([dados]).select('*').single();
+        const {data:ins}=await dbInsert('agendamentos', dados);
         if(ins){ todosAg=todosAg.filter(x=>x.id!==rec.id); todosAg.unshift(ins); lsAgSalvar(todosAg); }
       }catch(e){ console.warn('ag sync:',e.message); }
     })();
@@ -5843,7 +5829,7 @@ async function loadAgendamentos(){
   todosAg=lsAgLer(); renderAgLista(); renderCal();
   if(dbOk&&db){
     try{
-      let qAg=db.from('agendamentos').select('*').eq('ativo',true).order('data_criacao',{ascending:false});
+      let qAg=db.from('agendamentos').select('*').eq('empresa_id',EMPRESA_ID).eq('ativo',true).order('data_criacao',{ascending:false});
       if(lojaAtiva) qAg=qAg.eq('loja_id',lojaAtiva);
       const {data}=await qAg;
       if(data){
@@ -5858,7 +5844,7 @@ async function loadAgendamentos(){
         for(const a of soLocalAg){
           try{
             const {id,data_criacao,..._dados}=a;
-            const {data:ins}=await _dbRace(db.from('agendamentos').insert([_dados]).select('*').single());
+            const {data:ins}=await dbInsert('agendamentos', _dados);
             if(ins){ todosAg=todosAg.filter(x=>x.id!==a.id); todosAg.unshift(ins); lsAgSalvar(todosAg); }
           }catch(e){ console.warn('[reenvioAg]', e?.message||e); }
         }
@@ -6210,7 +6196,7 @@ async function salvarEquipamento(){
     if(dbOk&&db){
       (async()=>{
         try{
-          const {data:ins}=await db.from('equipamentos').insert([dados]).select('*').single();
+          const {data:ins}=await dbInsert('equipamentos', dados);
           if(ins){ todosEq=todosEq.filter(x=>x.id!==tempId); todosEq.unshift(ins); lsEqSalvar(todosEq); renderEqGrid(); }
         }catch(e){ console.warn('eq sync falhou:',e.message); }
       })();
@@ -6234,7 +6220,7 @@ async function loadEquipamentos(){
   renderEqGrid(); verificarAlertasGarantia();
   if(dbOk&&db){
     try{
-      let qEq=db.from('equipamentos').select('*').eq('ativo',true).order('data_criacao',{ascending:false});
+      let qEq=db.from('equipamentos').select('*').eq('empresa_id',EMPRESA_ID).eq('ativo',true).order('data_criacao',{ascending:false});
       if(lojaAtiva) qEq=qEq.eq('loja_id',lojaAtiva);
       const {data,error}=await qEq;
       if(error) throw error;
@@ -6454,7 +6440,7 @@ async function salvarUsuario(){
   lsSet('fluxa_usuarios',JSON.stringify(todosUsuarios));
   if(dbOk&&db){
     try{
-      const {data:ins}=await db.from('usuarios').insert([dados]).select('*').single();
+      const {data:ins}=await dbInsert('usuarios', dados);
       if(ins){
         todosUsuarios=todosUsuarios.filter(x=>x.id!==tempId);
         todosUsuarios.push(ins);
@@ -6644,12 +6630,12 @@ async function emitirNota(){
     let nfId=null;
     if(dbOk&&db){
       try{
-        const {data:nfRec}=await db.from('notas_fiscais').insert([{
+        const {data:nfRec}=await dbInsert('notas_fiscais', {
           orcamento_id:o.id, tipo:nfeTipoAtual, referencia:ref,
           status:'pendente', dados_envio:payload
-        }]).select('id').single();
+        });
         if(nfRec) nfId=nfRec.id;
-      }catch(e){}
+      }catch(e){ console.warn('[nf insert]', e?.message||e); }
     }
 
     // Chama a API Focus NFe
@@ -6871,7 +6857,7 @@ async function _saveLocaisLegado(){ /* sem fallback no v2 — locais_vistoria é
 async function loadLocaisRemoto(){
   if(!dbOk||!db) return;
   try{
-    const {data,error}=await db.from('locais_vistoria').select('*');
+    const {data,error}=await db.from('locais_vistoria').select('*').eq('empresa_id',EMPRESA_ID);
     if(error){
       if(_tabelaAusente(error.message)) _locaisTabelaOk=false;
       console.warn('[loadLocaisRemoto]', error.message); return;
@@ -8930,7 +8916,7 @@ async function reenviarEmailVistoria(id){
 async function loadVistoriasRemoto(){
   if(!dbOk||!db) return;
   try{
-    let q = db.from('vistorias').select('*').order('created_at',{ascending:false}).limit(200);
+    let q = db.from('vistorias').select('*').eq('empresa_id',EMPRESA_ID).order('created_at',{ascending:false}).limit(200);
     const lojaFiltro = getLojaFiltro();
     if(lojaFiltro) q = q.eq('loja_id', lojaFiltro);
     const {data} = await q;
@@ -9035,8 +9021,8 @@ async function loadEstoque(){
   if(dbOk&&db){
     try{
       const [{data:prods,error:e1},{data:movs,error:e2},{data:fornecs},{data:ocs}] = await Promise.all([
-        db.from('produtos').select('*').order('nome',{ascending:true}),
-        db.from('estoque_movimentos').select('*').order('data',{ascending:false}).limit(5000),
+        db.from('produtos').select('*').eq('empresa_id',EMPRESA_ID).order('nome',{ascending:true}),
+        db.from('estoque_movimentos').select('*').eq('empresa_id',EMPRESA_ID).order('data',{ascending:false}).limit(5000),
         db.from('fornecedores').select('*').order('nome',{ascending:true}),
         db.from('ordens_compra').select('*').order('data_criacao',{ascending:false}).limit(200)
       ]);
