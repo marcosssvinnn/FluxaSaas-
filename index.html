@@ -164,6 +164,7 @@
         <button id="gear-btn-analises" onclick="closeGear();go('analises')">📊 Análises</button>
         <button id="gear-btn-usuarios" onclick="closeGear();go('usuarios')">👥 Usuários</button>
         <button id="gear-btn-auditoria" onclick="closeGear();go('auditoria')">🔐 Auditoria</button>
+        <button id="gear-btn-plataforma" onclick="closeGear();go('plataforma')" style="display:none">🛠️ Administração da Plataforma</button>
         <button onclick="closeGear();fazerLogout()">🔄 Trocar usuário</button>
         <button onclick="closeGear();authLogout()" style="color:var(--red)">🚪 Sair da conta</button>
       </div>
@@ -1595,6 +1596,43 @@
     </div>
 
     <div id="desp-lista"></div>
+  </div>
+</div>
+
+<!-- ══ PAGE: PLATAFORMA (só admin do SaaS — cross-tenant, separado de "gestor") ══ -->
+<div class="page" id="page-plataforma">
+  <div class="wrap">
+    <div class="ct">🛠️ Administração da Plataforma</div>
+    <p style="font-size:13px;color:var(--gray);margin:-4px 0 14px">Visão do SaaS inteiro — não é dado de nenhuma empresa específica.</p>
+
+    <div class="row f4" id="plat-kpis" style="gap:10px;margin-bottom:14px"></div>
+
+    <div class="card" style="margin-bottom:14px">
+      <div class="ct" style="font-size:13px">Storage por bucket</div>
+      <div id="plat-storage-buckets" style="font-size:13px"></div>
+    </div>
+
+    <div class="card">
+      <div class="ct" style="font-size:13px">Empresas cadastradas</div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead>
+            <tr style="text-align:left;color:var(--gray);border-bottom:1px solid var(--gray-light)">
+              <th style="padding:6px 8px">Empresa</th>
+              <th>Plano</th>
+              <th>Status</th>
+              <th style="text-align:center">Membros</th>
+              <th style="text-align:center">Orçamentos</th>
+              <th style="text-align:center">Clientes</th>
+              <th style="text-align:center">Produtos</th>
+              <th>Criada em</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="plat-empresas-tbody"></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 </div>
 

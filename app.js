@@ -1126,7 +1126,10 @@ function lsOrcProxNum(){ return lsOrcLer().reduce((a,o)=>Math.max(a,o.numero||0)
   } else {
     // Com sessão de conta (ou modo local sem credenciais) → carrega empresa e segue
     // para a etapa INTERNA (usuário + PIN), preservando o fluxo antigo.
-    if(authUser){ try{ await definirEmpresaAtiva(); }catch(e){ console.warn('[definirEmpresaAtiva]', e?.message||e); } }
+    if(authUser){
+      try{ await definirEmpresaAtiva(); }catch(e){ console.warn('[definirEmpresaAtiva]', e?.message||e); }
+      try{ await checarAdminPlataforma(); }catch(e){ console.warn('[checarAdminPlataforma]', e?.message||e); }
+    }
     esconderTelaAuth();
 
     const sessaoExistente = getSessao();
@@ -1946,6 +1949,7 @@ function go(p){
   if(p==='estoque') loadEstoque();
   if(p==='produtividade'){ loadProdutividade(); setTimeout(renderRelatorioFinanceiro,300); }
   if(p==='analises') loadAnalises();
+  if(p==='plataforma') loadPlataforma();
   if(p==='usuarios') loadUsuarios();
   if(p==='auditoria') loadAuditoria();
   if(p==='minhas-os') loadMinhasOS();
@@ -4694,6 +4698,105 @@ function imprimirDoc(modo){
 //  REALTIME SYNC (Supabase)
 // ──────────────────────────────────────────────────
 let realtimeChannel = null;
+
+// ══════════════════════════════════════════════════
+//  PAINEL ROOT DA PLATAFORMA (admin do SaaS, cross-tenant)
+// ══════════════════════════════════════════════════
+// Camada separada de "gestor" — gestor só enxerga a própria empresa (via RLS);
+// admin da plataforma enxerga métricas de TODAS as empresas, mas só através das
+// RPCs admin_* (SECURITY DEFINER, checam is_platform_admin() internamente — a
+// RLS de isolamento por empresa nas tabelas de negócio não é alterada).
+let isPlataformaAdmin = false;
+
+async function checarAdminPlataforma(){
+  isPlataformaAdmin = false;
+  if(!dbOk || !db) return;
+  try{
+    const { data, error } = await db.rpc('sou_admin_plataforma');
+    if(error) throw error;
+    isPlataformaAdmin = !!data;
+  }catch(e){ console.warn('[checarAdminPlataforma]', e?.message||e); }
+  const btn=document.getElementById('gear-btn-plataforma');
+  if(btn) btn.style.display = isPlataformaAdmin ? '' : 'none';
+}
+
+function _fmtBytes(n){
+  n=Number(n)||0;
+  if(n<1024) return n+' B';
+  if(n<1024*1024) return (n/1024).toFixed(1)+' KB';
+  if(n<1024*1024*1024) return (n/1024/1024).toFixed(1)+' MB';
+  return (n/1024/1024/1024).toFixed(2)+' GB';
+}
+
+async function loadPlataforma(){
+  if(!isPlataformaAdmin){ toast('⚠️ Acesso restrito'); go('form'); return; }
+  const tbody=document.getElementById('plat-empresas-tbody');
+  if(tbody) tbody.innerHTML='<tr><td colspan="7" style="color:var(--gray);padding:10px">Carregando…</td></tr>';
+  try{
+    const [{data:empresasData,error:e1}, {data:uso,error:e2}] = await Promise.all([
+      db.rpc('admin_listar_empresas'),
+      db.rpc('admin_uso_plataforma')
+    ]);
+    if(e1) throw e1; if(e2) throw e2;
+    renderPlataforma(empresasData||[], uso||{});
+  }catch(e){ console.warn('[loadPlataforma]', e?.message||e); toast('Erro ao carregar painel'); }
+}
+
+function renderPlataforma(empresas, uso){
+  const kpis=document.getElementById('plat-kpis');
+  if(kpis) kpis.innerHTML =
+    _kpiTile('Empresas ativas', (uso.total_empresas_ativas??0)+' / '+(uso.total_empresas??0))+
+    _kpiTile('Banco de dados', _fmtBytes(uso.banco_bytes))+
+    _kpiTile('Storage (arquivos)', _fmtBytes(uso.storage_bytes))+
+    _kpiTile('Contas (Auth)', String(uso.total_usuarios_auth??0));
+
+  const sb=document.getElementById('plat-storage-buckets');
+  if(sb){
+    const bks=uso.storage_por_bucket||{};
+    const keys=Object.keys(bks);
+    sb.innerHTML = keys.length
+      ? keys.map(k=>`<div style="display:flex;justify-content:space-between;padding:4px 0"><span>${esc(k)}</span><span style="color:var(--gray)">${_fmtBytes(bks[k])}</span></div>`).join('')
+      : '<div style="color:var(--gray)">Nenhum arquivo enviado ainda</div>';
+  }
+
+  const tbody=document.getElementById('plat-empresas-tbody');
+  if(!tbody) return;
+  if(!empresas.length){ tbody.innerHTML='<tr><td colspan="7" style="color:var(--gray);padding:10px">Nenhuma empresa cadastrada</td></tr>'; return; }
+  tbody.innerHTML = empresas.map(e=>{
+    const criado = e.created_at ? new Date(e.created_at).toLocaleDateString('pt-BR') : '—';
+    const statusBadge = e.ativo
+      ? '<span style="color:var(--green);font-weight:600">● Ativa</span>'
+      : '<span style="color:var(--red);font-weight:600">● Suspensa</span>';
+    return `<tr>
+      <td>${esc(e.nome||'—')}</td>
+      <td>${esc(e.plano||'free')}</td>
+      <td>${statusBadge}</td>
+      <td style="text-align:center">${e.membros_count??0}</td>
+      <td style="text-align:center">${e.orcamentos_count??0}</td>
+      <td style="text-align:center">${e.clientes_count??0}</td>
+      <td style="text-align:center">${e.produtos_count??0}</td>
+      <td>${criado}</td>
+      <td><button class="tb" onclick="_platToggleAtivo('${e.id}', ${!e.ativo})">${e.ativo?'Suspender':'Reativar'}</button></td>
+    </tr>`;
+  }).join('');
+}
+
+async function _platToggleAtivo(empresaId, novoValor){
+  confirmar(
+    novoValor ? 'Reativar esta empresa?' : 'Suspender esta empresa? Os usuários dela perdem acesso ao app.',
+    async ()=>{
+      try{
+        const { data, error } = await db.rpc('admin_set_empresa_ativo', {p_empresa:empresaId, p_ativo:novoValor});
+        if(error) throw error;
+        if(!data){ toast('⚠️ Empresa não encontrada'); return; }
+        toast(novoValor?'✅ Empresa reativada':'✅ Empresa suspensa');
+        loadPlataforma();
+      }catch(e){ console.warn('[_platToggleAtivo]', e?.message||e); toast('Erro ao atualizar'); }
+    },
+    novoValor?'Reativar':'Suspender'
+  );
+}
+
 // ══════════════════════════════════════════════════
 //  ANÁLISES (só gestor) — consulta VIEWS agregadas (não baixa tabelas)
 // ══════════════════════════════════════════════════

@@ -77,6 +77,27 @@ Emissão fiscal client-side está **desativada** (`emitirNota` só avisa "em bre
 ### Portal do cliente (público, sem login) — só RPCs
 O portal (`#portal/<token>`) usa **apenas** `rpc('portal_dados',{p_token})` (devolve cliente + orçamentos + OS + vistorias + equipamentos) e `rpc('portal_responder_orcamento',{p_token,p_orc_id,p_aprovar,p_assinatura})`. **Nenhuma query direta** no fluxo do portal (a RLS `authenticated` retornaria vazio). A **reserva de estoque** na aprovação NÃO roda no portal (anon): roda no app do **gestor** ao receber o UPDATE por realtime (`sincronizarReservaOrcamento`, idempotente).
 
+### Painel ROOT da plataforma (admin do SaaS, cross-tenant — separado de "gestor")
+"Gestor" só enxerga a própria empresa (RLS de sempre). "Admin da plataforma" é uma
+camada NOVA e separada, para o dono do SaaS gerenciar TODAS as empresas — não se
+confunde com nenhum `perfil` de tenant.
+- **Quem é admin:** tabela `plataforma_admins (user_id)` — sem policy de leitura
+  para `authenticated` (ninguém lê essa tabela pelo app). Só é populada manualmente
+  via SQL Editor/PAT: `INSERT INTO plataforma_admins (user_id, nome) VALUES (...)`.
+- **Isolamento:** as RPCs `admin_*` são `SECURITY DEFINER` e checam
+  `is_platform_admin()` **dentro da função** — a RLS de isolamento por empresa nas
+  15 tabelas de tenant **não foi alterada em nada** para viabilizar isso.
+- **RPCs:** `sou_admin_plataforma()` (checagem barata, chamada 1x após login),
+  `admin_listar_empresas()` (nome/plano/ativo/contagens por empresa),
+  `admin_uso_plataforma()` (tamanho do banco, storage por bucket, totais globais),
+  `admin_set_empresa_ativo(empresa,bool)` (suspender/reativar empresa),
+  `admin_set_flag_empresa(empresa,flag,bool)` (feature flag por empresa, cross-tenant).
+- **App:** `checarAdminPlataforma()` roda no boot pós-login; `isPlataformaAdmin`
+  controla a visibilidade do botão "🛠️ Administração da Plataforma" (menu ⚙️) e
+  a página `go('plataforma')` (`loadPlataforma`/`renderPlataforma`).
+- **Dar acesso a alguém:** não existe fluxo no app para isso (de propósito — é
+  poder demais para expor por UI). Sempre via SQL Editor/PAT, manualmente.
+
 ### Camada de inteligência (Analytics + IA futura)
 - **Agregação no SQL, nunca no cliente:** views `vw_analise_produtos` (margem/giro/ABC/parados), `vw_analise_financeiro_mensal` (receita×despesa), `vw_analise_orcamentos` (taxa de aprovação/ticket médio/inadimplência), com `security_invoker=true`. Aba **Análises** (só gestor) consulta as views + tabela `insights`. Regra permanente: dashboard consulta view agregada, não baixa tabela inteira.
 - **IA generativa (FUTURA):** chave da API de IA (Anthropic) é segredo da PLATAFORMA — jamais no cliente. Edge Function `gerar-insights` (secret; valida JWT + empresa; lê as views; chama o LLM; grava em `insights`), agendada 1x/dia por empresa e/ou sob demanda, com quota por empresa. O app só LÊ `insights`.
