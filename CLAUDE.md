@@ -1082,12 +1082,50 @@ Rodada após todos os fixes acima, cobrindo schema + client. **1 bug real encont
 - **Client (local, mocks cobrindo os cenários exatos dos bugs já corrigidos hoje):** `checarAdminPlataforma` funciona com `dbOk=false` (bug de hoje) ✅; `_autoLoginMembroDaConta` monta sessão certa e retorna `false` nos 3 casos de fallback ✅; `entrarModoPlataforma` esconde tudo de tenant e mostra só o painel ✅; `_injetarEmpresa`/namespace de localStorage/`flagAtiva`/`_rtCfg`/`_ejsCfg` (T4/T6/T8/T10/T12) sem regressão ✅; `emitirNota` continua sem chamar a API fiscal (T9) ✅; `renderPortal`/`loadAnalises` renderizam certo dado um pacote/mock válido (T11/T13) ✅.
 - **`setup-v2-delta5.sql`** registra o fix do portal (já aplicado ao banco — arquivo é só o histórico).
 
+### 🧪 Bateria 2: login/cadastro de empresas novas + usabilidade (a pedido do Marcos)
+Cobre exatamente o pedido: fluxo de onboarding ponta a ponta (mock completo, sem criar
+conta real — nunca digito senha nem crio conta, mesmo para teste) + revisão visual/
+mobile/acessibilidade na tela real (`marcosssvinnn.github.io/FluxaSaas-`). **2 bugs
+reais encontrados e corrigidos.**
+
+- **Fluxo de cadastro completo (mock ponta a ponta, "L&C Instalações"):** `authSubmit`
+  → `authCriarEmpresa` → RPC `criar_empresa` com os args certos → `EMPRESA_ID` setado
+  → sessão interna criada como o nome da pessoa (SEM PIN) → overlay escondido →
+  `FLUXA_CONFIG.appName`/título da aba já refletem o nome da empresa. Testado também:
+  6 mensagens de erro (campos vazios em cada combinação, e-mail duplicado, confirmação
+  de e-mail pendente, senha errada no login) — todas em português, claras, sem vazar
+  erro técnico.
+- 🔴 **BUG achado: tela de login (sem sessão nenhuma) rodava boot de tenant.**
+  `go('form')` + `tentarConectar(1)` (conecta no banco, liga realtime, carrega
+  clientes/locais) rodavam **incondicionalmente** no fim do boot, mesmo quando
+  `mostrarTelaAuth()` acabara de mostrar a tela de login — sem `EMPRESA_ID`. Resultado,
+  visível numa aba 100% limpa antes de logar: toast confuso `"⚠️ Acesso restrito ao
+  Gestor"` (de `go('form')` recusando por falta de perfil) + avisos no console
+  (`invalid input syntax for type uuid: "null"` em `carregarClientesRemoto`/
+  `loadLocaisRemoto`) + conexão/realtime desnecessários antes de qualquer login.
+  **Fix:** nova flag `semSessaoDeConta` — quando `mostrarTelaAuth()` roda, o boot
+  retorna cedo (mesmo padrão do `modoAdminPlataforma`), pulando `go('form')`/
+  `tentarConectar`/`checkQRHash` por completo. Validado: aba limpa agora só loga
+  `"Service Worker registrado"`, zero toast, `dbOk=false` até o login de verdade.
+- 🔴 **BUG achado: topbar do painel admin quebrava no mobile.** `.hdr-logo` tem
+  `flex-shrink:0` (correto pro app de tenant), mas no `#admin-topbar` o texto mais
+  longo ("🛠️ Fluxa — Administração" + subtítulo) empurrava os botões "🔄"/"🚪 Sair"
+  pra fora da tela em 375px, sem rolagem nem wrap. **Fix:** `#admin-topbar` ganha
+  `overflow:hidden`; `.hdr-logo`/`.hdr-logo-text` ficam `min-width:0` com texto em
+  `text-overflow:ellipsis` (só aí, não na classe compartilhada); subtítulo encurtado.
+  Validado em 375px: título trunca, botões sempre visíveis; desktop sem regressão.
+- **Confirmado correto (não era bug):** a tabela "Empresas cadastradas" do painel
+  root "parece cortada" no mobile — mas já tem wrapper `overflow-x:auto`; é rolagem
+  interna da tabela, não da página (`body.scrollWidth === innerWidth` confirmado).
+- Enter no campo de senha submete o formulário ✅. Toggle login↔criar mostra/esconde
+  os campos certos, inclusive o novo "Seu nome" ✅.
+
 ### ⚠️ Pendências (atualizado — 4 resolvidas nesta sessão, nenhuma nova crítica)
 - ~~Dados de teste no banco~~ → **resolvido** (limpeza rodada e confirmada).
 - ~~`criar_empresa` não semeia `config.nome`~~ → **resolvido** (delta2 + delta4: semeia nome da empresa E nome da pessoa).
 - ~~`clientes` insert não envia `portal_token`~~ → **resolvido** (6 call sites corrigidos).
 - ~~`portal_responder_orcamento` desatualizada no banco~~ → **resolvido** (delta5, achado na bateria de regressão).
-- **Login end-to-end não foi testado por mim (Claude) com credenciais reais** — não posso digitar senha/criar conta; toda validação de login foi via mock local + confirmação do Marcos ao vivo, e via checagem direta do schema/RPCs no banco (PAT). Continua valendo: se algo quebrar no clique-a-clique real, precisa ser reproduzido por ele.
+- **Login end-to-end nunca foi clicado com uma senha real por mim (Claude)** — não posso digitar senha/criar conta, nem para teste. Cobri isso com: mock completo de todo o fluxo (`authSubmit`→RPC→auto-login, 6 mensagens de erro), checagem direta do schema/RPCs no banco (PAT), e revisão visual/mobile na tela real (achou os 2 bugs acima). O que fica de fora, só verificável por ele: o clique-a-clique com uma senha de verdade ponta a ponta.
 - **SMTP próprio ainda não configurado** (ver aviso no Roadmap — e-mail de confirmação/recovery do Supabase é limitado; só afeta quando houver clientes externos de verdade).
 
 ---

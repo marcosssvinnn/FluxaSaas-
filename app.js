@@ -1132,8 +1132,12 @@ function lsOrcProxNum(){ return lsOrcLer().reduce((a,o)=>Math.max(a,o.numero||0)
   }
 
   let modoAdminPlataforma = false;
+  let semSessaoDeConta = false;
   if(temCreds && !authSession){
-    // Sem sessão de conta → tela de autenticação (login / criar empresa).
+    // Sem sessão de conta → tela de autenticação (login / criar empresa). Nada
+    // de tenant deve rodar aqui (sem empresa, sem conectar/sincronizar banco) —
+    // era isso que gerava "acesso restrito" e avisos de UUID nulo na tela de login.
+    semSessaoDeConta = true;
     mostrarTelaAuth();
   } else {
     esconderTelaAuth();
@@ -1174,6 +1178,7 @@ function lsOrcProxNum(){ return lsOrcLer().reduce((a,o)=>Math.max(a,o.numero||0)
   }
 
   if(modoAdminPlataforma){ return; } // admin da plataforma: nada de tenant abaixo
+  if(semSessaoDeConta){ return; } // sem sessão de conta: fica só na tela de login/cadastro
 
   // ── Credenciais do Supabase (ponto único: constantes SUPABASE_URL/ANON_KEY) ──
   const sbUrl = SUPABASE_URL;

@@ -129,16 +129,16 @@
 </div>
 
 <!-- ══ TOPBAR DO MODO ADMIN DA PLATAFORMA (totalmente separado do app de empresa) ══ -->
-<header class="hdr" id="admin-topbar" style="display:none;background:#12141c">
-  <div class="hdr-logo">
-    <div class="hdr-logo-text">
-      <span class="hdr-nome" style="color:#fff">🛠️ Fluxa — Administração</span>
-      <span class="hdr-sub" style="color:#8b93a7">Painel da plataforma (não é dado de nenhuma empresa)</span>
+<header class="hdr" id="admin-topbar" style="display:none;background:#12141c;overflow:hidden">
+  <div class="hdr-logo" style="flex-shrink:1;min-width:0;overflow:hidden">
+    <div class="hdr-logo-text" style="min-width:0;overflow:hidden">
+      <span class="hdr-nome" style="color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block">🛠️ Fluxa — Administração</span>
+      <span class="hdr-sub" style="color:#8b93a7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block">Painel da plataforma</span>
     </div>
   </div>
-  <div style="margin-left:auto;display:flex;align-items:center;gap:10px;padding-right:8px">
+  <div style="margin-left:auto;flex-shrink:0;display:flex;align-items:center;gap:8px;padding-right:8px">
     <button class="ba" onclick="loadPlataforma()" title="Atualizar" style="background:transparent;color:#fff;border:1px solid #3a3f52">🔄</button>
-    <button class="ba" onclick="authLogout()" style="background:var(--red);color:#fff">🚪 Sair</button>
+    <button class="ba" onclick="authLogout()" style="background:var(--red);color:#fff;white-space:nowrap">🚪 Sair</button>
   </div>
 </header>
 
