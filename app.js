@@ -4721,7 +4721,11 @@ let isPlataformaAdmin = false;
 
 async function checarAdminPlataforma(){
   isPlataformaAdmin = false;
-  if(!dbOk || !db) return;
+  // Só precisa do cliente existir — é uma chamada de rede própria (db.rpc), não
+  // depende de dbOk (que só vira true depois do fluxo de conexão do tenant, o
+  // qual a conta admin PULA por completo). Exigir dbOk aqui fazia essa checagem
+  // nunca rodar de verdade para uma conta admin.
+  if(!db) return;
   try{
     const { data, error } = await db.rpc('sou_admin_plataforma');
     if(error) throw error;
