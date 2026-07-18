@@ -1,0 +1,2384 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#C45E0A">
+  <title>Sistema de Orçamentos</title>
+  <!-- Configuração da empresa (tenant). Opcional: se ausente, usa os defaults embutidos (Fortemp/Aquamotor). -->
+  <script src="config.js"></script>
+  <!-- Bibliotecas hospedadas localmente (libs/ vendorizadas) — sem dependência de CDN -->
+  <script src="libs/supabase.min.js"></script>
+  <script src="libs/emailjs.min.js"></script>
+  <script src="libs/html2pdf.bundle.min.js"></script>
+  <script src="libs/chart.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="no-sbar">
+<a class="skip-link" href="#main-content">Pular para o conteúdo principal</a>
+
+<!-- ══ LOGIN OVERLAY ══ -->
+<div class="login-overlay" id="login-overlay">
+
+  <!-- Esquerda: branding -->
+  <div class="login-left">
+    <div class="login-brand">
+      <img id="login-logo-img" class="login-brand-logo" alt="" style="display:none">
+      <div class="login-brand-initials" id="login-brand-initials">F</div>
+      <div>
+        <div class="login-brand-name" id="login-brand-name">Fluxa</div>
+        <div class="login-brand-sub">Sistema de gestão</div>
+      </div>
+    </div>
+    <div class="login-brand-tagline" id="login-brand-tagline"></div>
+  </div>
+
+  <!-- Direita: form -->
+  <div class="login-right">
+    <div class="login-card">
+
+      <!-- Formulário único: nome + PIN -->
+      <div id="login-step-users">
+        <div class="login-card-title">Bem-vindo 👋</div>
+        <div class="login-card-sub">Entre com seu nome e senha para continuar</div>
+
+        <div style="margin-top:18px;display:flex;flex-direction:column;gap:12px">
+          <div>
+            <label style="font-size:12px;font-weight:600;color:var(--gray);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:5px">Seu nome</label>
+            <input id="login-nome-input" type="text" autocomplete="off" autocapitalize="words"
+              placeholder="Digite seu nome…"
+              style="width:100%;box-sizing:border-box;padding:11px 14px;border:1.5px solid var(--gray-mid);border-radius:10px;font-size:15px;font-family:'Inter',sans-serif;outline:none;transition:border .15s"
+              oninput="loginNomeInput(this.value)"
+              onkeydown="if(event.key==='Enter')document.getElementById('pin-input').focus()">
+            <!-- sugestões -->
+            <div id="login-nome-sugestoes" style="display:none;background:white;border:1.5px solid var(--gray-mid);border-top:none;border-radius:0 0 10px 10px;overflow:hidden;max-height:160px;overflow-y:auto;margin-top:-2px"></div>
+          </div>
+
+          <div>
+            <label style="font-size:12px;font-weight:600;color:var(--gray);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:5px">Senha (4 dígitos)</label>
+            <div style="position:relative">
+              <input id="pin-input" type="password" inputmode="numeric" maxlength="4"
+                placeholder="••••" autocomplete="off"
+                aria-label="Senha PIN de 4 dígitos"
+                style="width:100%;box-sizing:border-box;padding:11px 14px;border:1.5px solid var(--gray-mid);border-radius:10px;font-size:22px;letter-spacing:.25em;font-family:'Inter',sans-serif;outline:none;transition:border .15s"
+                oninput="atualizarDotsPIN(this.value)"
+                onkeydown="if(event.key==='Enter')fazerLogin()">
+            </div>
+          </div>
+
+          <div class="login-err" id="login-err" style="margin-top:-4px"></div>
+          <button class="login-btn" onclick="fazerLogin()" style="margin-top:2px">Entrar →</button>
+        </div>
+      </div>
+
+      <!-- PASSO 2 — gestor seleciona empresa (mantido para compatibilidade) -->
+      <div class="login-pin-step" id="login-step-pin" style="display:none"></div>
+
+      <!-- PASSO 3 — escolha de empresa (gestor principal) -->
+      <div class="login-loja-step" id="login-step-loja">
+        <button class="login-pin-back" onclick="voltarParaPin()">← Voltar</button>
+        <div class="login-card-title" style="margin-bottom:4px">Qual empresa?</div>
+        <div class="login-card-sub">Escolha a empresa para gerenciar</div>
+        <div class="login-loja-grid" id="login-loja-list"></div>
+      </div>
+
+    </div><!-- /login-card -->
+  </div><!-- /login-right -->
+</div>
+
+<!-- ══ HEADER ══ -->
+<header class="hdr">
+  <button class="btn-sbar" id="btn-sbar" onclick="toggleSidebar()" aria-label="Menu lateral" title="Menu">☰</button>
+  <div class="hdr-logo">
+    <img id="hdr-logo-img" alt="Logo da empresa" width="32" height="32">
+    <div class="hdr-logo-text">
+      <span class="hdr-nome" id="hdr-nome">carregando…</span>
+      <span class="hdr-sub" id="hdr-sub">Serviços</span>
+    </div>
+  </div>
+  <nav class="hdr-nav">
+    <button class="nb" onclick="go('form')"    id="nb-form">＋ Orçamento</button>
+    <button class="nb" onclick="novaOS();go('os')" id="nb-os">📋 OS</button>
+    <button class="nb" onclick="go('history')" id="nb-history">📊 Histórico</button>
+    <button class="nb" onclick="go('os-history')" id="nb-os-history">📋 Hist. OS</button>
+    <button class="nb" onclick="go('clientes')" id="nb-clientes">👥 Clientes</button>
+    <button class="nb" onclick="go('equipamentos')" id="nb-equipamentos">🔧 Equipamentos</button>
+    <button class="nb" onclick="go('agendamentos')" id="nb-agendamentos">📅 Agenda</button>
+    <button class="nb" onclick="go('visitas')" id="nb-visitas">🔍 Vistorias</button>
+    <button class="nb" onclick="go('despesas')" id="nb-despesas">💸 Despesas</button>
+    <button class="nb" onclick="go('produtividade')" id="nb-produtividade">📈 Produt.</button>
+  </nav>
+  <div class="hdr-right">
+    <span class="db-dot" id="db-dot" title="Status do banco de dados"></span>
+    <select class="loja-select" id="hdr-loja-select" onchange="trocarLojaAtiva(this.value)" title="Empresa ativa" style="display:none">
+      <option value="">Todas as empresas</option>
+    </select>
+    <div class="hdr-user" id="hdr-user" onclick="toggleGear()" title="Usuário logado">
+      <div class="hdr-user-avatar" id="hdr-user-avatar">G</div>
+      <span class="hdr-user-nome" id="hdr-user-nome">Gestor</span>
+    </div>
+    <button class="btn-sm" id="btn-atualizar" onclick="atualizarDados(this)" title="Atualizar dados" style="background:none;border:none;cursor:pointer;font-size:16px;padding:4px 6px;line-height:1">🔄</button>
+    <div class="gear-wrap">
+      <button class="btn-sm btn-gear" id="btn-gear" onclick="toggleGear()" title="Configurações">⚙️</button>
+      <div class="gear-menu" id="gear-menu" style="display:none">
+        <div class="gear-status"><span class="db-dot" id="db-dot2"></span><span id="db-txt2" style="font-size:12px;color:#6b7280">…</span></div>
+        <div class="gear-section">Configurações</div>
+        <button id="gear-btn-empresa" onclick="closeGear();go('empresa')">🏢 Dados da Empresa</button>
+        <button id="gear-btn-usuarios" onclick="closeGear();go('usuarios')">👥 Usuários</button>
+        <button id="gear-btn-auditoria" onclick="closeGear();go('auditoria')">🔐 Auditoria</button>
+        <button onclick="closeGear();fazerLogout()" style="color:var(--red)">🔓 Sair / Trocar usuário</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ══ SIDEBAR OVERLAY ══ -->
+<div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+<!-- ══ SIDEBAR ══ -->
+<aside class="sidebar s-hidden" id="sidebar" role="navigation" aria-label="Menu principal">
+  <nav class="snav">
+    <button class="snb on" id="snb-form" onclick="go('form')"><span class="sicon">＋</span><span class="slabel">Orçamento</span></button>
+    <button class="snb" id="snb-os" onclick="novaOS();go('os')"><span class="sicon">📋</span><span class="slabel">OS</span></button>
+    <button class="snb" id="snb-history" onclick="go('history')"><span class="sicon">📊</span><span class="slabel">Histórico</span></button>
+    <button class="snb" id="snb-minhas-os" onclick="go('minhas-os')" style="display:none"><span class="sicon">📋</span><span class="slabel">Minhas OS</span></button>
+    <button class="snb" id="snb-visitas" onclick="go('visitas')"><span class="sicon">🔍</span><span class="slabel">Vistorias</span></button>
+    <button class="snb" id="snb-agendamentos" onclick="go('agendamentos')"><span class="sicon">📅</span><span class="slabel">Agenda</span></button>
+    <div class="snav-div"></div>
+    <span class="snav-section-label">Mais opções</span>
+    <button class="snb" id="snb-os-history" onclick="go('os-history')"><span class="sicon">📄</span><span class="slabel">Hist. OS</span></button>
+    <button class="snb" id="snb-clientes" onclick="go('clientes')"><span class="sicon">👥</span><span class="slabel">Clientes</span></button>
+    <button class="snb" id="snb-equipamentos" onclick="go('equipamentos')"><span class="sicon">🔧</span><span class="slabel">Equipamentos</span></button>
+    <button class="snb" id="snb-estoque" onclick="go('estoque')"><span class="sicon">📦</span><span class="slabel">Estoque</span></button>
+    <button class="snb" id="snb-despesas" onclick="go('despesas')"><span class="sicon">💸</span><span class="slabel">Despesas</span></button>
+    <button class="snb" id="snb-produtividade" onclick="go('produtividade')"><span class="sicon">📈</span><span class="slabel">Produtividade</span></button>
+    <div class="snav-div"></div>
+    <button class="snb" id="snb-logout" onclick="closeSidebar();fazerLogout()" style="color:#ef4444"><span class="sicon">🔓</span><span class="slabel">Trocar usuário</span></button>
+  </nav>
+</aside>
+
+<!-- ══ BOTTOM NAV (mobile) ══ -->
+<nav class="mob-nav" id="mob-nav">
+  <!-- Técnico: Minhas OS | Vistorias | Mais -->
+  <!-- Gestor/Master: Vistorias | Orçam. | OS | Histórico | Mais -->
+  <!-- Vendas: Orçam. | OS | Histórico | Mais -->
+  <button class="mob-nb" id="mnb-visitas" onclick="go('visitas')" style="display:none">
+    <span class="micon">🔍</span><span>Vistorias</span>
+  </button>
+  <button class="mob-nb" id="mnb-minhas-os" onclick="go('minhas-os')" style="display:none">
+    <span class="micon">🗂️</span><span>Minhas OS</span>
+  </button>
+  <button class="mob-nb on" id="mnb-form" onclick="go('form')" style="display:none">
+    <span class="micon">＋</span><span>Orçam.</span>
+  </button>
+  <button class="mob-nb" id="mnb-os" onclick="novaOS();go('os')" style="display:none">
+    <span class="micon">📋</span><span>OS</span>
+  </button>
+  <button class="mob-nb" id="mnb-history" onclick="go('history')" style="display:none">
+    <span class="micon">📊</span><span>Histórico</span>
+  </button>
+  <button class="mob-nb" id="mnb-mais" onclick="openSidebar()">
+    <span class="micon">☰</span><span>Mais</span>
+  </button>
+</nav>
+
+<!-- ══ MAIN CONTENT ══ -->
+<main id="main-content" role="main">
+
+<!-- ══ PAGE: SETUP ══ -->
+<div class="page" id="page-setup">
+  <div class="wrap" style="max-width:620px">
+    <div id="setup-back-row" style="display:none;align-items:center;gap:10px;margin-bottom:12px;padding-top:8px">
+      <button onclick="go('form')" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:13px;font-weight:600;font-family:'Inter',sans-serif;display:flex;align-items:center;gap:5px">← Voltar</button>
+      <span style="font-size:18px;font-weight:800;color:var(--c2)">🔌 Banco de Dados</span>
+    </div>
+    <div class="card" style="margin-top:8px">
+      <div class="setup-h">
+        <h1>Conectar Banco de Dados</h1>
+        <p>Use o Supabase (gratuito) para salvar tudo na nuvem e acessar de qualquer dispositivo.</p>
+      </div>
+      <div class="steps">
+        <div class="step"><div class="sn">1</div><div class="sb"><strong>Crie conta no Supabase</strong><p>Acesse <a href="https://supabase.com" target="_blank" style="color:var(--c1)">supabase.com</a> → "Start your project" → login com Google.</p></div></div>
+        <div class="step"><div class="sn">2</div><div class="sb"><strong>Crie um projeto</strong><p>New Project → nome <b>fluxa-orcamentos</b> → região <b>South America (São Paulo)</b>.</p></div></div>
+        <div class="step"><div class="sn">3</div><div class="sb"><strong>Execute o SQL no Supabase</strong><p>SQL Editor → New query → cole e execute:</p>
+          <code id="sql-code">-- carregando…</code>
+        </div></div>
+        <div class="step"><div class="sn">4</div><div class="sb"><strong>Cole URL e chave anon abaixo</strong><p>Project Settings → API Keys → copie a <b>Project URL</b> e a chave <b>anon public</b>.</p></div></div>
+      </div>
+      <div class="fl" style="margin-bottom:12px"><label>Project URL</label><input type="url" id="sb-url" placeholder="https://xxxxx.supabase.co"></div>
+      <div class="fl" style="margin-bottom:16px"><label>Anon Public Key</label><input type="text" id="sb-key" placeholder="eyJhbGciOiJIUzI1NiIs…"></div>
+      <button class="btn-primary" onclick="salvarBD()" id="btn-bd">Conectar e Salvar</button>
+      <p id="bd-msg" style="margin-top:10px;font-size:13px;text-align:center;min-height:18px"></p>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PAGE: EMPRESA ══ -->
+<div class="page" id="page-empresa">
+  <div class="wrap" style="max-width:660px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding-top:8px">
+      <button onclick="go('form')" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:13px;font-weight:600;font-family:'Inter',sans-serif;display:flex;align-items:center;gap:5px">← Voltar</button>
+      <span style="font-size:18px;font-weight:800;color:var(--c2)">⚙️ Configurações da Empresa</span>
+    </div>
+    <div class="card">
+      <div class="ct">Identidade da Empresa</div>
+
+      <div class="row">
+        <div class="fl"><label>Nome da Empresa</label><input type="text" id="cfg-nome" placeholder="Ex: Fluxa Piscinas" oninput="previewCfg()"></div>
+        <div class="fl"><label>Subtítulo / Segmento</label><input type="text" id="cfg-sub" placeholder="Ex: Manutenção de Piscinas" oninput="previewCfg()"></div>
+      </div>
+      <div class="row f1">
+        <div class="fl"><label>Slogan / Tagline <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--gray)">(opcional — aparece no cabeçalho do PDF)</span></label><input type="text" id="cfg-tagline" placeholder="Ex: Qualidade e confiança em cada projeto" oninput="previewCfg()"></div>
+      </div>
+      <div class="row">
+        <div class="fl"><label>Telefone / WhatsApp</label><input type="tel" id="cfg-tel" placeholder="(47) 99235-4750" oninput="previewCfg()"></div>
+        <div class="fl"><label>Cidades / Regiões atendidas</label><input type="text" id="cfg-cidades" placeholder="BC, Camboriú e Itapema" oninput="previewCfg()"></div>
+      </div>
+
+      <div class="row">
+        <div class="fl"><label>Cor principal</label>
+          <div class="color-row">
+            <input type="color" id="cfg-cor" value="#C45E0A" oninput="previewCfg()">
+            <input type="text" id="cfg-cor-txt" value="#C45E0A" oninput="syncCor(this.value)">
+          </div>
+        </div>
+        <div class="fl"><label>Cor secundária (textos/fundo)</label>
+          <div class="color-row">
+            <input type="color" id="cfg-cor2" value="#2B3244" oninput="previewCfg()">
+            <input type="text" id="cfg-cor2-txt" value="#2B3244" oninput="syncCor2(this.value)">
+          </div>
+        </div>
+      </div>
+
+      <div class="fl" style="margin-bottom:14px">
+        <label>Logo da Empresa</label>
+        <div class="logo-upload">
+          <input type="file" accept="image/*" onchange="uploadLogo(this)">
+          <div class="foto-icon">🖼️</div>
+          <div class="foto-label">Clique para enviar logo (PNG ou JPG)</div>
+          <img id="logo-preview" class="logo-preview" alt="logo">
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="ct">Serviços Padrão</div>
+      <p style="font-size:13px;color:var(--gray);margin-bottom:14px">Serviços que aparecem no botão de adicionar rápido em todos os orçamentos. Um por linha.</p>
+      <div class="fl"><textarea id="cfg-servicos" rows="8" placeholder="Troca de Motobomba&#10;Troca de Filtro / Areia&#10;Instalação de Gerador de Cloro a Sal&#10;Troca de LED Subaquático&#10;Limpeza de Trocador de Calor&#10;Manutenção de Sauna e Spa"></textarea></div>
+    </div>
+
+    <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:14px;font-weight:700;color:var(--c2);margin-bottom:3px">👥 Técnicos e Usuários</div>
+        <div style="font-size:13px;color:var(--gray)">Gerencie usuários, perfis e PINs de acesso em um só lugar.</div>
+      </div>
+      <button class="btn-primary" style="padding:9px 18px;font-size:13px;white-space:nowrap" onclick="go('usuarios')">Gerenciar Usuários →</button>
+    </div>
+    <textarea id="cfg-tecnicos" style="display:none"></textarea>
+
+    <div class="card">
+      <div class="ct">Segurança</div>
+      <div class="row f1">
+        <div class="fl"><label>PIN de Acesso <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--gray)">(4 dígitos — padrão: 1234)</span></label><input type="password" id="cfg-pin" placeholder="••••" maxlength="4" inputmode="numeric"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="ct">💬 Templates de Notificação WhatsApp</div>
+      <p style="font-size:13px;color:var(--gray);margin-bottom:14px">Use as variáveis abaixo nos templates. Elas serão substituídas automaticamente.</p>
+      <div class="notif-vars" style="margin-bottom:14px">
+        Variáveis: <code>{nome}</code> <code>{hora}</code> <code>{tecnico}</code> <code>{servico}</code> <code>{valor}</code> <code>{link_portal}</code> <code>{empresa}</code> <code>{tel_empresa}</code>
+      </div>
+      <div class="notif-template">
+        <div class="notif-template-label">📅 Lembrete de Visita (24h antes)</div>
+        <textarea id="cfg-notif-visita" rows="5"></textarea>
+      </div>
+      <div class="notif-template">
+        <div class="notif-template-label">✅ OS Concluída</div>
+        <textarea id="cfg-notif-concluida" rows="5"></textarea>
+      </div>
+      <div class="notif-template">
+        <div class="notif-template-label">📋 Orçamento Enviado</div>
+        <textarea id="cfg-notif-orcamento" rows="5"></textarea>
+      </div>
+      <div class="notif-template">
+        <div class="notif-template-label">⚠️ Garantia Vencendo</div>
+        <textarea id="cfg-notif-garantia" rows="4"></textarea>
+      </div>
+    </div>
+
+    <button class="btn-primary" onclick="salvarEmpresa()" style="margin-bottom:20px">💾 Salvar Configurações</button>
+
+    <!-- NOTA FISCAL -->
+    <div class="card">
+      <div class="ct">📄 Nota Fiscal — Focus NFe</div>
+      <p style="font-size:13px;color:var(--gray);margin-bottom:14px">Configure o token da API Focus NFe para emitir NF-e (produtos) e NFS-e (serviços). Obtenha o token em <strong>focusnfe.com.br</strong> → Conta → API Tokens.</p>
+      <div class="row">
+        <div class="fl">
+          <label>Token Focus NFe (Produção)</label>
+          <input type="text" id="cfg-nfe-token-prod" placeholder="token_producao_…">
+        </div>
+        <div class="fl">
+          <label>Token Focus NFe (Homologação)</label>
+          <input type="text" id="cfg-nfe-token-hom" placeholder="token_homologacao_…">
+        </div>
+      </div>
+      <div class="row f3">
+        <div class="fl">
+          <label>CNPJ da Empresa (para NF)</label>
+          <input type="text" id="cfg-nfe-cnpj" placeholder="00.000.000/0001-00">
+        </div>
+        <div class="fl">
+          <label>Alíquota ISS (%)</label>
+          <input type="number" id="cfg-nfe-iss" placeholder="2.0" step="0.01" min="0" max="5" value="2.0">
+        </div>
+        <div class="fl">
+          <label>Código Serviço (LC 116)</label>
+          <input type="text" id="cfg-nfe-cod-svc" placeholder="7.10">
+        </div>
+      </div>
+      <button class="btn-primary" onclick="salvarEmpresa()" style="margin-bottom:0">💾 Salvar Configurações</button>
+    </div>
+
+    <!-- ══ EMAIL AUTOMÁTICO ══ -->
+    <div class="card">
+      <div class="ct">📧 E-mail Automático de Vistoria</div>
+      <p style="font-size:13px;color:var(--gray);margin-bottom:14px">
+        Configure o <strong>EmailJS</strong> para enviar o relatório de vistoria automaticamente ao síndico/responsável.
+        Crie uma conta gratuita em <a href="https://www.emailjs.com" target="_blank" style="color:var(--c1)">emailjs.com</a>
+        (200 e-mails/mês grátis), crie um serviço de e-mail e um template, então preencha abaixo.
+      </p>
+      <div style="background:var(--c1-light);border-radius:8px;padding:12px 14px;margin-bottom:10px;font-size:12px;color:var(--c2);line-height:1.8">
+        <strong>Variáveis do template EmailJS:</strong><br>
+        <code>{{to_email}}</code> — e-mail do responsável &nbsp;·&nbsp;
+        <code>{{to_name}}</code> — nome do cliente &nbsp;·&nbsp;
+        <code>{{empresa}}</code> — nome da empresa<br>
+        <code>{{tecnico}}</code> — técnico responsável &nbsp;·&nbsp;
+        <code>{{mes_ref}}</code> — mês de referência &nbsp;·&nbsp;
+        <code>{{data_visita}}</code> — data da vistoria<br>
+        <code>{{hora_checkin}}</code> — entrada &nbsp;·&nbsp; <code>{{hora_checkout}}</code> — saída &nbsp;·&nbsp; <code>{{duracao}}</code> — tempo de visita<br>
+        <code>{{resumo}}</code> — lista de equipamentos &nbsp;·&nbsp;
+        <code>{{status_geral}}</code> — resumo (✅ / ⚠️ / 🔴)<br>
+        <code>{{obs_geral}}</code> — observações gerais &nbsp;·&nbsp;
+        <code>{{link_relatorio}}</code> — URL do PDF &nbsp;·&nbsp; <code>{{link_pdf}}</code> — texto com link
+      </div>
+      <div style="background:#fff3cd;border:1.5px solid #ffc107;border-radius:8px;padding:11px 14px;margin-bottom:14px;font-size:12px;color:#856404;line-height:1.7">
+        <strong>📎 Para o e-mail sair com o PDF anexado:</strong><br>
+        1. No painel do Supabase → <strong>Storage</strong> → crie um bucket chamado <code>vistorias-pdf</code> (marcar como <em>Public</em>).<br>
+        2. Vá em <strong>Storage → Policies</strong> e crie uma policy de INSERT para <code>authenticated</code> e SELECT para <code>public</code>.<br>
+        3. No template do EmailJS, adicione o link: <code>{{link_pdf}}</code> — será um link direto para baixar o PDF gerado.
+      </div>
+      <div class="row f3">
+        <div class="fl"><label>Public Key (User ID)</label><input type="text" id="cfg-ejs-pubkey" placeholder="xxxxxxxxxxxxxxxx"></div>
+        <div class="fl"><label>Service ID</label><input type="text" id="cfg-ejs-service" placeholder="service_xxxxxxx"></div>
+        <div class="fl"><label>Template ID</label><input type="text" id="cfg-ejs-template" placeholder="template_xxxxxxx"></div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button class="btn-primary" onclick="salvarEmpresa()" style="padding:9px 18px">💾 Salvar</button>
+        <input type="email" id="ejs-test-email" placeholder="seu@email.com" style="flex:1;min-width:180px;border:1.5px solid var(--gray-mid);border-radius:8px;padding:9px 12px;font-size:13px;font-family:'Inter',sans-serif">
+        <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:9px 14px;font-size:13px" onclick="testarEmailJS()">📨 Testar Envio</button>
+        <span id="ejs-status" style="font-size:12px;color:var(--gray)"></span>
+      </div>
+    </div>
+
+    <!-- ══ BRANDING POR EMPRESA ══ -->
+    <div class="card" id="lojas-branding-card" style="display:none">
+      <div class="ct">🏢 Identidade por Empresa</div>
+      <p style="font-size:13px;color:var(--gray);margin-bottom:16px">Configure logo e dados independentes para cada empresa. O que for preenchido aqui sobrescreve as configurações globais <strong>somente nos documentos daquela empresa</strong> (orçamentos, OS, relatórios de vistoria).</p>
+      <div id="lojas-branding-body"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══ PAGE: USUÁRIOS ══ -->
+<div class="page" id="page-usuarios">
+  <div class="wrap" style="max-width:700px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-top:8px;flex-wrap:wrap;gap:10px">
+      <div>
+        <button onclick="go('empresa')" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:13px;font-weight:600;font-family:'Inter',sans-serif">← Voltar</button>
+        <span style="font-size:18px;font-weight:800;color:var(--c2);margin-left:8px">👥 Usuários do Sistema</span>
+      </div>
+      <button class="btn-primary" style="padding:8px 16px;font-size:13px" onclick="abrirFormUsuario()">＋ Novo Usuário</button>
+    </div>
+
+    <!-- Form novo usuário -->
+    <div class="card" id="usr-form-card" style="display:none">
+      <div class="ct"><span id="usr-form-titulo">Novo Usuário</span> <button onclick="fecharFormUsuario()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;line-height:1">×</button></div>
+      <div class="row">
+        <div class="fl"><label>Nome</label><input type="text" id="usr-nome" placeholder="Ex: João Silva"></div>
+        <div class="fl">
+          <label>Perfil (nível de acesso)</label>
+          <select id="usr-perfil" onchange="updUsrForm()">
+            <option value="tecnico">Técnico (campo)</option>
+            <option value="vendas">Vendas</option>
+            <option value="gestor">Gestor (gestão)</option>
+            <option value="master">Master (acesso total + auditoria)</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div class="fl">
+          <label>Empresa <span style="font-weight:400;color:var(--gray);text-transform:none">(obrigatório para técnico/gestor)</span></label>
+          <select id="usr-loja-id">
+            <option value="">— Selecione —</option>
+          </select>
+        </div>
+        <div class="fl">
+          <label id="usr-pin-label">PIN (4 dígitos)</label>
+          <input type="password" id="usr-pin" maxlength="4" inputmode="numeric" placeholder="••••">
+        </div>
+      </div>
+      <button class="btn-primary" onclick="salvarUsuario()">💾 Salvar Usuário</button>
+    </div>
+
+    <!-- Lista de usuários -->
+    <div class="card">
+      <div class="ct">Usuários Cadastrados</div>
+      <div id="usr-lista">
+        <div class="load"><div class="spin"></div> Carregando…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PAGE: AUDITORIA ══ -->
+<div class="page" id="page-auditoria">
+  <div class="wrap" style="max-width:760px">
+    <button class="btn-voltar" onclick="voltar()">← Voltar</button>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+      <div style="font-size:18px;font-weight:800;color:var(--c2)">🔐 Auditoria de Acessos</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <select id="audit-filtro-acao" onchange="renderAuditoria()" style="padding:6px 10px;border:1.5px solid var(--gray-mid);border-radius:50px;font-size:12px;font-family:'Inter',sans-serif;outline:none;background:white;cursor:pointer;color:var(--c2)">
+          <option value="">Todas as ações</option>
+          <option value="login">Logins</option>
+          <option value="orcamento">Orçamentos</option>
+          <option value="estoque">Estoque</option>
+          <option value="os">OS</option>
+          <option value="usuario">Usuários</option>
+        </select>
+        <select id="audit-filtro-user" onchange="renderAuditoria()" style="padding:6px 10px;border:1.5px solid var(--gray-mid);border-radius:50px;font-size:12px;font-family:'Inter',sans-serif;outline:none;background:white;cursor:pointer;color:var(--c2)"><option value="">Todos os usuários</option></select>
+      </div>
+    </div>
+    <p style="font-size:12px;color:var(--gray);margin:-6px 0 12px">Registro de quem entrou e fez ações no sistema — para segurança e responsabilidade.</p>
+    <div class="card"><div id="audit-body"></div></div>
+  </div>
+</div>
+
+<!-- ══ PAGE: FORM ══ -->
+<div class="page" id="page-form">
+  <div class="wrap">
+    <!-- Indicador de rascunho salvo -->
+    <div id="draft-indicator" style="display:none;font-size:11px;color:var(--gray);text-align:right;margin-bottom:4px;padding-top:4px">💾 Rascunho salvo às <span id="draft-time"></span></div>
+    <!-- Voltar ao histórico (visível só ao editar) -->
+    <div id="form-back-bar" style="display:none;align-items:center;justify-content:space-between;margin-bottom:10px;padding-top:4px">
+      <button onclick="go('history')" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:13px;font-weight:600;font-family:'Inter',sans-serif;display:flex;align-items:center;gap:5px">← Voltar ao Histórico</button>
+      <span id="form-back-label" style="font-size:12px;color:var(--gray)"></span>
+    </div>
+    <!-- CLIENTE -->
+    <div class="card">
+      <div class="ct">Dados do Cliente</div>
+      <div class="row">
+        <div class="fl">
+          <label class="req">Nome do Cliente</label>
+          <div class="cli-input-wrap">
+            <input type="text" id="cli" placeholder="Ex: João Silva" oninput="upd();mostrarSugestoesCli(this.value)" autocomplete="off" name="cli_nofill_orc" data-lpignore="true" data-form-type="other" readonly onfocus="this.removeAttribute('readonly')" onblur="setTimeout(()=>hideSugCli(),200)">
+            <button type="button" class="cli-search-btn" onclick="abrirBuscaCli('orc')" title="Buscar cliente na base">🔍</button>
+            <div class="cli-suggestions" id="cli-suggestions" style="display:none"></div>
+          </div>
+        </div>
+        <div class="fl"><label>Local / Endereço</label><input type="text" id="loc" placeholder="Rua das Flores, 123 — Camboriú" oninput="upd()"></div>
+      </div>
+      <div class="row">
+        <div class="fl"><label>Telefone do Cliente</label><input type="tel" id="tel-cli" placeholder="(47) 99999-9999" oninput="upd()"></div>
+        <div class="fl"><label>CNPJ (opcional)</label><input type="text" id="cnpj-cli" placeholder="00.000.000/0001-00" oninput="upd()"></div>
+      </div>
+      <div class="row f4">
+        <div class="fl">
+          <label>Empresa</label>
+          <select id="orc-loja" onchange="upd()"></select>
+        </div>
+        <div class="fl"><label>Pagamento</label>
+          <select id="pag" onchange="updPag();upd()">
+            <optgroup label="À vista">
+              <option>Pix</option>
+              <option>Dinheiro</option>
+              <option>Pix ou Dinheiro</option>
+              <option>Boleto à vista</option>
+              <option>Cartão de crédito</option>
+              <option>Pix, Dinheiro ou Cartão</option>
+            </optgroup>
+            <optgroup label="Parcelado / Boleto">
+              <option value="boleto-parc">Boleto parcelado</option>
+              <option value="entrada-boleto">Entrada + Boleto</option>
+              <option value="entrada-pix">Entrada + Pix/Dinheiro</option>
+              <option value="cartao-parc">Cartão parcelado</option>
+            </optgroup>
+            <option>A combinar</option>
+          </select>
+          <div class="pag-extra" id="pag-extra" style="display:none">
+            <div class="pag-field" id="pag-f-entrada" style="display:none">
+              <label>Entrada (R$)</label>
+              <input type="text" inputmode="decimal" id="pag-entrada" placeholder="0,00" oninput="upd()">
+            </div>
+            <div class="pag-field" id="pag-f-parcelas" style="display:none">
+              <label>Nº de parcelas</label>
+              <select id="pag-parcelas" onchange="upd()">
+                <option value="2">2x</option><option value="3">3x</option><option value="4">4x</option>
+                <option value="5">5x</option><option value="6">6x</option><option value="10">10x</option>
+                <option value="12">12x</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="fl">
+          <label>Validade</label>
+          <select id="val" onchange="upd()">
+            <option value="3">3 dias</option><option value="5" selected>5 dias</option>
+            <option value="7">7 dias</option><option value="15">15 dias</option>
+          </select>
+          <div class="vdate" id="vdate"></div>
+        </div>
+        <div class="fl"><label>Data</label><input type="date" id="data-orc" oninput="upd()"></div>
+      </div>
+      <div class="row f4">
+        <div class="fl" style="grid-column:1/3"><label>Data prevista do serviço</label><input type="date" id="data-svc" oninput="upd()"></div>
+      </div>
+      <div class="row">
+        <div class="fl">
+          <label class="req">De onde veio este cliente?</label>
+          <select id="origem-cli" onchange="updOrigemCli();upd()">
+            <option value="">— Selecione —</option>
+            <option value="Já é cliente">✅ Já é cliente nosso</option>
+            <option value="Indicação">🗣️ Indicação de cliente</option>
+            <option value="Anúncio Google">🔎 Anúncio do Google</option>
+            <option value="Instagram / Facebook">📱 Instagram / Facebook</option>
+            <option value="WhatsApp direto">💬 WhatsApp direto</option>
+            <option value="Passou na loja / Fachada">🏪 Passou na loja / Fachada</option>
+            <option value="Parceiro / Construtora">🤝 Parceiro / Construtora</option>
+            <option value="outro">✏️ Outro (digitar)</option>
+          </select>
+        </div>
+        <div class="fl" id="origem-cli-outro-wrap" style="display:none">
+          <label>Qual a origem?</label>
+          <input type="text" id="origem-cli-outro" placeholder="Digite a origem do cliente" oninput="upd()">
+        </div>
+      </div>
+    </div>
+
+    <!-- SERVIÇOS -->
+    <div class="card">
+      <div class="ct">Serviços</div>
+      <div class="presets-hd">Adicionar rápido:</div>
+      <div class="presets" id="presets"></div>
+      <div class="slist" id="slist"></div>
+      <button class="btn-add" onclick="addSvc('','')">＋ Adicionar serviço</button>
+      <div class="tots">
+        <div class="disc-r">
+          <label>Desconto:</label>
+          <input type="number" id="disc-v" placeholder="0" min="0" oninput="upd()">
+          <select id="disc-t" onchange="upd()"><option value="R$">R$</option><option value="%">%</option></select>
+        </div>
+        <div class="trow" id="row-sub" style="display:none"><span>Subtotal</span><span id="d-sub"></span></div>
+        <div class="trow" id="row-disc" style="display:none"><span>Desconto</span><span class="t-disc" id="d-disc"></span></div>
+        <div class="trow"><span style="font-weight:700;font-size:15px">Total</span><span class="t-final" id="d-tot">R$ 0,00</span></div>
+      </div>
+    </div>
+
+    <!-- ESCOPO + OBS + FOTO -->
+    <div class="card">
+      <div class="ct">Descrição e Observações</div>
+      <div class="row f1" style="margin-bottom:12px">
+        <div class="fl">
+          <label>Descrição do Serviço <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--gray)">(opcional — aparece no PDF acima dos serviços)</span></label>
+          <textarea id="escopo" rows="3" placeholder="Descreva detalhadamente o que será feito, condições, diferenciais..." oninput="upd()"></textarea>
+        </div>
+      </div>
+      <div class="row f1" style="margin-bottom:12px">
+        <div class="fl"><label>Observações</label><textarea id="obs" placeholder="Ex: Material incluso. Garantia 30 dias." oninput="upd()"></textarea></div>
+      </div>
+      <div class="row f1">
+        <div class="fl">
+          <label>🔒 Nota Interna <span style="font-weight:400;color:var(--gray);text-transform:none;letter-spacing:0">(não aparece no PDF nem no WhatsApp)</span></label>
+          <textarea id="nota-interna" placeholder="Anotações internas, negociação, condições especiais..." oninput="upd()"></textarea>
+        </div>
+      </div>
+      <div class="fl">
+        <label>Fotos (até 6) <span style="font-weight:400;color:var(--gray);text-transform:none;letter-spacing:0">— só aparecem no PDF quando preenchidas</span></label>
+        <div class="fotos-orc-grid" id="fotos-orc-grid"></div>
+      </div>
+    </div>
+
+    <!-- PRÉVIA -->
+    <div class="card">
+      <div class="ct">Prévia — WhatsApp</div>
+      <div class="preview-wa" id="prev-wa"></div>
+    </div>
+
+    <!-- ORC+OS TOGGLE -->
+    <div class="card" id="card-os-toggle">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <div>
+          <div style="font-size:14px;font-weight:700;color:var(--c2)">📋 Gerar Ordem de Serviço junto</div>
+          <div style="font-size:12px;color:var(--gray);margin-top:3px">Cria ORC + OS no mesmo PDF quando gerar PDF</div>
+        </div>
+        <label class="tgl-wrap">
+          <input type="checkbox" id="toggle-os" onchange="toggleOsCard()">
+          <span class="tgl-slider"></span>
+        </label>
+      </div>
+      <div id="os-inline-fields" style="display:none;margin-top:16px;border-top:1px solid var(--gray-mid);padding-top:14px">
+        <div class="row f3">
+          <div class="fl"><label>Data do Serviço</label><input type="date" id="os-inline-data"></div>
+          <div class="fl"><label>Horário</label><input type="time" id="os-inline-hora" value="08:00"></div>
+          <div class="fl"><label>Responsável Técnico</label><input type="text" id="os-inline-tec" placeholder="Seu nome"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AÇÕES -->
+    <div class="acts" style="grid-template-columns:1fr 1fr;margin-bottom:8px">
+      <button class="ba ba-save-only" id="btn-salvar" onclick="salvarApenas()" style="grid-column:1/-1">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        Salvar Orçamento
+      </button>
+    </div>
+    <div class="acts" style="grid-template-columns:1fr 1fr 1fr">
+      <button class="ba ba-copy" onclick="copiarWA()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.123.553 4.116 1.524 5.847L.057 23.547a.5.5 0 00.609.61l5.76-1.457A11.952 11.952 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.785 9.785 0 01-5.022-1.383l-.36-.214-3.733.945.976-3.638-.235-.374A9.784 9.784 0 012.182 12C2.182 6.57 6.57 2.182 12 2.182S21.818 6.57 21.818 12 17.43 21.818 12 21.818z"/></svg>
+        Copiar WA
+      </button>
+      <button class="ba ba-send" onclick="enviarWA()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.123.553 4.116 1.524 5.847L.057 23.547a.5.5 0 00.609.61l5.76-1.457A11.952 11.952 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.785 9.785 0 01-5.022-1.383l-.36-.214-3.733.945.976-3.638-.235-.374A9.784 9.784 0 012.182 12C2.182 6.57 6.57 2.182 12 2.182S21.818 6.57 21.818 12 17.43 21.818 12 21.818z"/></svg>
+        Enviar WA
+      </button>
+      <button class="ba ba-pdf" id="btn-pdf" onclick="gerarPDF()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l5 5v15a2 2 0 01-2 2H6a2 2 0 01-2-2V4a2 2 0 012-2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        Gerar PDF
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PAGE: MINHAS OS (técnico) ══ -->
+<div class="page" id="page-minhas-os">
+  <div class="wrap">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-top:8px;flex-wrap:wrap;gap:10px">
+      <div style="font-size:18px;font-weight:800;color:var(--c2)">📋 Minhas OS</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button class="fb on" data-tec-st="pendente" onclick="filtTecOS(this)">⏳ Agendadas</button>
+        <button class="fb" data-tec-st="concluido" onclick="filtTecOS(this)">✅ Concluídas</button>
+        <button class="fb" data-tec-st="todos" onclick="filtTecOS(this)">Todas</button>
+      </div>
+    </div>
+    <div id="tec-os-lista"><div class="load"><div class="spin"></div> Carregando…</div></div>
+  </div>
+</div>
+
+<!-- ══ PAGE: ORDEM DE SERVIÇO ══ -->
+<div class="page" id="page-os">
+  <div class="wrap">
+    <button class="btn-voltar" onclick="voltar()">← Voltar</button>
+    <div class="card">
+      <div class="ct"><span id="os-form-titulo">Nova Ordem de Serviço</span> <span id="os-src-badge" style="font-size:11px;color:var(--gray);font-weight:400;text-transform:none;letter-spacing:0"></span></div>
+      <div class="row">
+        <div class="fl"><label class="req">Cliente</label>
+          <div class="cli-input-wrap">
+            <input type="text" id="os-cli" placeholder="Nome do cliente" oninput="mostrarSugestoesCliOS(this.value)" autocomplete="off" name="cli_nofill_os" data-lpignore="true" data-form-type="other" readonly onfocus="this.removeAttribute('readonly')" onblur="setTimeout(()=>hideSugCliOS(),200)">
+            <button type="button" class="cli-search-btn" onclick="abrirBuscaCli('os')" title="Buscar cliente na base">🔍</button>
+            <div class="cli-suggestions" id="os-cli-suggestions" style="display:none"></div>
+          </div>
+        </div>
+        <div class="fl"><label>Local / Endereço</label><input type="text" id="os-loc" placeholder="Endereço do serviço"></div>
+      </div>
+      <div class="row">
+        <div class="fl">
+          <label>Empresa</label>
+          <select id="os-loja"></select>
+        </div>
+        <div class="fl"><label>CNPJ (opcional)</label><input type="text" id="os-cnpj" placeholder="00.000.000/0001-00"></div>
+      </div>
+      <div class="row f4">
+        <div class="fl"><label>Data do Serviço</label><input type="date" id="os-data"></div>
+        <div class="fl"><label>Horário</label><input type="time" id="os-hora" value="08:00"></div>
+        <div class="fl"><label>Responsável Técnico</label><input type="text" id="os-tec" placeholder="Seu nome"></div>
+        <div class="fl"><label>Valor Total</label><input type="number" id="os-total" placeholder="0,00" step="0.01"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="ct">Serviços a Executar</div>
+      <div class="slist" id="os-slist"></div>
+      <button class="btn-add" onclick="addOSSvc()">＋ Adicionar serviço</button>
+    </div>
+
+    <!-- Check-in / Check-out -->
+    <div class="card" id="os-checkin-card">
+      <div class="ct">⏱ Check-in / Check-out</div>
+      <div id="checkin-bar" style="display:none" class="checkin-bar">
+        <span>✅ Check-in realizado</span>
+        <span class="checkin-timer" id="checkin-timer">00:00</span>
+        <button class="ba" style="background:var(--red);color:white;padding:8px 14px;font-size:13px" onclick="fazerCheckout()">✔ Check-out</button>
+      </div>
+      <div id="checkin-form" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <select id="os-tec-checkin" style="padding:9px 12px;border:1.5px solid var(--gray-mid);border-radius:8px;font-size:14px;font-family:'Inter',sans-serif;outline:none;flex:1">
+          <option value="">Selecione o técnico…</option>
+        </select>
+        <button class="ba" style="background:var(--green);color:white;padding:10px 18px;font-size:13px" onclick="fazerCheckin()">📍 Check-in</button>
+      </div>
+      <div id="checkin-info" style="font-size:12px;color:var(--gray);margin-top:8px;min-height:16px"></div>
+    </div>
+
+    <div class="card" id="os-itens-card" style="display:none">
+      <div class="ct">📦 Itens a levar / validar</div>
+      <p style="font-size:12px;color:var(--gray);margin:-4px 0 10px">Confirme o que foi realmente levado. Ao confirmar, dá baixa no estoque. Desmarque o que não levou.</p>
+      <div id="os-itens-lista"></div>
+      <button class="btn-primary" id="os-itens-btn" onclick="confirmarItensOS()" style="width:100%;margin-top:8px">✅ Confirmar itens e dar baixa</button>
+      <div id="os-itens-ok" style="display:none;text-align:center;color:var(--green);font-size:13px;font-weight:600;padding:8px">✅ Itens já confirmados e baixados</div>
+    </div>
+
+    <div class="card">
+      <div class="ct">Detalhes Técnicos</div>
+      <div class="row f1" style="margin-bottom:12px">
+        <div class="fl"><label>Materiais utilizados</label><textarea id="os-mat" placeholder="Ex: 1x motobomba Dancor 1/2CV, 2x abraçadeira..."></textarea></div>
+      </div>
+      <div class="row f1">
+        <div class="fl"><label>Observações técnicas</label><textarea id="os-obs" placeholder="Condições encontradas, recomendações..."></textarea></div>
+      </div>
+    </div>
+
+    <!-- ── Checklist de Execução ── -->
+    <div class="card">
+      <div class="ct">✅ Confirmação da Execução
+        <button class="btn-add" style="font-size:11px;padding:4px 10px;border-width:1.5px" onclick="resetChecklist()" title="Restaurar itens padrão">↺ Resetar</button>
+      </div>
+      <div class="chk-list" id="os-chklist"></div>
+      <div class="chk-add-row">
+        <input type="text" class="chk-add-inp" id="chk-add-inp" placeholder="＋ Adicionar item personalizado…" onkeydown="if(event.key==='Enter'){addChkItem();event.preventDefault()}">
+        <button class="btn-add" style="font-size:12px;padding:7px 12px;border-width:1.5px;flex-shrink:0" onclick="addChkItem()">＋</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="ct">📷 Fotos e Vídeo</div>
+      <div class="row" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:12px">
+        <div class="fl">
+          <label>Foto 1</label>
+          <div class="foto-area" onclick="document.getElementById('os-foto-inp-0').click()">
+            <input type="file" id="os-foto-inp-0" accept="image/*" capture="environment" onchange="carregarOSFoto(this,0)" style="display:none">
+            <div class="foto-icon">📷</div>
+            <div class="foto-label" id="os-foto-lbl-0">Tirar/selecionar</div>
+            <img id="os-foto-prev-0" class="foto-preview" alt="foto 1">
+          </div>
+          <button id="os-btn-rm-foto-0" style="display:none;margin-top:4px;font-size:12px;color:var(--red);background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif" onclick="removerOSFoto(0)">✕ Remover</button>
+        </div>
+        <div class="fl">
+          <label>Foto 2</label>
+          <div class="foto-area" onclick="document.getElementById('os-foto-inp-1').click()">
+            <input type="file" id="os-foto-inp-1" accept="image/*" capture="environment" onchange="carregarOSFoto(this,1)" style="display:none">
+            <div class="foto-icon">📷</div>
+            <div class="foto-label" id="os-foto-lbl-1">Tirar/selecionar</div>
+            <img id="os-foto-prev-1" class="foto-preview" alt="foto 2">
+          </div>
+          <button id="os-btn-rm-foto-1" style="display:none;margin-top:4px;font-size:12px;color:var(--red);background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif" onclick="removerOSFoto(1)">✕ Remover</button>
+        </div>
+        <div class="fl">
+          <label>Foto 3</label>
+          <div class="foto-area" onclick="document.getElementById('os-foto-inp-2').click()">
+            <input type="file" id="os-foto-inp-2" accept="image/*" capture="environment" onchange="carregarOSFoto(this,2)" style="display:none">
+            <div class="foto-icon">📷</div>
+            <div class="foto-label" id="os-foto-lbl-2">Tirar/selecionar</div>
+            <img id="os-foto-prev-2" class="foto-preview" alt="foto 3">
+          </div>
+          <button id="os-btn-rm-foto-2" style="display:none;margin-top:4px;font-size:12px;color:var(--red);background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif" onclick="removerOSFoto(2)">✕ Remover</button>
+        </div>
+      </div>
+      <div class="row f1">
+        <div class="fl"><label>Link de Vídeo <span style="font-weight:400;color:var(--gray);text-transform:none;letter-spacing:0">(Google Drive, YouTube…)</span></label><input type="url" id="os-video-link" placeholder="https://drive.google.com/…"></div>
+      </div>
+    </div>
+
+    <div class="acts" style="grid-template-columns:1fr 1fr">
+      <button class="ba ba-pdf" id="btn-os-pdf" onclick="gerarOSPDF('os')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l5 5v15a2 2 0 01-2 2H6a2 2 0 01-2-2V4a2 2 0 012-2z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Salvar OS
+      </button>
+      <button class="ba ba-save" id="btn-os-both" onclick="gerarOSPDF('both')" style="display:none">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l5 5v15a2 2 0 01-2 2H6a2 2 0 01-2-2V4a2 2 0 012-2z"/><polyline points="14 2 14 8 20 8"/></svg>
+        OS + Orçamento
+      </button>
+      <button class="ba" style="background:#6b7280;color:white;display:none" id="btn-os-only-msg">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        OS sem orçamento vinculado
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PAGE: HISTÓRICO ══ -->
+<div class="page" id="page-history">
+  <div class="wrap">
+    <div class="dash">
+      <div class="dc o"><div class="dl">Total Emitido</div><div class="dv" id="d-emit">—</div><div class="ds" id="d-emit-q">— orç.</div></div>
+      <div class="dc g"><div class="dl">Aprovados</div><div class="dv" id="d-aprov">—</div><div class="ds" id="d-aprov-q">— aprovados</div></div>
+      <div class="dc y"><div class="dl">A Receber</div><div class="dv" id="d-rec">—</div><div class="ds" id="d-rec-q">aprovado s/ pagto</div></div>
+      <div class="dc b"><div class="dl">Ticket Médio</div><div class="dv" id="d-tick">—</div><div class="ds">por orçamento</div></div>
+    </div>
+
+    <!-- ── Gráfico de faturamento ── -->
+    <div class="dash-chart-card">
+      <div class="dash-chart-hdr">
+        <div class="dash-chart-titulo" id="dash-chart-titulo">📊 Faturamento</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <select id="dash-chart-periodo" onchange="renderGraficoDash()" style="padding:5px 10px;border:1.5px solid var(--gray-mid);border-radius:50px;font-size:12px;font-family:'Inter',sans-serif;outline:none;cursor:pointer">
+            <option value="3">3 meses</option>
+            <option value="6" selected>6 meses</option>
+            <option value="12">12 meses</option>
+            <option value="24">24 meses</option>
+            <option value="ano">Este ano</option>
+            <option value="tudo">Tudo</option>
+          </select>
+          <select id="dash-chart-tipo" onchange="renderGraficoDash()" style="padding:5px 10px;border:1.5px solid var(--gray-mid);border-radius:50px;font-size:12px;font-family:'Inter',sans-serif;outline:none;cursor:pointer">
+            <option value="aprovado">Aprovados</option>
+            <option value="emitido">Total emitido</option>
+          </select>
+        </div>
+      </div>
+      <div class="dash-chart-wrap">
+        <canvas id="dash-chart"></canvas>
+      </div>
+    </div>
+
+    <!-- ── Origem dos clientes ── -->
+    <div class="dash-chart-card" id="dash-origem-card" style="display:none">
+      <div class="dash-chart-hdr">
+        <div class="dash-chart-titulo">📣 Origem dos Clientes</div>
+        <select id="dash-origem-periodo" onchange="renderOrigemDash()" style="padding:5px 10px;border:1.5px solid var(--gray-mid);border-radius:50px;font-size:12px;font-family:'Inter',sans-serif;outline:none;cursor:pointer">
+          <option value="mes" selected>Este mês</option>
+          <option value="3">3 meses</option>
+          <option value="12">12 meses</option>
+          <option value="tudo">Tudo</option>
+        </select>
+      </div>
+      <div id="dash-origem-body"></div>
+    </div>
+
+    <!-- ── Estoque: produtos para repor ── -->
+    <div class="dash-chart-card" id="dash-estoque-card" style="display:none">
+      <div class="dash-chart-hdr">
+        <div class="dash-chart-titulo">📦 Estoque — comprar / repor</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:5px 12px;font-size:12px" onclick="go('estoque')">Abrir estoque →</button>
+          <button class="ba" style="background:transparent;color:var(--gray);padding:5px 8px;font-size:12px;border:1.5px solid var(--gray-mid)" onclick="dispensarAlertaEstoque()" title="Ocultar este aviso por 7 dias">✕ Ignorar 7 dias</button>
+        </div>
+      </div>
+      <div id="dash-estoque-body"></div>
+    </div>
+
+    <div class="card">
+      <!-- ── Cabeçalho com navegação de mês ── -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+        <div style="font-size:17px;font-weight:800;color:var(--c2)">📋 Orçamentos</div>
+        <div class="orc-mes-nav">
+          <button class="orc-mes-btn" onclick="orcNavMes(-1)" title="Mês anterior">◀</button>
+          <span class="orc-mes-lbl" id="orc-mes-label">—</span>
+          <button class="orc-mes-btn" onclick="orcNavMes(1)" title="Próximo mês">▶</button>
+          <button class="orc-todos-btn" id="btn-orc-todos" onclick="orcVerTodos()">Ver todos</button>
+          <button class="btn-add" style="font-size:12px;padding:5px 10px;border-width:1.5px" onclick="loadHist()" title="Atualizar">↺</button>
+        </div>
+      </div>
+      <!-- ── Mini KPIs do período selecionado ── -->
+      <div class="orc-mini-kpis" id="orc-mini-kpis"></div>
+      <!-- ── Filtros de status + busca ── -->
+      <div class="hf">
+        <button class="fb on" data-s="todos" onclick="filt(this)">Todos</button>
+        <button class="fb" data-s="pendente" onclick="filt(this)">⏳ Pendente</button>
+        <button class="fb" data-s="aprovado" onclick="filt(this)">✅ Aprovado</button>
+        <button class="fb" data-s="recusado" onclick="filt(this)">❌ Recusado</button>
+        <button class="fb" data-s="vencido" onclick="filt(this)">🕐 Vencido</button>
+        <label class="sr-only" for="hist-busca-input">Buscar orçamentos por cliente ou número</label>
+        <input class="hsrch" type="text" id="hist-busca-input" placeholder="🔍 Buscar cliente ou #…" oninput="buscar(this.value)">
+      </div>
+      <div id="hist-body"><div class="load"><div class="spin"></div> Carregando…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PAGE: EQUIPAMENTOS ══ -->
+<div class="page" id="page-equipamentos">
+  <div class="wrap">
+    <button class="btn-voltar" onclick="voltar()">← Voltar</button>
+    <!-- Formulário novo equipamento (oculto por padrão) -->
+    <div class="card" id="eq-form-card" style="display:none">
+      <div class="ct">Novo Equipamento <button onclick="fecharFormEq()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;line-height:1">×</button></div>
+      <div class="row">
+        <div class="fl"><label>Cliente</label>
+          <input type="text" id="eq-cli-nome" placeholder="Nome do cliente" list="eq-cli-list" oninput="filtrarClientesEq(this.value)">
+          <datalist id="eq-cli-list"></datalist>
+        </div>
+        <div class="fl"><label>Tipo de Equipamento</label>
+          <select id="eq-tipo">
+            <option value="">Selecione…</option>
+            <option>Motobomba</option><option>Filtro</option><option>Trocador de Calor</option>
+            <option>Gerador de Cloro</option><option>LED Subaquático</option>
+            <option>Spa / Hidro</option><option>Sauna</option><option>Automação</option><option>Outro</option>
+          </select>
+        </div>
+      </div>
+      <div class="row f3">
+        <div class="fl"><label>Marca</label><input type="text" id="eq-marca" placeholder="Ex: Dancor"></div>
+        <div class="fl"><label>Modelo</label><input type="text" id="eq-modelo" placeholder="Ex: CV 1/2"></div>
+        <div class="fl"><label>Potência / Capacidade</label><input type="text" id="eq-potencia" placeholder="Ex: 1/2 CV"></div>
+      </div>
+      <div class="row">
+        <div class="fl"><label>Número de Série</label><input type="text" id="eq-serie" placeholder="Ex: SN-12345"></div>
+        <div class="fl"><label>Data de Instalação</label><input type="date" id="eq-instalacao"></div>
+      </div>
+      <div class="row">
+        <div class="fl"><label>Garantia (meses)</label><input type="number" id="eq-garantia" value="12" min="0" max="120"></div>
+        <div class="fl"><label>Vencimento da Garantia</label><input type="date" id="eq-garantia-venc" readonly style="background:var(--gray-light)"></div>
+      </div>
+      <div class="row f1">
+        <div class="fl"><label>Observações Técnicas</label><textarea id="eq-obs" placeholder="Condições de instalação, recomendações…"></textarea></div>
+      </div>
+      <div class="fl" style="margin-bottom:14px">
+        <label>Foto do Equipamento</label>
+        <div class="foto-area" onclick="document.getElementById('eq-foto-input').click()">
+          <input type="file" id="eq-foto-input" accept="image/*" capture="environment" onchange="carregarFotoEq(this)" style="display:none">
+          <div class="foto-icon">📷</div>
+          <div class="foto-label" id="eq-foto-lbl">Tirar foto ou selecionar imagem</div>
+          <img id="eq-foto-prev" class="foto-preview" alt="foto">
+        </div>
+        <button id="eq-btn-rm-foto" style="display:none;margin-top:6px;font-size:12px;color:var(--red);background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif" onclick="removerFotoEq()">✕ Remover foto</button>
+      </div>
+      <button class="btn-primary" onclick="salvarEquipamento()">💾 Salvar Equipamento</button>
+    </div>
+
+    <!-- Header da listagem -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:18px;font-weight:800;color:var(--c2)">🔧 Equipamentos</div>
+        <div style="font-size:12px;color:var(--gray)" id="eq-count">Carregando…</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <label class="sr-only" for="eq-busca-input">Buscar equipamentos</label>
+        <input type="text" id="eq-busca-input" placeholder="🔍 Buscar…" oninput="buscarEq(this.value)" style="padding:7px 13px;border:1.5px solid var(--gray-mid);border-radius:50px;font-size:13px;font-family:'Inter',sans-serif;outline:none;width:160px">
+        <select onchange="filtrarTipoEq(this.value)" style="padding:7px 12px;border:1.5px solid var(--gray-mid);border-radius:50px;font-size:12px;font-family:'Inter',sans-serif;outline:none">
+          <option value="">Todos os tipos</option>
+          <option>Motobomba</option><option>Filtro</option><option>Trocador de Calor</option>
+          <option>Gerador de Cloro</option><option>LED Subaquático</option>
+          <option>Spa / Hidro</option><option>Sauna</option><option>Automação</option><option>Outro</option>
+        </select>
+        <button class="btn-primary" style="padding:8px 16px;font-size:13px;white-space:nowrap" onclick="abrirFormEq()">＋ Equipamento</button>
+      </div>
+    </div>
+
+    <!-- Alertas de garantia -->
+    <div id="eq-alertas" style="margin-bottom:12px"></div>
+
+    <!-- Grid de equipamentos -->
+    <div id="eq-grid" class="eq-grid">
+      <div class="load"><div class="spin"></div> Carregando equipamentos…</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL QR CODE ══ -->
+<div class="qr-modal-bg" id="qr-modal-bg" onclick="if(event.target===this)fecharQR()">
+  <div class="qr-modal">
+    <h3 id="qr-eq-nome">Equipamento</h3>
+    <p id="qr-eq-info">Cliente — Tipo</p>
+    <img id="qr-img" src="" alt="QR Code">
+    <div class="qr-acts">
+      <button class="btn-sec" style="flex:none;padding:9px 16px" onclick="fecharQR()">Fechar</button>
+      <button class="btn-pri" style="flex:none;padding:9px 16px" onclick="imprimirQR()">🖨️ Imprimir</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PAGE: PORTAL DO CLIENTE ══ -->
+<div class="page" id="page-portal">
+  <div class="portal-wrap">
+    <div id="portal-loading" class="portal-loading">
+      <div class="spin" style="margin:0 auto 12px;width:28px;height:28px;border-width:3px"></div>
+      <p>Carregando seu portal…</p>
+    </div>
+    <div id="portal-content" style="display:none">
+      <!-- Header empresa -->
+      <div class="portal-header">
+        <img id="portal-logo" class="portal-logo" alt="logo">
+        <div>
+          <div class="portal-nome-empresa" id="portal-empresa-nome"></div>
+          <div class="portal-sub-empresa" id="portal-empresa-sub"></div>
+        </div>
+      </div>
+
+      <!-- Saudação -->
+      <div class="portal-cli-nome" id="portal-cli-nome"></div>
+      <div class="portal-cli-sub">Seu portal exclusivo de serviços</div>
+
+      <!-- Próxima visita -->
+      <div class="portal-section" id="portal-sec-visita" style="display:none">
+        <div class="portal-section-title">📅 Próxima Visita</div>
+        <div id="portal-proxima-visita"></div>
+      </div>
+
+      <!-- Orçamentos pendentes -->
+      <div class="portal-section" id="portal-sec-orc" style="display:none">
+        <div class="portal-section-title">📋 Orçamentos Pendentes</div>
+        <div id="portal-orcs"></div>
+      </div>
+
+      <!-- Histórico de OS -->
+      <div class="portal-section" id="portal-sec-os" style="display:none">
+        <div class="portal-section-title">🔧 Histórico de Serviços</div>
+        <div id="portal-os-lista"></div>
+      </div>
+
+      <!-- Equipamentos -->
+      <div class="portal-section" id="portal-sec-eq" style="display:none">
+        <div class="portal-section-title">⚙️ Seus Equipamentos</div>
+        <div id="portal-eq-lista"></div>
+      </div>
+
+      <!-- Contato -->
+      <div class="portal-section">
+        <div class="portal-section-title">💬 Fale Conosco</div>
+        <button class="portal-wa-btn" onclick="abrirWAPortal()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z"/></svg>
+          Falar com a Equipe
+        </button>
+      </div>
+    </div>
+
+    <div id="portal-erro" class="portal-erro" style="display:none">
+      <div style="font-size:48px;margin-bottom:12px">🔒</div>
+      <div style="font-size:18px;font-weight:700;color:var(--c2);margin-bottom:8px">Portal não encontrado</div>
+      <div style="font-size:13px;color:var(--gray)">Este link pode ter expirado ou é inválido.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ DOCUMENTO ORÇAMENTO (print) ══ -->
+<div class="pdoc" id="pdoc-orc">
+  <!-- HEADER -->
+  <div class="pd-header" id="pd-header-orc">
+    <div class="pd-hdr-brand">
+      <img id="pd-hdr-logo-orc" class="pd-hdr-logo-img" alt="logo">
+      <div class="pd-hdr-logo-initials" id="pd-hdr-init-orc"></div>
+      <div class="pd-hdr-txt">
+        <div class="pd-hdr-nome" id="pd-nm-orc"></div>
+        <div class="pd-hdr-sub" id="pd-sb-orc"></div>
+        <div class="pd-hdr-tagline" id="pd-tag-orc"></div>
+      </div>
+    </div>
+    <div class="pd-hdr-doc">
+      <div class="pd-doctype-badge">Orçamento</div>
+      <div class="pd-docnum" id="pd-num-orc"></div>
+    </div>
+  </div>
+  <!-- META STRIP -->
+  <div class="pd-meta-strip">
+    <div class="pd-meta-left" id="pd-cont-orc"></div>
+    <div class="pd-meta-right" id="pd-meta-orc"></div>
+  </div>
+  <!-- CONTENT -->
+  <div class="pd-content">
+    <!-- CLIENT -->
+    <div class="pd-sl">Cliente</div>
+    <div class="pd-cli-card">
+      <div class="pd-cli-bar" id="pd-cli-bar-orc"></div>
+      <div class="pd-cli-info">
+        <div class="pd-cli-nm" id="pd-cli-nm-orc"></div>
+        <div class="pd-cli-loc" id="pd-cli-loc-orc"></div>
+      </div>
+    </div>
+    <!-- ESCOPO -->
+    <div class="pd-escopo" id="pd-escopo-orc" style="display:none">
+      <div class="pd-sl">Descrição do Serviço</div>
+      <div class="pd-escopo-txt" id="pd-escopo-txt-orc"></div>
+    </div>
+    <!-- SERVICES -->
+    <div class="pd-sl">Serviços</div>
+    <div class="pd-tbl-wrap">
+      <table class="pd-tbl">
+        <thead><tr id="pd-thead-orc"><th>#</th><th>Descrição</th><th>Valor</th></tr></thead>
+        <tbody id="pd-tbody-orc"></tbody>
+      </table>
+    </div>
+    <div class="pd-totals-wrap" id="pd-totals-orc"></div>
+    <!-- PAYMENT + VALIDITY -->
+    <div class="pd-grid2">
+      <div class="pd-g2card">
+        <div class="pd-g2lbl">Forma de Pagamento</div>
+        <div class="pd-g2val" id="pd-pag-orc"></div>
+      </div>
+      <div class="pd-g2card">
+        <div class="pd-g2lbl">Validade do Orçamento</div>
+        <div class="pd-g2val" id="pd-val-orc"></div>
+      </div>
+    </div>
+    <!-- PHOTOS -->
+    <div id="pd-fotos-orc-section" class="pd-fotos-section" style="display:none">
+      <div class="pd-fotos-lbl">📷 Registro Fotográfico</div>
+      <div class="pd-fotos-grid" id="pd-fotos-orc-grid"></div>
+    </div>
+    <!-- OBSERVATIONS -->
+    <div class="pd-obs-card" id="pd-obs-orc" style="display:none">
+      <div class="pd-obs-bar" id="pd-obs-bar-orc"></div>
+      <div class="pd-obs-inner">
+        <div class="pd-obs-lbl">Observações</div>
+        <div class="pd-obs-txt" id="pd-obs-txt-orc"></div>
+      </div>
+    </div>
+    <!-- SIGNATURES -->
+    <div class="pd-sig-area">
+      <div class="pd-sig-blk">
+        <div class="pd-sig-line"></div>
+        <div class="pd-sig-name">Assinatura do Cliente</div>
+      </div>
+      <div class="pd-sig-blk">
+        <div class="pd-sig-line"></div>
+        <div class="pd-sig-name" id="pd-sign-resp-orc">Responsável Técnico</div>
+      </div>
+    </div>
+  </div>
+  <!-- FOOTER -->
+  <div class="pd-foot" id="pd-foot-orc"></div>
+</div>
+
+<!-- ══ DOCUMENTO OS (print) ══ -->
+<div class="pdoc" id="pdoc-os">
+  <!-- HEADER -->
+  <div class="pd-header" id="pd-header-os">
+    <div class="pd-hdr-brand">
+      <img id="pd-hdr-logo-os" class="pd-hdr-logo-img" alt="logo">
+      <div class="pd-hdr-logo-initials" id="pd-hdr-init-os"></div>
+      <div class="pd-hdr-txt">
+        <div class="pd-hdr-nome" id="pd-nm-os"></div>
+        <div class="pd-hdr-sub" id="pd-sb-os"></div>
+        <div class="pd-hdr-tagline" id="pd-tag-os"></div>
+      </div>
+    </div>
+    <div class="pd-hdr-doc">
+      <div class="pd-doctype-badge">Ordem de Serviço</div>
+      <div class="pd-docnum" id="pd-num-os"></div>
+    </div>
+  </div>
+  <!-- META STRIP -->
+  <div class="pd-meta-strip">
+    <div class="pd-meta-left" id="pd-cont-os"></div>
+    <div class="pd-meta-right" id="pd-meta-os"></div>
+  </div>
+  <!-- CONTENT -->
+  <div class="pd-content">
+    <!-- CLIENT -->
+    <div class="pd-sl">Cliente</div>
+    <div class="pd-cli-card">
+      <div class="pd-cli-bar" id="pd-cli-bar-os"></div>
+      <div class="pd-cli-info">
+        <div class="pd-cli-nm" id="pd-cli-nm-os"></div>
+        <div class="pd-cli-loc" id="pd-cli-loc-os"></div>
+      </div>
+    </div>
+    <!-- SERVICES -->
+    <div class="pd-sl">Serviços a Executar</div>
+    <div class="pd-tbl-wrap" style="margin-bottom:16px">
+      <table class="pd-tbl">
+        <thead><tr id="pd-thead-os"><th>#</th><th>Descrição do Serviço</th></tr></thead>
+        <tbody id="pd-tbody-os"></tbody>
+      </table>
+    </div>
+    <!-- OS DETAILS -->
+    <div class="pd-grid4">
+      <div class="pd-g4card">
+        <div class="pd-g4lbl">Data do Serviço</div>
+        <div class="pd-g4val" id="pd-data-os"></div>
+      </div>
+      <div class="pd-g4card">
+        <div class="pd-g4lbl">Horário</div>
+        <div class="pd-g4val" id="pd-hora-os"></div>
+      </div>
+      <div class="pd-g4card">
+        <div class="pd-g4lbl">Responsável Técnico</div>
+        <div class="pd-g4val" id="pd-tec-os"></div>
+      </div>
+      <div class="pd-g4card">
+        <div class="pd-g4lbl">Valor Total</div>
+        <div class="pd-g4val" id="pd-tot-os"></div>
+      </div>
+    </div>
+    <!-- MATERIALS -->
+    <div class="pd-obs-card" id="pd-mat-os" style="display:none">
+      <div class="pd-obs-bar" style="background:#9ca3af"></div>
+      <div class="pd-obs-inner" style="background:#f8f9fa">
+        <div class="pd-obs-lbl">Materiais Utilizados</div>
+        <div class="pd-obs-txt" id="pd-mat-txt-os"></div>
+      </div>
+    </div>
+    <!-- OBS TÉCNICA -->
+    <div class="pd-obs-card" id="pd-obs-os" style="display:none">
+      <div class="pd-obs-bar" id="pd-obs-bar-os"></div>
+      <div class="pd-obs-inner">
+        <div class="pd-obs-lbl">Observações Técnicas</div>
+        <div class="pd-obs-txt" id="pd-obs-txt-os"></div>
+      </div>
+    </div>
+    <!-- CHECKLIST OS -->
+    <div id="pd-checklist-os" style="display:none;margin-bottom:16px"></div>
+    <!-- FOTOS OS -->
+    <div id="pd-fotos-os" style="display:none;margin-bottom:16px"></div>
+    <!-- SIGNATURES -->
+    <div class="pd-sig-area">
+      <div class="pd-sig-blk">
+        <div class="pd-sig-line"></div>
+        <div class="pd-sig-name">Assinatura do Cliente</div>
+      </div>
+      <div class="pd-sig-blk">
+        <div class="pd-sig-line"></div>
+        <div class="pd-sig-name" id="pd-sign-resp-os">Responsável Técnico</div>
+      </div>
+    </div>
+  </div>
+  <!-- FOOTER -->
+  <div class="pd-foot" id="pd-foot-os"></div>
+</div>
+
+<!-- ══ PDF: RELATÓRIO DE VISTORIA ══ -->
+<div class="pdoc" id="pdoc-visita">
+  <!-- HEADER -->
+  <div class="pd-header" id="pd-header-vis">
+    <div class="pd-hdr-brand">
+      <img id="pd-hdr-logo-vis" class="pd-hdr-logo-img" alt="logo">
+      <div class="pd-hdr-logo-initials" id="pd-hdr-init-vis"></div>
+      <div class="pd-hdr-txt">
+        <div class="pd-hdr-nome" id="pd-nm-vis"></div>
+        <div class="pd-hdr-sub" id="pd-sb-vis"></div>
+        <div class="pd-hdr-tagline" id="pd-tag-vis"></div>
+      </div>
+    </div>
+    <div class="pd-hdr-doc">
+      <div class="pd-doctype-badge">Relatório de Vistoria</div>
+      <div class="pd-docnum" id="pd-num-vis"></div>
+    </div>
+  </div>
+  <!-- META STRIP -->
+  <div class="pd-meta-strip">
+    <div class="pd-meta-left" id="pd-cont-vis"></div>
+    <div class="pd-meta-right" id="pd-meta-vis"></div>
+  </div>
+  <!-- CONTENT -->
+  <div class="pd-content">
+    <!-- CLIENT -->
+    <div class="pd-sl">Cliente</div>
+    <div class="pd-cli-card" style="margin-bottom:16px">
+      <div class="pd-cli-bar" id="pd-cli-bar-vis"></div>
+      <div class="pd-cli-info">
+        <div class="pd-cli-nm" id="pd-cli-nm-vis"></div>
+        <div class="pd-cli-loc" id="pd-cli-loc-vis"></div>
+      </div>
+    </div>
+    <!-- STATS ROW -->
+    <div class="pd-vis-stats-row" id="pd-vis-stats-row"></div>
+    <!-- VISIT INFO -->
+    <div class="pd-vis-info-grid" id="pd-vis-info-grid"></div>
+    <!-- SUMMARY TABLE -->
+    <div class="pd-sl">Resumo dos Equipamentos</div>
+    <div style="border:1.5px solid #e9ecef;border-radius:10px;overflow:hidden;margin-bottom:16px">
+      <table class="pd-vis-sumtable" id="pd-vis-sumtable"></table>
+    </div>
+    <!-- DETAILED EQUIPMENT SECTIONS -->
+    <div class="pd-sl">Vistoria Detalhada</div>
+    <div class="pd-vis-equip-list" id="pd-vis-equip-list"></div>
+    <!-- GENERAL OBS -->
+    <div id="pd-vis-obs-wrap" style="display:none">
+      <div class="pd-sl">Observações Gerais</div>
+      <div class="pd-obs-card">
+        <div class="pd-obs-bar" id="pd-vis-obs-bar"></div>
+        <div class="pd-obs-inner">
+          <div class="pd-obs-lbl">Observações do Técnico</div>
+          <div class="pd-obs-txt" id="pd-vis-obs-txt"></div>
+        </div>
+      </div>
+    </div>
+    <!-- SIGNATURES -->
+    <div class="pd-sig-area">
+      <div class="pd-sig-blk">
+        <div class="pd-sig-line"></div>
+        <div class="pd-sig-name">Assinatura do Responsável / Síndico</div>
+      </div>
+      <div class="pd-sig-blk">
+        <div class="pd-sig-line"></div>
+        <div class="pd-sig-name" id="pd-vis-sign-tec">Técnico Responsável</div>
+      </div>
+    </div>
+  </div>
+  <!-- FOOTER -->
+  <div class="pd-foot" id="pd-foot-vis"></div>
+</div>
+
+<!-- ══ PAGE: OS HISTORY ══ -->
+<div class="page" id="page-os-history">
+  <div class="wrap">
+    <div class="card">
+      <div class="ct">Histórico de OS <button class="btn-add" style="font-size:12px;padding:5px 11px;border-width:1.5px" onclick="loadOSHist()">↺</button></div>
+      <div class="hf">
+        <button class="fb on" data-oss="todos" onclick="filtOS(this)">Todos</button>
+        <button class="fb" data-oss="agendado" onclick="filtOS(this)">📅 Agendado</button>
+        <button class="fb" data-oss="concluido" onclick="filtOS(this)">✅ Concluído</button>
+        <button class="fb" data-oss="cancelado" onclick="filtOS(this)">❌ Cancelado</button>
+        <label class="sr-only" for="os-busca-input">Buscar ordens de serviço por cliente ou número</label>
+        <input class="hsrch" type="text" id="os-busca-input" placeholder="🔍 Buscar cliente ou #…" oninput="buscarOS(this.value)">
+        <select id="os-filt-tec" onchange="filtTecOS(this.value)" style="padding:6px 10px;border:1.5px solid var(--gray-mid);border-radius:50px;font-size:12px;font-family:'Inter',sans-serif;outline:none;background:white;cursor:pointer;color:var(--c2)">
+          <option value="">👤 Todos técnicos</option>
+        </select>
+      </div>
+      <div id="osh-body"><div class="load"><div class="spin"></div> Carregando…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PAGE: CLIENTES ══ -->
+<div class="page" id="page-clientes">
+  <div class="wrap" style="max-width:700px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding-top:8px">
+      <button class="btn-voltar" onclick="voltar()" style="margin-bottom:0">← Voltar</button>
+      <span style="font-size:18px;font-weight:800;color:var(--c2)">👥 Clientes</span>
+    </div>
+    <div id="cli-form-wrap" style="display:none">
+      <div class="cli-form-inline">
+        <div style="font-size:14px;font-weight:700;color:var(--c2);margin-bottom:14px">＋ Novo Cliente</div>
+        <div class="row">
+          <div class="fl"><label class="req">Nome</label><input type="text" id="cli-new-nome" placeholder="Nome completo"></div>
+          <div class="fl"><label>Telefone</label><input type="tel" id="cli-new-tel" placeholder="(47) 99999-9999"></div>
+        </div>
+        <div class="row" style="margin-bottom:12px">
+          <div class="fl"><label>Endereço</label><input type="text" id="cli-new-end" placeholder="Rua, número, bairro, cidade"></div>
+          <div class="fl"><label>CNPJ (opcional)</label><input type="text" id="cli-new-cnpj" placeholder="00.000.000/0001-00" inputmode="numeric"></div>
+        </div>
+        <div class="row" style="margin-bottom:12px">
+          <div class="fl"><label>E-mail do Responsável / Síndico <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--gray)">(para relatórios automáticos)</span></label><input type="email" id="cli-new-email" placeholder="sindico@condominio.com.br"></div>
+          <div class="fl"><label>Tipo de Local</label>
+            <select id="cli-new-tipo" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-mid);border-radius:8px;font-size:14px;font-family:'Inter',sans-serif;outline:none">
+              <option value="">Residência</option>
+              <option value="condominio">Condomínio</option>
+              <option value="hotel">Hotel / Pousada</option>
+              <option value="clube">Clube / Academia</option>
+              <option value="comercial">Comercial</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px">
+          <button class="btn-primary" style="flex:1" onclick="salvarNovoCliente()">💾 Salvar Cliente</button>
+          <button onclick="document.getElementById('cli-form-wrap').style.display='none'" style="flex:1;padding:12px;border:2px solid var(--gray-mid);border-radius:10px;background:var(--white);font-size:14px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif">Cancelar</button>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="ct">Cadastro
+        <div style="display:flex;gap:8px">
+          <button class="btn-add" style="font-size:12px;padding:5px 11px;border-width:1.5px" onclick="mostrarFormCliente()">＋ Novo Cliente</button>
+          <button class="btn-add" style="font-size:12px;padding:5px 11px;border-width:1.5px;border-color:var(--blue);color:var(--blue)" onclick="importarClientesDeOrcamentos()" title="Importa clientes de todos os orçamentos existentes">📥 Importar dos orçamentos</button>
+        </div>
+      </div>
+      <input class="hsrch" type="text" id="cli-busca" placeholder="🔍 Buscar por nome, telefone ou CNPJ…" oninput="renderClientes()" style="width:100%;margin-bottom:10px">
+      <div id="clientes-lista"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PAGE: PRODUTIVIDADE ══ -->
+<div class="page" id="page-produtividade">
+  <div class="wrap">
+    <button class="btn-voltar" onclick="voltar()">← Voltar</button>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+      <div style="font-size:18px;font-weight:800;color:var(--c2)">📈 Produtividade</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <select id="prod-filtro-tec" onchange="renderProd()" style="padding:7px 12px;border:1.5px solid var(--gray-mid);border-radius:50px;font-size:12px;font-family:'Inter',sans-serif;outline:none">
+          <option value="">Todos os técnicos</option>
+        </select>
+        <select id="prod-periodo" onchange="renderProd()" style="padding:7px 12px;border:1.5px solid var(--gray-mid);border-radius:50px;font-size:12px;font-family:'Inter',sans-serif;outline:none">
+          <option value="mes">Este mês</option>
+          <option value="mes-ant">Mês anterior</option>
+          <option value="30d">Últimos 30 dias</option>
+          <option value="90d">Últimos 90 dias</option>
+          <option value="ano">Este ano</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Config de comissão e meta -->
+    <div class="card" style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+      <div style="font-size:13px;font-weight:700;color:var(--c2)">💰 Comissão &amp; Metas</div>
+      <label style="font-size:12px;color:var(--gray);display:flex;align-items:center;gap:6px">
+        Comissão (%)
+        <input id="prod-comissao-pct" type="number" min="0" max="100" step="0.5" onchange="setComissaoPct(this.value)"
+          style="width:70px;padding:6px 8px;border:1.5px solid var(--gray-mid);border-radius:8px;font-family:'Inter',sans-serif;font-size:13px;outline:none">
+      </label>
+      <label style="font-size:12px;color:var(--gray);display:flex;align-items:center;gap:6px">
+        Meta mensal (R$)
+        <input id="prod-meta-tec" type="number" min="0" step="100" onchange="setMetaTec(this.value)"
+          style="width:100px;padding:6px 8px;border:1.5px solid var(--gray-mid);border-radius:8px;font-family:'Inter',sans-serif;font-size:13px;outline:none">
+      </label>
+      <div style="font-size:11px;color:var(--gray)">Comissão = faturamento das OS concluídas × %. Meta aplicada por técnico.</div>
+    </div>
+
+    <!-- Cards por técnico -->
+    <div class="ct" style="margin-bottom:12px">Resumo por Técnico</div>
+    <div id="prod-cards" class="prod-grid"></div>
+
+    <!-- Tabela comparativa -->
+    <div class="card">
+      <div class="ct">Tabela Comparativa</div>
+      <div class="prod-tabela-wrap">
+        <table class="prod-tabela" id="prod-tabela">
+          <thead><tr>
+            <th>Técnico</th>
+            <th>OS Concluídas</th>
+            <th>OS Canceladas</th>
+            <th>Taxa Conclusão</th>
+            <th>Tempo Médio</th>
+            <th>Faturamento</th>
+            <th>Comissão</th>
+            <th>Despesas (R$)</th>
+            <th>Clientes</th>
+          </tr></thead>
+          <tbody id="prod-tabela-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── Relatório Financeiro ── -->
+    <div class="fin-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+        <div class="ct" style="margin:0">💰 Resultado Financeiro</div>
+        <select id="fin-periodo" onchange="renderRelatorioFinanceiro()" style="padding:7px 12px;border:1.5px solid var(--gray-mid);border-radius:50px;font-size:12px;font-family:'Inter',sans-serif;outline:none;cursor:pointer">
+          <option value="6m">Últimos 6 meses</option>
+          <option value="12m">Últimos 12 meses</option>
+          <option value="ano">Este ano</option>
+        </select>
+      </div>
+      <div class="fin-tabela-wrap">
+        <table class="fin-tabela">
+          <thead><tr>
+            <th>Mês</th>
+            <th>Receita (Aprovados)</th>
+            <th>Despesas</th>
+            <th>Resultado</th>
+          </tr></thead>
+          <tbody id="fin-tabela-body"><tr><td colspan="4" style="text-align:center;color:var(--gray);padding:20px">Carregando…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── Contas a Receber ── -->
+    <div class="fin-card" id="cr-card">
+      <div class="ct" style="margin:0 0 12px">📥 Contas a Receber</div>
+      <div id="cr-resumo" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"></div>
+      <div class="fin-tabela-wrap">
+        <table class="fin-tabela">
+          <thead><tr>
+            <th>#</th><th>Cliente</th><th>Total</th><th>Recebido</th><th>Saldo</th><th></th>
+          </tr></thead>
+          <tbody id="cr-tabela-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PAGE: DESPESAS ══ -->
+<div class="page" id="page-despesas">
+  <div class="wrap">
+    <button class="btn-voltar" onclick="voltar()">← Voltar</button>
+    <div class="card" id="desp-form-card" style="display:none">
+      <div class="ct">Nova Despesa <button onclick="fecharFormDesp()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;line-height:1">×</button></div>
+      <div class="row">
+        <div class="fl"><label>Técnico</label><select id="desp-tec"><option value="">Selecione…</option></select></div>
+        <div class="fl"><label>Data</label><input type="date" id="desp-data"></div>
+      </div>
+      <div class="row">
+        <div class="fl"><label>Tipo</label>
+          <select id="desp-tipo">
+            <option value="">Selecione…</option>
+            <option>Combustível</option><option>Pedágio</option>
+            <option>Material</option><option>Alimentação</option><option>Outro</option>
+          </select>
+        </div>
+        <div class="fl"><label>Valor (R$)</label><input type="number" id="desp-valor" placeholder="0,00" step="0.01" min="0" inputmode="decimal"></div>
+      </div>
+      <div class="row f1">
+        <div class="fl"><label>Descrição</label><input type="text" id="desp-desc" placeholder="Ex: Gasolina ida/volta Camboriú"></div>
+      </div>
+      <div class="row f1" style="margin-bottom:4px">
+        <div class="fl"><label>OS Vinculada (opcional)</label>
+          <input type="text" id="desp-os-num" placeholder="Número da OS (ex: 042)" list="desp-os-list" oninput="filtrarOSDesp(this.value)">
+          <datalist id="desp-os-list"></datalist>
+        </div>
+      </div>
+      <div class="fl" style="margin-bottom:14px">
+        <label>Foto do Comprovante (opcional)</label>
+        <div class="foto-area" onclick="document.getElementById('desp-foto-input').click()">
+          <input type="file" id="desp-foto-input" accept="image/*" capture="environment" onchange="carregarFotoDesp(this)" style="display:none">
+          <div class="foto-icon">🧾</div>
+          <div class="foto-label" id="desp-foto-lbl">Fotografar comprovante</div>
+          <img id="desp-foto-prev" class="foto-preview" alt="comprovante">
+        </div>
+        <button id="desp-btn-rm-foto" style="display:none;margin-top:6px;font-size:12px;color:var(--red);background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif" onclick="removerFotoDesp()">✕ Remover</button>
+      </div>
+      <button class="btn-primary" onclick="salvarDespesa()">💾 Registrar Despesa</button>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+      <div style="font-size:18px;font-weight:800;color:var(--c2)">💸 Despesas de Campo</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <select id="desp-filtro-tec" onchange="renderDespesas()" style="padding:7px 12px;border:1.5px solid var(--gray-mid);border-radius:50px;font-size:12px;font-family:'Inter',sans-serif;outline:none">
+          <option value="">Todos os técnicos</option>
+        </select>
+        <select id="desp-filtro-st" onchange="renderDespesas()" style="padding:7px 12px;border:1.5px solid var(--gray-mid);border-radius:50px;font-size:12px;font-family:'Inter',sans-serif;outline:none">
+          <option value="">Todos os status</option>
+          <option value="pendente">⏳ Pendente</option>
+          <option value="reembolsado">✅ Reembolsado</option>
+        </select>
+        <button class="btn-primary" style="padding:8px 16px;font-size:13px" onclick="abrirFormDesp()">＋ Despesa</button>
+      </div>
+    </div>
+
+    <div class="desp-dash">
+      <div class="dc y"><div class="dl">Total Pendente</div><div class="dv" id="desp-d-pend">—</div><div class="ds" id="desp-d-pend-q">— itens</div></div>
+      <div class="dc g"><div class="dl">Reembolsado</div><div class="dv" id="desp-d-reimb">—</div><div class="ds" id="desp-d-reimb-q">— itens</div></div>
+      <div class="dc o"><div class="dl">Total Geral</div><div class="dv" id="desp-d-total">—</div><div class="ds">este mês</div></div>
+    </div>
+
+    <div class="card" id="desp-cat-card" style="display:none">
+      <div class="ct">📊 Onde vai o dinheiro (este mês)</div>
+      <div id="desp-cat-body"></div>
+    </div>
+
+    <div id="desp-lista"></div>
+  </div>
+</div>
+
+<!-- ══ PAGE: ESTOQUE ══ -->
+<div class="page" id="page-estoque">
+  <div class="wrap">
+    <button class="btn-voltar" onclick="voltar()">← Voltar</button>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+      <div style="font-size:18px;font-weight:800;color:var(--c2)">📦 Gestão de Estoque</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:9px 14px;font-size:13px" onclick="abrirBalancoModal()">📋 Balanço</button>
+        <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:9px 14px;font-size:13px" onclick="abrirFornecModal()">👥 Fornecedores</button>
+        <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:9px 14px;font-size:13px" onclick="abrirOCListModal()">📄 Ordens de Compra</button>
+        <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:9px 14px;font-size:13px" onclick="abrirListaCompras()">🛒 Lista de compras</button>
+        <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:9px 14px;font-size:13px" onclick="abrirImportProdutos()">📥 Importar planilha</button>
+        <button class="btn-primary" onclick="abrirProdutoModal()" style="padding:9px 16px">＋ Novo produto</button>
+      </div>
+    </div>
+    <!-- KPIs -->
+    <div class="dash" id="estoque-kpis"></div>
+    <!-- Alertas -->
+    <div id="estoque-alerta" style="display:none;background:var(--yellow-bg);border:1.5px solid var(--yellow);border-radius:10px;padding:10px 14px;margin:0 0 12px;font-size:12.5px;color:#92400e;line-height:1.6"></div>
+    <div class="card">
+      <!-- Toolbar: abas de filtro + ordenação + busca -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+        <div id="estoque-tabs" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+        <div style="flex:1;min-width:120px"></div>
+        <select id="estoque-categ-filtro" onchange="filtCategoria(this.value)" style="padding:6px 10px;border:1.5px solid var(--gray-mid);border-radius:50px;font-size:12px;font-family:'Inter',sans-serif;outline:none;background:white;cursor:pointer;color:var(--c2)">
+          <option value="">Todas as categorias</option>
+          <option value="Tratamento de Água">💧 Tratamento de Água</option>
+          <option value="Produto Químico">🧪 Produto Químico</option>
+          <option value="Filtragem">🔵 Filtragem</option>
+          <option value="Filtro">🔵 Filtro</option>
+          <option value="Bomba">⚙️ Bomba</option>
+          <option value="Trocador de Calor">🌡️ Trocador de Calor</option>
+          <option value="Peça de Piscina">🏊 Peça de Piscina</option>
+          <option value="Peça de Spa">🛁 Peça de Spa</option>
+          <option value="Acessório">🔧 Acessório</option>
+          <option value="Equipamento">🏭 Equipamento</option>
+          <option value="Outro">✏️ Outro</option>
+        </select>
+        <select id="estoque-sort" onchange="renderEstoque()" style="padding:6px 10px;border:1.5px solid var(--gray-mid);border-radius:50px;font-size:12px;font-family:'Inter',sans-serif;outline:none;background:white;cursor:pointer;color:var(--c2)">
+          <option value="nome">A-Z</option>
+          <option value="valor">Maior valor parado</option>
+          <option value="disp">Menor disponível</option>
+          <option value="giro">Mais giro</option>
+        </select>
+      </div>
+      <input class="hsrch" type="text" placeholder="🔍 Buscar produto ou código…" oninput="buscaEstoque(this.value)" style="margin-bottom:8px;width:100%">
+      <div id="estoque-body"></div>
+    </div>
+    <!-- Insights -->
+    <div id="estoque-insights"></div>
+    <div class="card" id="estoque-giro-card" style="display:none">
+      <div class="ct">📊 Mais movimentados (90 dias)</div>
+      <div id="estoque-giro-body"></div>
+    </div>
+    <div class="card" id="estoque-mov-card" style="display:none">
+      <div class="ct">🕒 Movimentações recentes</div>
+      <div id="estoque-mov-body"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: lista de compras consolidada -->
+<div class="qr-modal-bg" id="compras-modal" style="display:none" onclick="if(event.target===this)fecharListaCompras()">
+  <div class="card" style="max-width:520px;width:92%;max-height:85vh;overflow:auto">
+    <div class="ct">🛒 Lista de compras <button onclick="fecharListaCompras()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;float:right;line-height:1">×</button></div>
+    <div id="compras-body"></div>
+    <button class="btn-primary" onclick="copiarListaCompras()" style="width:100%;margin-top:10px">📋 Copiar lista</button>
+  </div>
+</div>
+
+<!-- Modal: cadastro/edição de produto -->
+<div class="qr-modal-bg" id="prod-modal" style="display:none" onclick="if(event.target===this)fecharProdutoModal()">
+  <div class="card" style="max-width:560px;width:92%;max-height:88vh;overflow:auto">
+    <div class="ct" id="prod-modal-titulo">Novo produto <button onclick="fecharProdutoModal()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;float:right;line-height:1">×</button></div>
+    <div id="prod-loja-wrap"></div>
+    <div class="row">
+      <div class="fl"><label>Categoria</label>
+        <select id="prod-categoria" onchange="toggleCategOutro()" style="padding:9px 12px;border:1.5px solid var(--gray-mid);border-radius:8px;font-size:14px;font-family:'Inter',sans-serif;outline:none;width:100%">
+          <option value="">— sem categoria —</option>
+          <option value="Tratamento de Água">💧 Tratamento de Água</option>
+          <option value="Produto Químico">🧪 Produto Químico</option>
+          <option value="Filtragem">🔵 Filtragem</option>
+          <option value="Filtro">🔵 Filtro</option>
+          <option value="Bomba">⚙️ Bomba</option>
+          <option value="Trocador de Calor">🌡️ Trocador de Calor</option>
+          <option value="Peça de Piscina">🏊 Peça de Piscina</option>
+          <option value="Peça de Spa">🛁 Peça de Spa</option>
+          <option value="Acessório">🔧 Acessório</option>
+          <option value="Equipamento">🏭 Equipamento</option>
+          <option value="Outro">✏️ Outro…</option>
+        </select>
+      </div>
+      <div class="fl" id="prod-catoutra-wrap" style="display:none"><label>Nome da categoria</label><input type="text" id="prod-catoutra" placeholder="Ex: Automatização…"></div>
+    </div>
+    <div class="row f1"><div class="fl"><label class="req">Nome do produto</label><input type="text" id="prod-nome" placeholder="Ex: Cloro granulado 10kg"></div></div>
+    <div class="row">
+      <div class="fl"><label>Código / SKU</label><input type="text" id="prod-codigo" placeholder="opcional"></div>
+      <div class="fl"><label>Unidade</label>
+        <select id="prod-unidade"><option value="un">un</option><option value="kg">kg</option><option value="L">L</option><option value="cx">cx</option><option value="m">m</option><option value="pç">pç</option></select>
+      </div>
+    </div>
+    <div class="row f4">
+      <div class="fl"><label>Preço de venda (R$)</label><input type="text" inputmode="decimal" id="prod-preco" placeholder="0,00"></div>
+      <div class="fl"><label>Custo (R$)</label><input type="text" inputmode="decimal" id="prod-custo" placeholder="0,00"></div>
+      <div class="fl"><label title="Avisar quando a quantidade cair abaixo desse número">Alerta de quantidade baixa</label><input type="text" inputmode="decimal" id="prod-min" placeholder="0"></div>
+      <div class="fl" id="prod-inicial-wrap"><label>Quantidade em estoque hoje</label><input type="text" inputmode="decimal" id="prod-inicial" placeholder="0"></div>
+    </div>
+    <div class="row f4">
+      <div class="fl"><label>Fornecedor</label><select id="prod-fornecedor"><option value="">— nenhum —</option></select></div>
+      <div class="fl"><label title="Quantos dias até o produto chegar após o pedido">Prazo de entrega (dias)</label><input type="text" inputmode="decimal" id="prod-leadtime" placeholder="7"></div>
+      <div class="fl"><label title="Quantidade extra que fica reservada para emergências">Reserva de segurança</label><input type="text" inputmode="decimal" id="prod-seguranca" placeholder="0"></div>
+      <div class="fl"><label title="Quantidade mínima por pedido de compra">Compra mínima (qtd)</label><input type="text" inputmode="decimal" id="prod-lote" placeholder="1"></div>
+    </div>
+    <div class="row" style="align-items:end">
+      <div class="fl"><label title="Código do lote de produção do fabricante — só para produtos com validade, ex: cloro">Lote (opcional)</label><input type="text" id="prod-lote-cod" placeholder="Ex: L2026-045"></div>
+      <div class="fl"><label title="Data de validade do lote atual — avisa quando estiver perto de vencer">Validade (opcional)</label><input type="date" id="prod-validade"></div>
+    </div>
+    <details style="margin:6px 0 12px">
+      <summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--c1)">🧾 Dados para Nota Fiscal (preencher só quando precisar emitir NF)</summary>
+      <div class="row f4" style="margin-top:8px">
+        <div class="fl"><label title="Código que classifica o produto para a Receita Federal">NCM — código fiscal</label><input type="text" id="prod-ncm" placeholder="0000.00.00"></div>
+        <div class="fl"><label title="Usado apenas para produtos com substituição tributária">CEST — sub. tributária</label><input type="text" id="prod-cest" placeholder="opcional"></div>
+        <div class="fl"><label title="Código da operação fiscal (ex: 5102 = venda de produção própria)">CFOP — tipo de operação</label><input type="text" id="prod-cfop" placeholder="5102"></div>
+        <div class="fl"><label title="0 = Nacional · 1 = Importado">Origem do produto</label><input type="text" id="prod-origem" placeholder="0 = Nacional"></div>
+      </div>
+      <div class="row f1" style="margin-top:8px"><div class="fl"><label>Código de barras (EAN / GTIN)</label><input type="text" id="prod-gtin" placeholder="SEM GTIN"></div></div>
+    </details>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button onclick="fecharProdutoModal()" style="flex:1;padding:11px;border:1.5px solid var(--gray-mid);border-radius:10px;background:none;color:var(--gray);font-size:13px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Cancelar</button>
+      <button class="btn-primary" onclick="salvarProduto()" style="flex:2">💾 Salvar produto</button>
+    </div>
+    <button id="prod-desativar-btn" onclick="desativarProduto(_prodEditId)" style="display:none;width:100%;margin-top:8px;background:none;border:none;color:var(--red);font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;padding:6px">🚫 Desativar produto</button>
+  </div>
+</div>
+
+<!-- Modal: movimento (entrada/saída/ajuste) -->
+<div class="qr-modal-bg" id="mov-modal" style="display:none" onclick="if(event.target===this)fecharMovModal()">
+  <div class="card" style="max-width:420px;width:92%">
+    <div class="ct" id="mov-modal-titulo">Movimento <button onclick="fecharMovModal()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;float:right;line-height:1">×</button></div>
+    <div id="mov-saldo-atual" style="font-size:12px;color:var(--gray);margin-bottom:10px"></div>
+    <div class="row f1"><div class="fl"><label id="mov-qtd-label">Quantidade</label><input type="text" inputmode="decimal" id="mov-qtd" placeholder="0"></div></div>
+    <div class="row f1" id="mov-custo-wrap"><div class="fl"><label>Custo por unidade (R$)</label><input type="text" inputmode="decimal" id="mov-custo" placeholder="0,00"></div></div>
+    <div class="row f1"><div class="fl"><label>Motivo</label><input type="text" id="mov-motivo" placeholder="opcional — ex: compra, perda, acerto de inventário"></div></div>
+    <button class="btn-primary" onclick="confirmarMovimento()" style="width:100%">Confirmar</button>
+  </div>
+</div>
+
+<!-- Modal: transferência entre unidades -->
+<div class="qr-modal-bg" id="transf-modal" style="display:none" onclick="if(event.target===this)fecharTransfModal()">
+  <div class="card" style="max-width:420px;width:92%">
+    <div class="ct" id="transf-modal-titulo">Transferir <button onclick="fecharTransfModal()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;float:right;line-height:1">×</button></div>
+    <div id="transf-origem" style="font-size:12px;color:var(--gray);margin-bottom:10px"></div>
+    <div class="row">
+      <div class="fl"><label>Quantidade</label><input type="text" inputmode="decimal" id="transf-qtd" placeholder="0"></div>
+      <div class="fl"><label>Para a unidade</label><select id="transf-destino"></select></div>
+    </div>
+    <div class="row f1"><div class="fl"><label>Motivo / observação</label><input type="text" id="transf-motivo" placeholder="opcional"></div></div>
+    <button class="btn-primary" onclick="confirmarTransferencia()" style="width:100%">🔄 Confirmar transferência</button>
+  </div>
+</div>
+
+<!-- Modal: importar produtos de planilha -->
+<div class="qr-modal-bg" id="import-prod-modal" style="display:none" onclick="if(event.target===this)fecharImportProdutos()">
+  <div class="card" style="max-width:680px;width:95%;max-height:90vh;overflow:auto">
+    <div class="ct" style="position:sticky;top:0;z-index:2;background:var(--white);margin-top:-6px;padding-top:6px">
+      Importar produtos da planilha
+      <button onclick="fecharImportProdutos()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;float:right;line-height:1">×</button>
+    </div>
+
+    <!-- Passo 1: upload -->
+    <div id="imp-step-upload">
+      <p style="font-size:13px;color:var(--gray);margin-bottom:14px">Selecione o arquivo <strong>Excel (.xlsx)</strong> ou <strong>CSV (.csv)</strong> com os produtos. O sistema detecta as colunas automaticamente.</p>
+      <label id="imp-drop-zone" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border:2.5px dashed var(--gray-mid);border-radius:12px;padding:32px 20px;cursor:pointer;background:var(--gray-light);transition:border-color .2s" ondragover="event.preventDefault();this.style.borderColor='var(--c1)'" ondragleave="this.style.borderColor='var(--gray-mid)'" ondrop="_impDrop(event)">
+        <span style="font-size:36px">📊</span>
+        <span style="font-size:14px;font-weight:600;color:var(--c2)">Clique ou arraste o arquivo aqui</span>
+        <span style="font-size:12px;color:var(--gray)">.xlsx ou .csv — Excel, Google Sheets exportado</span>
+        <input type="file" id="imp-file-input" accept=".xlsx,.csv,.xls" style="display:none" onchange="_impArquivoSelecionado(this)">
+      </label>
+      <p style="font-size:11px;color:var(--gray);margin-top:10px;text-align:center">Google Sheets: Arquivo → Fazer download → CSV ou Excel</p>
+    </div>
+
+    <!-- Passo 2: mapeamento + preview -->
+    <div id="imp-step-map" style="display:none">
+      <div id="imp-map-fields" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px"></div>
+      <div style="font-size:12px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Preview (primeiras 5 linhas)</div>
+      <div style="overflow-x:auto;border-radius:8px;border:1.5px solid var(--gray-mid)">
+        <table id="imp-preview-table" style="width:100%;border-collapse:collapse;font-size:12px"></table>
+      </div>
+      <div style="margin-top:16px;display:flex;gap:10px;align-items:center">
+        <button class="btn-primary" id="imp-btn-confirmar" onclick="_impConfirmar()" style="flex:1;padding:11px">📥 Importar produtos</button>
+        <button onclick="fecharImportProdutos()" style="padding:11px 16px;border:1.5px solid var(--gray-mid);border-radius:10px;background:none;cursor:pointer;font-family:inherit;font-size:13px">Cancelar</button>
+      </div>
+    </div>
+
+    <!-- Passo 3: resultado -->
+    <div id="imp-step-result" style="display:none;text-align:center;padding:24px 0">
+      <div id="imp-result-icon" style="font-size:48px;margin-bottom:12px"></div>
+      <div id="imp-result-text" style="font-size:15px;font-weight:600;color:var(--c2);margin-bottom:8px"></div>
+      <div id="imp-result-sub" style="font-size:13px;color:var(--gray);margin-bottom:20px"></div>
+      <button class="btn-primary" onclick="fecharImportProdutos()" style="padding:10px 24px">✓ Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: selecionar produto para o item do orçamento -->
+<div class="qr-modal-bg" id="prodpicker-modal" style="display:none" onclick="if(event.target===this)fecharPickerProduto()">
+  <div class="card" style="max-width:460px;width:92%;max-height:80vh;overflow:auto">
+    <div class="ct">Vincular produto <button onclick="fecharPickerProduto()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;float:right;line-height:1">×</button></div>
+    <input class="hsrch" type="text" id="prodpicker-busca" placeholder="🔍 Buscar produto…" oninput="renderPickerProduto(this.value)" style="width:100%;margin-bottom:8px">
+    <div id="prodpicker-body"></div>
+  </div>
+</div>
+
+<!-- Modal: histórico do produto -->
+<div class="qr-modal-bg" id="hist-prod-modal" style="display:none" onclick="if(event.target===this)fecharHistProduto()">
+  <div class="card" style="max-width:480px;width:92%;max-height:80vh;overflow:auto">
+    <div class="ct" id="hist-prod-titulo">Histórico <button onclick="fecharHistProduto()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;float:right;line-height:1">×</button></div>
+    <div id="hist-prod-body"></div>
+  </div>
+</div>
+
+<!-- Modal: fornecedores -->
+<div class="qr-modal-bg" id="fornec-modal" style="display:none" onclick="if(event.target===this)fecharFornecModal()">
+  <div class="card" style="max-width:540px;width:92%;max-height:88vh;overflow:auto">
+    <div class="ct">👥 Fornecedores <button onclick="fecharFornecModal()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;line-height:1;margin-left:auto;padding:0 4px">×</button></div>
+    <div id="fornec-lista"></div>
+    <div style="border-top:1.5px solid var(--gray-light);margin-top:12px;padding-top:12px">
+      <div style="font-size:12px;font-weight:700;color:var(--c1);margin-bottom:8px" id="fornec-form-titulo">＋ Novo fornecedor</div>
+      <div class="row f1"><div class="fl"><label class="req">Nome / Empresa</label><input type="text" id="fnome" placeholder="Ex: Distribuidora Silva"></div></div>
+      <div class="row">
+        <div class="fl"><label>Contato</label><input type="text" id="fcontato" placeholder="Nome do responsável"></div>
+        <div class="fl"><label>WhatsApp</label><input type="text" inputmode="tel" id="fwhatsapp" placeholder="47999999999"></div>
+      </div>
+      <div class="row f1"><div class="fl"><label>E-mail</label><input type="email" id="femail" placeholder="compras@fornecedor.com.br"></div></div>
+      <div class="row f1"><div class="fl"><label>Observações</label><input type="text" id="fobs" placeholder="Prazo de pagamento, condições..."></div></div>
+      <input type="hidden" id="fornec-edit-id">
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <button class="btn-primary" onclick="salvarFornecedor()" style="flex:1">💾 Salvar fornecedor</button>
+        <button id="fornec-cancelar-btn" onclick="cancelarFornecedorForm()" style="display:none;padding:10px 14px;border:1.5px solid var(--gray-mid);border-radius:8px;background:none;cursor:pointer;font-size:13px;color:var(--gray)">Cancelar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: lista de ordens de compra -->
+<div class="qr-modal-bg" id="oc-list-modal" style="display:none" onclick="if(event.target===this)fecharOCListModal()">
+  <div class="card" style="max-width:600px;width:92%;max-height:88vh;overflow:auto">
+    <div class="ct">📄 Ordens de Compra <button onclick="fecharOCListModal()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;line-height:1;margin-left:auto;padding:0 4px">×</button></div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <button class="btn-primary" onclick="criarOCManual()" style="font-size:12px;padding:7px 12px">＋ Nova OC</button>
+      <button class="ba" onclick="criarOCDaListaCompras()" style="font-size:12px;padding:7px 12px;background:var(--gray-light);color:var(--c2)">🛒 Gerar da lista</button>
+    </div>
+    <div id="oc-list-body"></div>
+  </div>
+</div>
+
+<!-- Modal: formulário de OC -->
+<div class="qr-modal-bg" id="oc-form-modal" style="display:none" onclick="if(event.target===this)fecharOCFormModal()">
+  <div class="card" style="max-width:580px;width:92%;max-height:90vh;overflow:auto">
+    <div class="ct" id="oc-form-titulo">Nova Ordem de Compra <button onclick="fecharOCFormModal()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;line-height:1;margin-left:auto;padding:0 4px">×</button></div>
+    <div class="row">
+      <div class="fl"><label class="req">Fornecedor</label><select id="oc-fornecedor"></select></div>
+      <div class="fl"><label>Data prevista</label><input type="date" id="oc-data"></div>
+    </div>
+    <div class="row f1"><div class="fl"><label>Observações</label><input type="text" id="oc-obs" placeholder="condições, prazo de pagamento..."></div></div>
+    <div style="margin:10px 0 6px;font-size:12px;font-weight:700;color:var(--c1)">ITENS DA ORDEM</div>
+    <div id="oc-itens-body"></div>
+    <div style="display:flex;gap:8px;margin-top:6px;align-items:center">
+      <select id="oc-add-prod" style="flex:1;padding:7px 10px;border:1.5px dashed var(--gray-mid);border-radius:8px;font-size:12px;font-family:'Inter',sans-serif;outline:none;color:var(--c2)"><option value="">＋ Adicionar produto…</option></select>
+    </div>
+    <div id="oc-total-row" style="text-align:right;font-size:14px;font-weight:700;color:var(--c2);padding-top:10px;border-top:1.5px solid var(--gray-light);margin-top:8px"></div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn-primary" onclick="salvarOC('rascunho')" style="flex:1;font-size:13px">💾 Salvar rascunho</button>
+      <button class="ba" onclick="enviarOCWhatsApp()" style="flex:1;font-size:13px;background:var(--green);color:white;border-color:var(--green)">📲 Enviar WhatsApp</button>
+    </div>
+    <input type="hidden" id="oc-edit-id">
+  </div>
+</div>
+
+<!-- Modal: balanço de inventário -->
+<div class="qr-modal-bg" id="balanco-modal" style="display:none" onclick="if(event.target===this)fecharBalancoModal()">
+  <div class="card" style="max-width:580px;width:92%;max-height:90vh;overflow:auto">
+    <div class="ct">📋 Balanço de Inventário <button onclick="fecharBalancoModal()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;line-height:1;margin-left:auto;padding:0 4px">×</button></div>
+    <div style="font-size:12px;color:var(--gray);margin-bottom:12px">Informe a quantidade física contada para cada produto. O sistema vai gerar ajustes automáticos para as diferenças.</div>
+    <input class="hsrch" type="text" id="balanco-busca" placeholder="🔍 Filtrar produto…" oninput="renderBalancoLista()" style="margin-bottom:10px;width:100%">
+    <div id="balanco-body"></div>
+    <div id="balanco-resumo" style="padding:10px 0;border-top:1.5px solid var(--gray-light);margin-top:8px;font-size:13px;color:var(--c2)"></div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn-primary" onclick="confirmarBalanco()" id="balanco-confirmar-btn" style="flex:1">✅ Confirmar ajustes</button>
+      <button onclick="fecharBalancoModal()" style="padding:10px 14px;border:1.5px solid var(--gray-mid);border-radius:8px;background:none;cursor:pointer;font-size:13px;color:var(--gray)">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PAGE: AGENDAMENTOS ══ -->
+<!-- ══ PAGE: VISTORIAS ══ -->
+<div class="page" id="page-visitas">
+  <div class="wrap">
+
+    <!-- Header + tabs -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <button id="vis-back-os" onclick="go('minhas-os')" style="display:none;background:var(--c1-light);color:var(--c1);border:1.5px solid var(--c1);border-radius:50px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif">← 📋 Minhas OS</button>
+        <div style="font-size:18px;font-weight:800;color:var(--c2)">🔍 Vistorias de Manutenção</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="fb on" id="vis-tab-nova" onclick="visTab('nova');window._visLocalId=null;visEditId=null;_visDraftId=null;_resetCheckinVis();document.getElementById('vis-plano-banner').style.display='none'">📋 Nova Vistoria</button>
+        <button class="fb" id="vis-tab-hist" onclick="visTab('hist')">📜 Histórico</button>
+        <button class="fb" id="vis-tab-locais" onclick="visTab('locais')">📍 Meus Locais</button>
+      </div>
+    </div>
+
+    <!-- ── ABA: NOVA VISTORIA ── -->
+    <div id="vis-view-nova">
+
+      <!-- Banner: contexto do plano (aparece quando aberto via "Fazer Vistoria") -->
+      <div id="vis-plano-banner" style="display:none;align-items:center;gap:10px;padding:10px 14px;background:var(--c2);border-radius:12px;margin-bottom:12px;color:white">
+        <button onclick="visTab('locais')" style="background:rgba(255,255,255,.15);border:none;cursor:pointer;color:white;font-size:12px;font-weight:700;padding:5px 10px;border-radius:50px;font-family:'Inter',sans-serif;flex-shrink:0">← Planos</button>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:700" id="vis-plano-nome"></div>
+          <div style="font-size:11px;opacity:.75" id="vis-plano-sub"></div>
+        </div>
+        <div style="font-size:20px">🔍</div>
+      </div>
+
+      <!-- Pre-carga última vistoria -->
+      <div id="vis-precarga-banner" style="display:none" class="vis-precarga-banner">
+        <div style="font-size:22px">📋</div>
+        <div class="vpc-info">
+          <div id="vis-precarga-txt">Vistoria anterior encontrada</div>
+          <div class="vpc-sub" id="vis-precarga-sub">Carregar equipamentos da última visita?</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-shrink:0">
+          <button class="ba" style="background:var(--c1);color:white;padding:7px 14px;font-size:12px" onclick="confirmarPreCarga()">✅ Carregar</button>
+          <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:7px 14px;font-size:12px" onclick="dispensarPreCarga()">Não</button>
+        </div>
+      </div>
+
+      <!-- Dados gerais -->
+      <div class="card" id="vis-dados-card">
+        <div class="ct" style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between" onclick="toggleVisDados()">
+          <span>Dados da Visita</span>
+          <span id="vis-dados-toggle" style="font-size:12px;font-weight:400;color:var(--gray)">▲ recolher</span>
+        </div>
+        <div id="vis-dados-body">
+        <div class="row">
+          <div class="fl"><label>Cliente</label>
+            <div class="cli-input-wrap">
+              <input type="text" id="vis-cli" placeholder="Nome do cliente" oninput="mostrarSugestoesCliVis(this.value)" autocomplete="off" name="cli_nofill_vis" data-lpignore="true" data-form-type="other" readonly onfocus="this.removeAttribute('readonly')" onblur="setTimeout(()=>hideSugCliVis(),200)">
+              <button type="button" class="cli-search-btn" onclick="abrirBuscaCli('vis')" title="Buscar cliente">🔍</button>
+              <div class="cli-suggestions" id="vis-cli-suggestions" style="display:none"></div>
+            </div>
+          </div>
+          <div class="fl"><label>Local / Endereço</label><input type="text" id="vis-loc" placeholder="Endereço do local"></div>
+        </div>
+        <div class="row f4">
+          <div class="fl"><label>Data da Vistoria</label><input type="date" id="vis-data"></div>
+          <div class="fl"><label>Horário</label><input type="time" id="vis-hora" value="08:00"></div>
+          <div class="fl"><label>Técnico</label>
+            <select id="vis-tec"><option value="">Selecione…</option></select>
+          </div>
+          <div class="fl"><label>Mês de Referência</label><input type="month" id="vis-mes-ref"></div>
+        </div>
+        <div class="row" id="vis-email-row">
+          <div class="fl">
+            <label>E-mail do Responsável / Síndico <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--gray)">(relatório enviado automaticamente ao salvar)</span></label>
+            <input type="email" id="vis-email-resp" placeholder="sindico@condominio.com.br">
+          </div>
+          <div class="fl" style="display:flex;flex-direction:column;justify-content:flex-end">
+            <label style="visibility:hidden">.</label>
+            <div id="vis-email-status" style="font-size:12px;color:var(--gray);padding:9px 12px;background:var(--gray-light);border-radius:8px;min-height:38px;display:flex;align-items:center">
+              E-mail será enviado ao salvar a vistoria
+            </div>
+          </div>
+        </div>
+        </div><!-- /vis-dados-body -->
+      </div>
+
+      <!-- Check-in -->
+      <div class="card">
+        <div class="ct">⏱ Check-in / Check-out</div>
+        <div id="vis-checkin-bar" style="display:none" class="checkin-bar">
+          <span>✅ Check-in realizado</span>
+          <span class="checkin-timer" id="vis-checkin-timer">00:00</span>
+          <button class="ba" style="background:var(--red);color:white;padding:8px 14px;font-size:13px" onclick="visCheckout()">✔ Check-out</button>
+        </div>
+        <div id="vis-checkin-form" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <div style="font-size:13px;color:var(--gray);flex:1">Registre sua chegada ao local para iniciar o relatório.</div>
+          <button class="ba" style="background:var(--green);color:white;padding:10px 18px;font-size:13px" onclick="visCheckin()">📍 Check-in</button>
+        </div>
+        <div id="vis-checkin-info" style="font-size:12px;color:var(--gray);margin-top:8px;min-height:16px"></div>
+      </div>
+
+      <!-- Equipamentos presentes neste local -->
+      <div class="card">
+        <div class="ct">⚙️ Equipamentos do Local
+          <span style="font-size:11px;font-weight:400;color:var(--gray);text-transform:none;letter-spacing:0">Selecione os que existem neste local</span>
+        </div>
+        <div class="vis-chips" id="vis-equip-chips"></div>
+      </div>
+
+      <!-- Vistoria por equipamento -->
+      <div class="card" id="vis-equip-card" style="display:none">
+        <div class="ct">🔧 Vistoria dos Equipamentos</div>
+        <div class="vis-equip-grid" id="vis-equip-grid"></div>
+      </div>
+
+      <!-- Observações gerais -->
+      <div class="card">
+        <div class="ct">📝 Observações Gerais</div>
+        <div class="row f1">
+          <div class="fl"><textarea id="vis-obs" rows="4" placeholder="Condições gerais do local, recomendações, pendências observadas nos equipamentos…"></textarea></div>
+        </div>
+      </div>
+
+      <!-- Ações -->
+      <div class="acts" style="grid-template-columns:1fr">
+        <button class="btn-primary" style="font-size:15px;padding:14px" onclick="finalizarVistoria()">
+          ✅ Finalizar Vistoria
+        </button>
+      </div>
+
+    </div><!-- /vis-view-nova -->
+
+    <!-- ── ABA: HISTÓRICO ── -->
+    <div id="vis-view-hist" style="display:none">
+
+      <!-- Mini-dashboard stats -->
+      <div id="vis-stats-row" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px"></div>
+
+      <!-- Filtros -->
+      <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+        <label class="sr-only" for="vis-hist-busca">Buscar vistorias por cliente ou local</label>
+        <input type="text" id="vis-hist-busca" placeholder="Buscar cliente ou local…"
+          oninput="renderVisHistorico()"
+          style="flex:1;min-width:160px;padding:9px 12px;border:1.5px solid var(--gray-mid);border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;color:var(--c2)">
+        <input type="month" id="vis-hist-mes" onchange="renderVisHistorico()"
+          style="padding:9px 12px;border:1.5px solid var(--gray-mid);border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;color:var(--c2)">
+        <select id="vis-hist-tec" onchange="renderVisHistorico()"
+          style="padding:9px 12px;border:1.5px solid var(--gray-mid);border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;color:var(--c2)">
+          <option value="">Todos os técnicos</option>
+        </select>
+      </div>
+
+      <!-- Filtro por status -->
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+        <button class="fb on" id="vis-fst-todos" onclick="filtVisStatus('')">Todos</button>
+        <button class="fb" id="vis-fst-critico" onclick="filtVisStatus('critico')">🔴 Com Crítico</button>
+        <button class="fb" id="vis-fst-atencao" onclick="filtVisStatus('atencao')">⚠️ Com Atenção</button>
+      </div>
+
+      <!-- Painel de alertas críticos -->
+      <div id="vis-alerta-criticos-panel" style="display:none"></div>
+
+      <!-- Ranking de técnicos -->
+      <div class="card" id="vis-ranking-card" style="margin-bottom:14px;display:none">
+        <div class="ct">🏆 Ranking de Técnicos (mês)</div>
+        <div id="vis-ranking-body"></div>
+      </div>
+
+      <div class="card" style="padding:0;overflow:hidden">
+        <div id="vis-hist-body" style="min-height:80px"></div>
+      </div>
+    </div><!-- /vis-view-hist -->
+
+    <!-- Tab: Locais Recorrentes -->
+    <div id="vis-view-locais" style="display:none">
+
+      <!-- ── CABEÇALHO: título + botão novo + navegação de mês ── -->
+      <div class="loc-page-header" id="loc-page-header">
+        <div class="loc-page-title-row">
+          <div>
+            <div style="font-size:17px;font-weight:800;color:var(--c2)">📍 Planos de Acompanhamento</div>
+            <div style="font-size:12px;color:var(--gray);margin-top:2px">Clientes com visita recorrente mensal</div>
+          </div>
+          <button class="btn-primary" id="loc-btn-novo" onclick="abrirLocForm()" style="white-space:nowrap">＋ Novo plano</button>
+        </div>
+        <div class="loc-mes-bar">
+          <div class="loc-mes-nav">
+            <button onclick="locVisMesAnterior()" title="Mês anterior">◀</button>
+            <span class="loc-mes-label" id="loc-mes-label">—</span>
+            <button onclick="locVisMesProximo()" title="Próximo mês">▶</button>
+          </div>
+          <div class="loc-stats-row" id="loc-stats-row"></div>
+        </div>
+      </div>
+
+      <!-- ── FORMULÁRIO: adicionar / editar plano ── -->
+      <div class="loc-add-form" id="loc-add-form" style="display:none">
+        <div class="ct">➕ Novo Plano de Acompanhamento</div>
+        <div class="row"><div class="fl"><label class="req">Cliente / Nome do local</label><input type="text" id="loc-cli" placeholder="Ex: Condomínio Sol Nascente" autocomplete="off"></div><div class="fl"><label class="req">Endereço</label><input type="text" id="loc-end" placeholder="Rua, número, bairro"></div></div>
+        <div class="row"><div class="fl"><label>E-mail responsável</label><input type="email" id="loc-email" placeholder="sindico@condominio.com.br"></div><div class="fl"><label>Técnico responsável</label><select id="loc-tec"><option value="">Qualquer técnico</option></select></div></div>
+        <div class="fl" id="loc-loja-row" style="display:none;margin-bottom:12px"><label>Unidade</label><select id="loc-loja" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-mid);border-radius:8px;font-size:13px;font-family:'Inter',sans-serif"></select></div>
+        <div class="row"><div class="fl"><label title="Escolha um dia para a visita aparecer no calendário nesse dia. Sem dia, ela fica só em Meus Locais como pendente.">Dia da visita (aparece no calendário)</label><select id="loc-dia-pref" style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-mid);border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none"><option value="">Sem dia fixo (só em Meus Locais)</option></select></div><div class="fl"><label>Horário preferencial</label><input type="time" id="loc-hora-pref" value="08:00"></div></div>
+        <div class="fl" style="margin-bottom:4px">
+          <label style="display:flex;align-items:center;justify-content:space-between">
+            <span>🔧 Equipamentos do local <span style="font-weight:400;color:var(--gray)">(modelo, potência…)</span></span>
+            <button type="button" class="btn-sm" onclick="adicionarLocEquip()" style="font-size:11px;padding:4px 10px">＋ Adicionar</button>
+          </label>
+          <div id="loc-equip-list" style="margin-top:8px"></div>
+        </div>
+        <input type="hidden" id="loc-edit-id">
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="btn-primary" onclick="salvarLocal()">💾 Salvar plano</button>
+          <button class="btn-sm" onclick="fecharLocForm()" style="color:var(--c2)">Cancelar</button>
+        </div>
+      </div>
+
+      <!-- ── BUSCA POR LOCAL ── -->
+      <div style="margin-bottom:12px">
+        <input type="text" id="loc-busca" placeholder="🔍 Filtrar por nome do local ou cliente…"
+          oninput="renderLocaisTab()"
+          style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid var(--gray-mid);border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;color:var(--c2)">
+      </div>
+
+      <!-- ── LISTA UNIFICADA: cada cliente com status do mês ── -->
+      <div id="loc-lista-unificada"></div>
+
+    </div><!-- /vis-view-locais -->
+
+  </div>
+</div>
+
+<div class="page" id="page-agendamentos">
+  <div class="wrap">
+
+    <!-- Formulário novo contrato (oculto por padrão) -->
+    <div class="card" id="ag-form-card" style="display:none">
+      <div class="ct">Novo Agendamento Recorrente <button onclick="fecharFormAg()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;line-height:1">×</button></div>
+      <div class="row">
+        <div class="fl"><label>Cliente</label><input type="text" id="ag-cli" placeholder="Nome do cliente" list="ag-cli-list" oninput="filtrarCliAg(this.value)"><datalist id="ag-cli-list"></datalist></div>
+        <div class="fl"><label>Local / Endereço</label><input type="text" id="ag-loc" placeholder="Endereço"></div>
+      </div>
+      <div class="row">
+        <div class="fl"><label>Técnico Responsável</label><select id="ag-tec"><option value="">Selecione…</option></select></div>
+        <div class="fl"><label>Tipo de Serviço</label><input type="text" id="ag-tipo" placeholder="Ex: Manutenção mensal de piscina"></div>
+      </div>
+      <div class="row f4">
+        <div class="fl"><label>Periodicidade</label>
+          <select id="ag-periodo" onchange="updAgForm()">
+            <option value="semanal">Semanal</option>
+            <option value="quinzenal">Quinzenal</option>
+            <option value="mensal" selected>Mensal</option>
+          </select>
+        </div>
+        <div class="fl"><label>Dia da semana / mês</label><select id="ag-dia"></select></div>
+        <div class="fl"><label>Horário</label><input type="time" id="ag-hora" value="08:00"></div>
+        <div class="fl"><label>Data Início</label><input type="date" id="ag-inicio"></div>
+      </div>
+      <div class="row">
+        <div class="fl"><label>Data Fim <span style="font-weight:400;color:var(--gray);text-transform:none">(deixe vazio = indeterminado)</span></label><input type="date" id="ag-fim"></div>
+        <div class="fl"><label>Observações fixas</label><input type="text" id="ag-obs" placeholder="Ex: Chave no portão, ligar antes"></div>
+      </div>
+      <button class="btn-primary" onclick="salvarAgendamento()">💾 Salvar Agendamento</button>
+    </div>
+
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+      <div style="font-size:18px;font-weight:800;color:var(--c2)">📅 Agendamentos</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="fb on" id="ag-tab-cal" onclick="agTab('cal')">📆 Calendário</button>
+        <button class="fb" id="ag-tab-lista" onclick="agTab('lista')">📋 Contratos</button>
+        <button class="btn-primary" style="padding:8px 16px;font-size:13px" onclick="abrirFormAg()">＋ Novo</button>
+      </div>
+    </div>
+
+    <!-- Alertas de visitas amanhã -->
+    <div id="ag-alertas-amanha"></div>
+
+    <!-- Aba Calendário -->
+    <div id="ag-view-cal">
+      <div class="cal-nav">
+        <button onclick="navCal(-1)">‹</button>
+        <span id="cal-titulo"></span>
+        <button onclick="navCal(1)">›</button>
+        <select id="cal-filtro-tec" onchange="renderCal()" style="margin-left:auto;padding:6px 10px;border:1.5px solid var(--gray-mid);border-radius:8px;font-size:12px;font-family:'Inter',sans-serif;outline:none">
+          <option value="">Todos os técnicos</option>
+        </select>
+        <button class="tb" id="btn-reorganizar-cal" onclick="reorganizarCalendarioPlanos(this)" title="Reorganiza as visitas dos planos conforme o dia escolhido em cada um (limpa visitas antigas empilhadas)" style="font-size:11px">🔧 Reorganizar</button>
+      </div>
+      <div class="cal-wrap"><table class="cal" id="cal-tabela"></table></div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;padding:10px 4px 0;font-size:11px;color:var(--gray)">
+        <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:3px;background:#7c3aed;display:inline-block"></span>🔍 Vistoria mensal</span>
+        <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:3px;background:#c45e0a;display:inline-block"></span>📄 Do orçamento</span>
+        <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:3px;background:#2563eb;display:inline-block"></span>🔧 Serviço avulso</span>
+        <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:3px;background:#16a34a;display:inline-block"></span>✅ Concluída</span>
+      </div>
+    </div>
+
+    <!-- Aba Lista de Contratos -->
+    <div id="ag-view-lista" style="display:none">
+      <div id="ag-lista-body"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══ MODAL: REGISTRAR PAGAMENTO ══ -->
+<!-- ══ MODAL: BUSCA CLIENTE ══ -->
+<div class="modal-cli-bg" id="modal-busca-cli" style="display:none" onclick="if(event.target===this)fecharBuscaCli()">
+  <div class="modal-cli-box">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div style="font-size:15px;font-weight:700;color:var(--c2)">Buscar Cliente</div>
+      <button onclick="fecharBuscaCli()" aria-label="Fechar" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--gray);line-height:1">×</button>
+    </div>
+    <input class="modal-cli-inp" id="modal-cli-inp" type="text" placeholder="Nome, telefone ou CNPJ..." oninput="filtrarListaCli(this.value)" autocomplete="off">
+    <div class="modal-cli-lista" id="modal-cli-lista"></div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modal-pg" onclick="if(event.target===this)fecharModal()">
+  <div class="modal">
+    <h3>💰 Registrar Pagamento</h3>
+    <div class="fl" style="margin-bottom:10px"><label>Valor Total do Orçamento</label><input type="text" id="mg-tot" readonly style="background:var(--gray-light)"></div>
+    <div class="fl"><label>Valor Recebido (R$)</label><input type="number" id="mg-val" placeholder="0,00" step="0.01" min="0"></div>
+    <div class="modal-acts">
+      <button class="btn-sec" onclick="fecharModal()">Cancelar</button>
+      <button class="btn-pri" onclick="salvarPagamento()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: CONFIRMAÇÃO (M-01) ══ -->
+<div class="modal-bg" id="confirmar-modal-bg" role="dialog" aria-modal="true" aria-labelledby="confirmar-titulo">
+  <div class="modal">
+    <h3 id="confirmar-titulo">Confirmar</h3>
+    <p id="confirmar-msg" style="font-size:14px;color:var(--gray);margin-bottom:0"></p>
+    <div class="modal-acts">
+      <button class="btn-sec" id="confirmar-nao" onclick="document.getElementById('confirmar-modal-bg').classList.remove('on')">Cancelar</button>
+      <button class="btn-pri" id="confirmar-sim" style="background:var(--red)">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: Criar OS ao aprovar orçamento ══ -->
+<div class="modal-bg" id="aprov-os-bg" onclick="if(event.target===this)fecharAprovOS()">
+  <div class="modal" style="max-width:460px">
+    <div style="text-align:center;margin-bottom:18px">
+      <div style="font-size:32px;margin-bottom:6px">📋</div>
+      <h3 id="aprov-os-titulo" style="margin:0 0 6px">Orçamento aprovado!</h3>
+      <p style="font-size:13px;color:var(--gray);margin:0">Deseja agendar uma OS? Data e técnico podem ser preenchidos agora ou depois.</p>
+    </div>
+    <input type="hidden" id="aprov-os-orc-id">
+    <div style="background:#f8fafc;border-radius:12px;padding:14px;margin-bottom:16px;display:flex;flex-direction:column;gap:10px">
+      <div class="row">
+        <div class="fl"><label>Data do serviço</label><input type="date" id="aprov-os-data" style="padding:9px 12px;border:1.5px solid var(--gray-mid);border-radius:8px;font-size:14px;font-family:'Inter',sans-serif;outline:none;width:100%;box-sizing:border-box"></div>
+        <div class="fl"><label>Hora</label><input type="time" id="aprov-os-hora" value="08:00" style="padding:9px 12px;border:1.5px solid var(--gray-mid);border-radius:8px;font-size:14px;font-family:'Inter',sans-serif;outline:none;width:100%;box-sizing:border-box"></div>
+      </div>
+      <div class="fl"><label>Técnico responsável</label>
+        <select id="aprov-os-tec" style="padding:9px 12px;border:1.5px solid var(--gray-mid);border-radius:8px;font-size:14px;font-family:'Inter',sans-serif;outline:none;width:100%;box-sizing:border-box;background:white">
+          <option value="">Selecione…</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn-sec" onclick="fecharAprovOS()" style="flex:1">Não por agora</button>
+      <button id="aprov-os-btn" class="btn-primary" onclick="criarOSdeAprovacao()" style="flex:2">📋 Criar OS agendada</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: Concluir Vistoria Rápida ══ -->
+<div class="modal-bg" id="concluir-vis-bg" role="dialog" aria-modal="true" onclick="if(event.target===this)fecharConcluirVis()">
+  <div class="modal" style="max-width:520px;max-height:90vh;overflow-y:auto">
+    <h3 style="margin-bottom:4px">✅ Registrar visita</h3>
+    <p id="concluir-vis-nome" style="font-size:13px;color:var(--gray);margin-bottom:16px;font-weight:600"></p>
+    <input type="hidden" id="concluir-vis-id">
+    <!-- Data + hora + técnico -->
+    <div class="row" style="margin-bottom:12px">
+      <div class="fl">
+        <label>Data da visita</label>
+        <input type="date" id="concluir-vis-data" style="width:100%">
+      </div>
+      <div class="fl">
+        <label>Horário de chegada</label>
+        <input type="time" id="concluir-vis-hora" style="width:100%">
+      </div>
+    </div>
+    <div class="fl" style="margin-bottom:14px">
+      <label>Técnico responsável</label>
+      <input type="text" id="concluir-vis-tec" placeholder="Nome do técnico" style="width:100%">
+    </div>
+    <!-- Equipamentos cadastrados no plano -->
+    <div id="concluir-vis-equips-wrap" style="display:none;margin-bottom:14px">
+      <div style="font-size:13px;font-weight:700;color:var(--c2);margin-bottom:8px;display:flex;align-items:center;gap:6px">
+        🔧 Condição dos equipamentos
+        <span style="font-size:11px;font-weight:400;color:var(--gray)">(marque o status de cada um)</span>
+      </div>
+      <div id="concluir-vis-equip-list"></div>
+    </div>
+    <!-- Observação geral -->
+    <div class="fl" style="margin-bottom:16px">
+      <label>Observações gerais <span style="font-weight:400;color:var(--gray)">(opcional)</span></label>
+      <textarea id="concluir-vis-obs" rows="2" placeholder="Ex: Sistema funcionando normalmente, limpeza realizada…" style="width:100%;resize:vertical;padding:9px 12px;border:1.5px solid var(--gray-mid);border-radius:8px;font-family:'Inter',sans-serif;font-size:13px;color:var(--c2);outline:none"></textarea>
+    </div>
+    <div class="modal-acts">
+      <button class="btn-sec" onclick="fecharConcluirVis()">Cancelar</button>
+      <button class="btn-primary" onclick="salvarConcluirVis()" style="flex:1">✅ Confirmar visita</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: NF-e / NFS-e ══ -->
+<div class="nfe-modal-bg" id="nfe-modal-bg" onclick="if(event.target===this)fecharModalNFe()">
+  <div class="nfe-modal">
+    <h3>📄 Emitir Nota Fiscal</h3>
+    <div class="nfe-modal-sub" id="nfe-modal-sub">Orçamento #000 — Cliente</div>
+
+    <!-- Tipo -->
+    <div class="nfe-tipo-tabs">
+      <button class="nfe-tab on" id="nfe-tab-nfse" onclick="selecionarTipoNF('nfse')">NFS-e<br><span style="font-size:10px;font-weight:400">Serviços (prestação)</span></button>
+      <button class="nfe-tab" id="nfe-tab-nfe" onclick="selecionarTipoNF('nfe')">NF-e<br><span style="font-size:10px;font-weight:400">Produtos/mercadorias</span></button>
+    </div>
+
+    <!-- Dados do orçamento (readonly) -->
+    <div style="background:var(--gray-light);border-radius:10px;padding:14px;margin-bottom:16px">
+      <div class="nfe-info-row"><span class="lbl">Cliente</span><span class="val" id="nfe-cli">—</span></div>
+      <div class="nfe-info-row"><span class="lbl">CNPJ/CPF</span><span class="val" id="nfe-cnpj">—</span></div>
+      <div class="nfe-info-row"><span class="lbl">Valor Total</span><span class="val" id="nfe-total">—</span></div>
+      <div class="nfe-info-row"><span class="lbl">Serviços</span><span class="val" id="nfe-svcs" style="word-break:break-word">—</span></div>
+    </div>
+
+    <!-- Token Focus NFe (se não configurado na loja) -->
+    <div id="nfe-token-wrap" style="margin-bottom:14px">
+      <div class="fl" style="margin-bottom:10px">
+        <label>Token Focus NFe <span style="font-weight:400;color:var(--gray);text-transform:none;letter-spacing:0">(configure em Empresa → Nota Fiscal)</span></label>
+        <input type="text" id="nfe-token-input" placeholder="token_producao_ou_homologacao" style="font-size:13px">
+      </div>
+      <div class="row">
+        <div class="fl">
+          <label>Ambiente</label>
+          <select id="nfe-ambiente">
+            <option value="homologacao">Homologação (testes)</option>
+            <option value="producao">Produção (notas reais)</option>
+          </select>
+        </div>
+        <div class="fl">
+          <label>Referência (automática)</label>
+          <input type="text" id="nfe-ref" readonly style="background:var(--gray-light);font-size:13px">
+        </div>
+      </div>
+    </div>
+
+    <!-- NFS-e específico -->
+    <div id="nfe-nfse-fields">
+      <div class="row">
+        <div class="fl">
+          <label>Código do Serviço (LC 116)</label>
+          <input type="text" id="nfe-cod-servico" placeholder="Ex: 7.10" value="7.10">
+        </div>
+        <div class="fl">
+          <label>Alíquota ISS (%)</label>
+          <input type="number" id="nfe-iss-aliq" placeholder="Ex: 2.0" value="2.0" step="0.01" min="0" max="5">
+        </div>
+      </div>
+      <div class="fl" style="margin-bottom:14px">
+        <label>Descrição do Serviço</label>
+        <textarea id="nfe-desc-servico" rows="2" placeholder="Ex: Manutenção de piscina — limpeza, troca de filtro e ajuste de pH"></textarea>
+      </div>
+    </div>
+
+    <!-- NF-e específico -->
+    <div id="nfe-nfe-fields" style="display:none">
+      <div class="row">
+        <div class="fl">
+          <label>NCM (código do produto)</label>
+          <input type="text" id="nfe-ncm" placeholder="Ex: 84218900">
+        </div>
+        <div class="fl">
+          <label>CFOP</label>
+          <input type="text" id="nfe-cfop" placeholder="Ex: 5102" value="5102">
+        </div>
+      </div>
+    </div>
+
+    <!-- Status da emissão -->
+    <div id="nfe-status-wrap" style="display:none">
+      <div id="nfe-status-badge" class="nfe-status-badge processando">⏳ Processando…</div>
+      <div id="nfe-status-msg" style="font-size:12px;color:var(--gray);margin-top:4px"></div>
+      <div id="nfe-download-wrap" style="display:none;margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"></div>
+    </div>
+
+    <div class="nfe-acts">
+      <button class="btn-sec" onclick="fecharModalNFe()">Cancelar</button>
+      <button class="btn-primary" id="nfe-btn-emitir" onclick="emitirNota()">⚡ Emitir Nota Fiscal</button>
+    </div>
+  </div>
+</div>
+
+</main><!-- /#main-content -->
+
+<div class="toast" id="toast" role="alert" aria-live="assertive" aria-atomic="true"></div>
+
+<!-- Error boundary global: captura erros JS e exibe tela amigável -->
+<script>
+window.onerror = function(msg, src, line, col, err){
+  // Só exibe tela para erros de sintaxe/referência no arquivo principal (não erros de rede)
+  if(!src || !(src.includes('index.html') || src.includes('app.js'))) return false;
+  var el = document.getElementById('fluxa-error-screen');
+  if(!el) return false;
+  el.style.display = 'flex';
+  document.getElementById('fluxa-error-detail').textContent = (err && err.message ? err.message : msg) + (line ? ' (linha ' + line + ')' : '');
+  return true;
+};
+</script>
+<!-- Tela de erro amigável (oculta por padrão) -->
+<div id="fluxa-error-screen" style="display:none;position:fixed;inset:0;z-index:99999;background:#f0f2f5;flex-direction:column;align-items:center;justify-content:center;font-family:'Inter',sans-serif;padding:24px;text-align:center">
+  <div style="font-size:48px;margin-bottom:16px">⚠️</div>
+  <div style="font-size:20px;font-weight:800;color:#2B3244;margin-bottom:8px">Algo deu errado</div>
+  <div style="font-size:14px;color:#6b7280;margin-bottom:6px">O app encontrou um erro inesperado.</div>
+  <div id="fluxa-error-detail" style="font-size:11px;color:#9ca3af;background:#e5e7eb;border-radius:8px;padding:8px 14px;margin-bottom:24px;max-width:480px;word-break:break-word"></div>
+  <button onclick="window.location.reload()" style="background:#C45E0A;color:white;border:none;border-radius:10px;padding:12px 28px;font-size:15px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif">🔄 Recarregar o app</button>
+  <div style="margin-top:12px;font-size:12px;color:#9ca3af">Seus dados estão salvos — nada foi perdido.</div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
