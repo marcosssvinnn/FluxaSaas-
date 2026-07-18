@@ -123,7 +123,21 @@
   </div><!-- /login-right -->
 </div>
 
-<!-- ══ HEADER ══ -->
+<!-- ══ TOPBAR DO MODO ADMIN DA PLATAFORMA (totalmente separado do app de empresa) ══ -->
+<header class="hdr" id="admin-topbar" style="display:none;background:#12141c">
+  <div class="hdr-logo">
+    <div class="hdr-logo-text">
+      <span class="hdr-nome" style="color:#fff">🛠️ Fluxa — Administração</span>
+      <span class="hdr-sub" style="color:#8b93a7">Painel da plataforma (não é dado de nenhuma empresa)</span>
+    </div>
+  </div>
+  <div style="margin-left:auto;display:flex;align-items:center;gap:10px;padding-right:8px">
+    <button class="ba" onclick="loadPlataforma()" title="Atualizar" style="background:transparent;color:#fff;border:1px solid #3a3f52">🔄</button>
+    <button class="ba" onclick="authLogout()" style="background:var(--red);color:#fff">🚪 Sair</button>
+  </div>
+</header>
+
+<!-- ══ HEADER (app de empresa — não aparece pra admin da plataforma) ══ -->
 <header class="hdr">
   <button class="btn-sbar" id="btn-sbar" onclick="toggleSidebar()" aria-label="Menu lateral" title="Menu">☰</button>
   <div class="hdr-logo">
@@ -164,7 +178,6 @@
         <button id="gear-btn-analises" onclick="closeGear();go('analises')">📊 Análises</button>
         <button id="gear-btn-usuarios" onclick="closeGear();go('usuarios')">👥 Usuários</button>
         <button id="gear-btn-auditoria" onclick="closeGear();go('auditoria')">🔐 Auditoria</button>
-        <button id="gear-btn-plataforma" onclick="closeGear();go('plataforma')" style="display:none">🛠️ Administração da Plataforma</button>
         <button onclick="closeGear();fazerLogout()">🔄 Trocar usuário</button>
         <button onclick="closeGear();authLogout()" style="color:var(--red)">🚪 Sair da conta</button>
       </div>

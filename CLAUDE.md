@@ -92,9 +92,16 @@ confunde com nenhum `perfil` de tenant.
   `admin_uso_plataforma()` (tamanho do banco, storage por bucket, totais globais),
   `admin_set_empresa_ativo(empresa,bool)` (suspender/reativar empresa),
   `admin_set_flag_empresa(empresa,flag,bool)` (feature flag por empresa, cross-tenant).
-- **App:** `checarAdminPlataforma()` roda no boot pós-login; `isPlataformaAdmin`
-  controla a visibilidade do botão "🛠️ Administração da Plataforma" (menu ⚙️) e
-  a página `go('plataforma')` (`loadPlataforma`/`renderPlataforma`).
+- **App — UX totalmente separada do tenant (não é uma aba dentro do app da
+  empresa):** `checarAdminPlataforma()` roda no boot logo após autenticar, ANTES
+  de `definirEmpresaAtiva()`. Se `isPlataformaAdmin===true`, o boot desvia para
+  `entrarModoPlataforma()` e **pula todo o resto do boot de tenant** (sem
+  `definirEmpresaAtiva`, sem PIN interno, sem `go('form')`, sem `tentarConectar`).
+  `entrarModoPlataforma()` esconde `.hdr`/`#sidebar`/`#mob-nav`/`#login-overlay`
+  do app de empresa e mostra só `#admin-topbar` (topbar escura própria, com botão
+  "Sair" = `authLogout()`) + `#page-plataforma` (`loadPlataforma`/`renderPlataforma`).
+  **Por desenho, uma conta admin não deve ser membro de nenhuma empresa** — se for
+  (ex.: testando), ainda assim cai direto no modo admin, nunca no app de tenant.
 - **Dar acesso a alguém:** não existe fluxo no app para isso (de propósito — é
   poder demais para expor por UI). Sempre via SQL Editor/PAT, manualmente.
 

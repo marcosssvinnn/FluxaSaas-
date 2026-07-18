@@ -1120,34 +1120,45 @@ function lsOrcProxNum(){ return lsOrcLer().reduce((a,o)=>Math.max(a,o.numero||0)
     try{ db.auth.onAuthStateChange((_ev, s)=>{ authUser = s?.user || null; }); }catch(e){ console.warn('[onAuthStateChange]', e?.message||e); }
   }
 
+  let modoAdminPlataforma = false;
   if(temCreds && !authSession){
     // Sem sessão de conta → tela de autenticação (login / criar empresa).
     mostrarTelaAuth();
   } else {
-    // Com sessão de conta (ou modo local sem credenciais) → carrega empresa e segue
-    // para a etapa INTERNA (usuário + PIN), preservando o fluxo antigo.
-    if(authUser){
-      try{ await definirEmpresaAtiva(); }catch(e){ console.warn('[definirEmpresaAtiva]', e?.message||e); }
-      try{ await checarAdminPlataforma(); }catch(e){ console.warn('[checarAdminPlataforma]', e?.message||e); }
-    }
     esconderTelaAuth();
+    if(authUser){
+      // Checa admin da plataforma ANTES de qualquer coisa de tenant. Uma conta
+      // admin não é gestor de nenhuma empresa (por desenho) — se for admin, entra
+      // numa tela TOTALMENTE separada e pula todo o boot de tenant abaixo.
+      try{ await checarAdminPlataforma(); }catch(e){ console.warn('[checarAdminPlataforma]', e?.message||e); }
+      if(isPlataformaAdmin){
+        modoAdminPlataforma = true;
+        entrarModoPlataforma();
+      } else {
+        try{ await definirEmpresaAtiva(); }catch(e){ console.warn('[definirEmpresaAtiva]', e?.message||e); }
+      }
+    }
 
-    const sessaoExistente = getSessao();
-    if(sessaoExistente){
-      // Restaura unidade ativa: usuário de unidade específica usa loja_id da sessão;
-      // gestor principal usa o valor salvo no sessionStorage (persiste em F5)
-      if(sessaoExistente.loja_id) lojaAtiva = sessaoExistente.loja_id;
-      else { const sal=sessionStorage.getItem('fluxa_loja_ativa'); if(sal) lojaAtiva=sal; }
-      visEmpresaTecnico = sessaoExistente.empresa_tec || sessionStorage.getItem('fluxa_vis_empresa_tec') || '';
-      document.getElementById('login-overlay').style.display='none';
-      atualizarBadgeUsuario();
-      aplicarPermissoesPerfil();
-    } else {
-      try{ todosUsuarios=JSON.parse(ls('fluxa_usuarios')||'[]'); }catch(e){ todosUsuarios=[]; }
-      renderLoginUsers();
-      document.getElementById('login-overlay').style.display='flex';
+    if(!modoAdminPlataforma){
+      const sessaoExistente = getSessao();
+      if(sessaoExistente){
+        // Restaura unidade ativa: usuário de unidade específica usa loja_id da sessão;
+        // gestor principal usa o valor salvo no sessionStorage (persiste em F5)
+        if(sessaoExistente.loja_id) lojaAtiva = sessaoExistente.loja_id;
+        else { const sal=sessionStorage.getItem('fluxa_loja_ativa'); if(sal) lojaAtiva=sal; }
+        visEmpresaTecnico = sessaoExistente.empresa_tec || sessionStorage.getItem('fluxa_vis_empresa_tec') || '';
+        document.getElementById('login-overlay').style.display='none';
+        atualizarBadgeUsuario();
+        aplicarPermissoesPerfil();
+      } else {
+        try{ todosUsuarios=JSON.parse(ls('fluxa_usuarios')||'[]'); }catch(e){ todosUsuarios=[]; }
+        renderLoginUsers();
+        document.getElementById('login-overlay').style.display='flex';
+      }
     }
   }
+
+  if(modoAdminPlataforma){ return; } // admin da plataforma: nada de tenant abaixo
 
   // ── Credenciais do Supabase (ponto único: constantes SUPABASE_URL/ANON_KEY) ──
   const sbUrl = SUPABASE_URL;
@@ -4716,8 +4727,23 @@ async function checarAdminPlataforma(){
     if(error) throw error;
     isPlataformaAdmin = !!data;
   }catch(e){ console.warn('[checarAdminPlataforma]', e?.message||e); }
-  const btn=document.getElementById('gear-btn-plataforma');
-  if(btn) btn.style.display = isPlataformaAdmin ? '' : 'none';
+}
+
+// Modo ADMIN DA PLATAFORMA — tela TOTALMENTE separada do app de qualquer empresa.
+// Uma conta admin não é gestor de nenhum tenant (por desenho): nunca deve ver
+// sidebar/orçamentos/OS/PIN interno — só as métricas cross-tenant do SaaS.
+function entrarModoPlataforma(){
+  document.querySelector('.hdr:not(#admin-topbar)').style.display='none';
+  const mobNav=document.getElementById('mob-nav'); if(mobNav) mobNav.style.display='none';
+  const sidebar=document.getElementById('sidebar'); if(sidebar) sidebar.style.display='none';
+  document.body.classList.add('no-sbar');
+  document.body.style.paddingTop='56px';
+  const overlay=document.getElementById('login-overlay'); if(overlay) overlay.style.display='none';
+  const topbar=document.getElementById('admin-topbar'); if(topbar) topbar.style.display='flex';
+  document.querySelectorAll('.page').forEach(x=>x.classList.remove('on'));
+  const pg=document.getElementById('page-plataforma'); if(pg) pg.classList.add('on');
+  document.title='Fluxa — Administração';
+  loadPlataforma();
 }
 
 function _fmtBytes(n){
