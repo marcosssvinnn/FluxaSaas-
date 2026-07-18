@@ -1614,9 +1614,7 @@ function preencherFormEmpresa(){
   setV('cfg-notif-concluida', CFG.notif_concluida || CFG_DEF.notif_concluida);
   setV('cfg-notif-orcamento', CFG.notif_orcamento || CFG_DEF.notif_orcamento);
   setV('cfg-notif-garantia', CFG.notif_garantia || CFG_DEF.notif_garantia);
-  // Nota Fiscal
-  setV('cfg-nfe-token-prod', CFG.nfe_token_prod||'');
-  setV('cfg-nfe-token-hom', CFG.nfe_token_hom||'');
+  // Nota Fiscal (v2: sem token no cliente — só dados fiscais não-secretos)
   setV('cfg-nfe-cnpj', CFG.nfe_cnpj||'');
   setV('cfg-nfe-iss', CFG.nfe_iss||'2.0');
   setV('cfg-nfe-cod-svc', CFG.nfe_cod_svc||'7.10');
@@ -1774,8 +1772,7 @@ async function salvarEmpresa(){
   CFG.notif_orcamento = gV('cfg-notif-orcamento') || CFG_DEF.notif_orcamento;
   CFG.notif_garantia = gV('cfg-notif-garantia') || CFG_DEF.notif_garantia;
   // Nota Fiscal
-  CFG.nfe_token_prod = gV('cfg-nfe-token-prod').trim();
-  CFG.nfe_token_hom  = gV('cfg-nfe-token-hom').trim();
+  // v2: NÃO guardar token fiscal no cliente (era CFG.nfe_token_prod/hom).
   CFG.nfe_cnpj       = gV('cfg-nfe-cnpj').trim();
   CFG.nfe_iss        = gV('cfg-nfe-iss')||'2.0';
   CFG.nfe_cod_svc    = gV('cfg-nfe-cod-svc')||'7.10';
@@ -6529,9 +6526,9 @@ function abrirModalNFe(orcId){
   // Preenche campos com configurações salvas
   const refAuto='ORC-'+new Date().getFullYear()+'-'+String(o.numero||0).padStart(4,'0')+'-'+Date.now().toString().slice(-4);
   setV('nfe-ref', refAuto);
-  const token=CFG.nfe_token_prod||CFG.nfe_token_hom||'';
-  setV('nfe-token-input', token);
-  setV('nfe-ambiente', CFG.nfe_token_prod?'producao':'homologacao');
+  // v2: sem token fiscal no cliente (a emissão será por Edge Function). Mantém só
+  // os campos fiscais não-secretos (ambiente/alíquota/código de serviço).
+  setV('nfe-ambiente', CFG.nfe_ambiente||'homologacao');
   setV('nfe-iss-aliq', CFG.nfe_iss||'2.0');
   setV('nfe-cod-servico', CFG.nfe_cod_svc||'7.10');
   setV('nfe-desc-servico', svcsTexto);
@@ -6604,9 +6601,15 @@ function mostrarStatusNF(status, nf){
 }
 
 async function emitirNota(){
-  if(!nfeOrcAtual){ toast('⚠️ Nenhum orçamento selecionado'); return; }
-  const token=gV('nfe-token-input').trim();
-  if(!token){ toast('⚠️ Configure o token Focus NFe (Empresa → Nota Fiscal)'); return; }
+  // v2 (multi-tenant): emissão fiscal client-side DESATIVADA. A conta fiscal é ÚNICA
+  // da plataforma — o token master dá acesso às notas de TODAS as empresas e NUNCA
+  // pode existir no cliente. A emissão virá por Edge Function (valida JWT + membro da
+  // empresa e chama a API pelo CNPJ da empresa). Ver "Arquitetura fiscal" no CLAUDE.md.
+  toast('🧾 Emissão de nota fiscal — em breve.');
+  return;
+  /* ───── fluxo antigo (FocusNFe direto do navegador) — DESATIVADO no v2 ───── */
+  const token='';
+  if(!nfeOrcAtual){ return; }
   const ref=gV('nfe-ref');
   const ambiente=gV('nfe-ambiente');
   const btn=document.getElementById('nfe-btn-emitir');
