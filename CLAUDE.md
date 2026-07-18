@@ -1008,7 +1008,7 @@ Sem isso, vistorias/planos sincronizam SEM o vínculo local_id (degradado, mas n
 
 ---
 
-## Sessão 2026-07-18 — banco v2 conectado + pré-login neutro (fim da TDZ)
+## Sessão 2026-07-18 — banco v2 conectado, pré-login neutro (TDZ) + QA do onboarding (3 bugs graves)
 
 - **Credenciais Supabase v2 preenchidas** (projeto `auoklaiffalbdgazrbdu`) em `app.js` (`SUPABASE_URL`/`SUPABASE_ANON_KEY`) — commit `9ccd7aa` (feito pela outra guia). Repo v2 = `github.com/marcosssvinnn/FluxaSaas-`.
 - **Pré-login neutro — parte 2 (bug de cor residual).** A outra guia já tinha corrigido a *lógica* (`_estaPreLogin()` passou a depender só de `authUser`, não do `EMPRESA_ID` restaurado do cache) — commit `b039d8f`. Mas a **cor de destaque da empresa (`--c1`) ainda vazava** na tela de conta.
@@ -1016,6 +1016,22 @@ Sem isso, vistorias/planos sincronizam SEM o vínculo local_id (degradado, mas n
   - **Fix:** `const SAAS_C1/SAAS_C2` movidas para o topo do arquivo (junto de `SUPABASE_*`), antes de qualquer uso no boot. Commit `2ebc3b4`. `sw.js` v13 → **v14**.
   - **Validado ao vivo** (localhost:8778, `EMPRESA_ID` em cache + sem sessão de conta): `--c1 #F07820`, título/marca "Fluxa", logo escondida, **sem warning de TDZ no console**.
 - **Lição p/ o protocolo de verificação:** validar branding testando o **boot real** (recarregar a página), não só chamando as funções manualmente pós-boot — a TDZ só aparece na ordem de execução do boot, e some se a função for chamada depois que os `const` já inicializaram.
+
+### QA end-to-end do onboarding + fluxo de orçamento (empresa criada pelo signup)
+
+> Testado logando numa empresa criada pelo próprio onboarding ("Criar minha empresa"). **3 bugs graves do v2 encontrados e corrigidos + 1 gap de schema.** Todos commitados/deployados (dev+main) e validados ao vivo.
+
+- **Supabase Auth (config do banco, NÃO é código):** o "Criar minha empresa" falhava com "Não foi possível concluir". Causa: **cadastro por e-mail desativado** no projeto. Marcos ligou no painel: *Allow new users to sign up* ON + *Confirm email* OFF (o onboarding `signUp`+`criar_empresa` precisa de sessão imediata; com confirmação ligada, cai em "confirme o e-mail" e a empresa não é criada). `mailer_autoconfirm=true`.
+- **1º acesso a uma empresa nova (comportamento, documentar):** empresa recém-criada tem `usuarios` **vazio**. A etapa interna (nome+PIN) usa o **fallback "Gestor"** (`renderLoginUsers` injeta `{id:'__gestor__', pin:null}`), cujo PIN é `CFG.pin || '1234'`. Então: entrar com nome **"Gestor"** + PIN **1234**. O `CFG.nome` começa vazio → cabeçalho mostra "Minha Empresa" até configurar em Dados da Empresa (o nome do signup vai pra `empresas.nome`, não pro `CFG.nome`). *(Melhoria futura: `criar_empresa` semear `config.nome`.)*
+- **BUG 🔴 registros sumiam em empresa nova** — commit `929a8a6` (`sw v15`). `_aplicarContextoEmpresa` montava `GRUPO_PRINCIPAL` de `LOJAS.map(l=>l.grupo)`, mas `filtrarPorLoja` (`GRUPO_PRINCIPAL.includes(o.loja_id)`) e `populaLojaSelect` (`l.id`) comparam contra **id de loja**. Numa empresa nova o grupo default `'principal'` nunca batia com o `loja_id` (UUID) → **todo registro com `loja_id` era descartado** (histórico, dashboard, produtividade, estoque, seletor de loja vazios). **Fix:** `GRUPO_PRINCIPAL = LOJAS.map(l=>l.id)`.
+- **BUG 🔴 orçamento gravado 2× no Supabase** — commits `b15f23c` (`sw v16`) + `3081c56` (`sw v17`). `salvarApenas` salva local (`local_*`) + dispara insert de background, mas segue pro `go('history')`→`loadHist`, que roda `_reenviarOrcamentosLocais` e **reenvia o mesmo `local_*`** (com o `numero` preservado) antes do insert de background removê-lo → 2 linhas, mesmo numero. **Fix:** `Set _orcSyncInFlight` rastreia tempIds em voo; guard **dentro** de `_reenviarOrcamentosLocais` cobre TODOS os chamadores (loadHist, sync periódico de 90s, visibilitychange). Validado: 2 saves limpos → 1 linha cada.
+- **GAP de schema 🔴 (`orcamentos`)** — commit `ccd797d`; **SQL rodado no banco por Marcos** (confirmado: as 4 colunas existem). Faltavam `pag_cod`, `pag_parcelas`, `pag_entrada`, `data_aprovacao` — o `dbInsert` resiliente as removia e os detalhes de pagamento/aprovação **não persistiam** (só no localStorage). Adicionadas ao `setup-v2.sql` e ao `setup-v2-delta.sql`. Validado: orçamento com "Cartão parcelado 6x" gravou `pag_cod='cartao-parc'`, `pag_parcelas=6`.
+- **Lição p/ o protocolo:** ao criar registro num tenant novo, testar o **ciclo real** (salvar → recarregar → ver na lista → conferir a linha no Supabase). O "salvou mas não aparece" (filtro) e o "salvou em dobro" (corrida) só aparecem exercitando o fluxo inteiro, não no caminho feliz da função isolada.
+
+### ⚠️ Pendências desta sessão
+- **Dados de teste no banco** (a limpar): ~11 orçamentos de teste (Cliente Teste QA, Fix Dupe OK, Pagamento Persiste, ISO_*, Dupe*, Cont Chamadas…), 2 empresas de teste (*Empresa QA App*, *Empresa Teste QA*) e usuários `@exemplo.com`/`qa_app_1@…` no Auth.
+- **Fluxo de OS** ainda não testado end-to-end no v2 (usa `dbInsertNumerado` mas **não** tem `_reenviar` próprio, então provavelmente não duplica — confirmar).
+- **`criar_empresa`** não semeia `config.nome` nem um usuário gestor inicial (fica no fallback `__gestor__`/PIN 1234).
 
 ---
 
