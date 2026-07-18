@@ -1036,11 +1036,22 @@ const CFG_DEF = {
   notif_concluida: 'Olá, {nome}! ✅\n\nO serviço foi concluído com sucesso!\n\n🔧 Serviço: {servico}\n👤 Técnico: {tecnico}\n\nAcesse seu portal para ver o histórico completo:\n{link_portal}\n\n*{empresa}*\n📞 {tel_empresa}',
   notif_orcamento: 'Olá, {nome}! 📋\n\nPreparamos um orçamento especial para você:\n\n🔧 Serviços: {servico}\n💰 Valor Total: {valor}\n\nAcesse seu portal para aprovar ou recusar:\n{link_portal}\n\nO orçamento é válido por 5 dias. Qualquer dúvida é só falar!\n\n*{empresa}*\n📞 {tel_empresa}',
   notif_garantia: 'Olá, {nome}! ⚠️\n\nA garantia do seu equipamento está vencendo em breve.\n\n🔧 Equipamento: {servico}\n\nEntre em contato para verificarmos a situação!\n\n*{empresa}*\n📞 {tel_empresa}',
-  emailjs_pubkey:   'bG1GwMxEr8eiFH5Nd',
-  emailjs_service:  'service_5ujy47a',
-  emailjs_template: 'template_s9fo89b'
+  // v2: SEM chaves EmailJS chumbadas. Cada empresa configura as suas em Empresa →
+  // E-mail Automático; ficam em empresas.config.emailjs = {pubkey, service, template}.
+  emailjs: {}
 };
 let CFG = { ...CFG_DEF };
+// Lê a config EmailJS da empresa (nested empresas.config.emailjs), com fallback às
+// chaves planas legadas. Nunca há default no código.
+function _ejsCfg(){
+  const e = CFG.emailjs || {};
+  return {
+    pubkey:   e.pubkey   || CFG.emailjs_pubkey   || '',
+    service:  e.service  || CFG.emailjs_service  || '',
+    template: e.template || CFG.emailjs_template || '',
+    reply_to: e.reply_to || CFG.emailjs_reply_to || ''
+  };
+}
 let lojasExtraConfig = {}; // { lojaId: { nome, sub, logoB64, tel, cidades, cor, cor2, tagline } }
 let db = null, dbOk = false;
 let svcs = [], editId = null;
@@ -1627,9 +1638,7 @@ function preencherFormEmpresa(){
   setV('cfg-nfe-cnpj', CFG.nfe_cnpj||'');
   setV('cfg-nfe-iss', CFG.nfe_iss||'2.0');
   setV('cfg-nfe-cod-svc', CFG.nfe_cod_svc||'7.10');
-  setV('cfg-ejs-pubkey',   CFG.emailjs_pubkey||'');
-  setV('cfg-ejs-service',  CFG.emailjs_service||'');
-  setV('cfg-ejs-template', CFG.emailjs_template||'');
+  { const e=_ejsCfg(); setV('cfg-ejs-pubkey', e.pubkey); setV('cfg-ejs-service', e.service); setV('cfg-ejs-template', e.template); }
   const ejsSt=document.getElementById('ejs-status');
   if(ejsSt) ejsSt.textContent=emailJSConfigurado()?'✅ EmailJS configurado':'';
   const lp = document.getElementById('logo-preview');
@@ -1786,11 +1795,16 @@ async function salvarEmpresa(){
   CFG.nfe_iss        = gV('cfg-nfe-iss')||'2.0';
   CFG.nfe_cod_svc    = gV('cfg-nfe-cod-svc')||'7.10';
   // EmailJS
-  CFG.emailjs_pubkey   = gV('cfg-ejs-pubkey').trim();
-  CFG.emailjs_service  = gV('cfg-ejs-service').trim();
-  CFG.emailjs_template = gV('cfg-ejs-template').trim();
+  // v2: EmailJS por empresa em CFG.emailjs (empresas.config.emailjs)
+  CFG.emailjs = {
+    pubkey:   gV('cfg-ejs-pubkey').trim(),
+    service:  gV('cfg-ejs-service').trim(),
+    template: gV('cfg-ejs-template').trim(),
+    reply_to: (CFG.emailjs&&CFG.emailjs.reply_to)||CFG.emailjs_reply_to||''
+  };
+  delete CFG.emailjs_pubkey; delete CFG.emailjs_service; delete CFG.emailjs_template;
   lsSet('empresa_cfg',JSON.stringify(CFG));
-  if(CFG.emailjs_pubkey) initEmailJS();
+  if(_ejsCfg().pubkey) initEmailJS();
   if(dbOk&&db){
     try{ await _persistirConfigEmpresa(); }catch(e){ console.warn('cfg sync:',e.message); toast('✅ Configurações salvas localmente (sync falhou)'); aplicarCFG(); return; }
   }
@@ -8803,12 +8817,12 @@ function editarVistoria(id){
 // ══════════════════════════════════════════════════
 
 function emailJSConfigurado(){
-  return !!(CFG.emailjs_pubkey && CFG.emailjs_service && CFG.emailjs_template);
+  const e=_ejsCfg(); return !!(e.pubkey && e.service && e.template);
 }
 
 function initEmailJS(){
-  if(CFG.emailjs_pubkey){
-    try{ emailjs.init({ publicKey: CFG.emailjs_pubkey }); }catch(e){}
+  const _e=_ejsCfg(); if(_e.pubkey){
+    try{ emailjs.init({ publicKey: _e.pubkey }); }catch(e){ console.warn('[initEmailJS]', e?.message||e); }
   }
 }
 
@@ -8901,14 +8915,14 @@ async function enviarEmailVistoria(vis){
     obs_geral   : vis.obs_geral || '',
     status_geral: statusGeral,
     tel_empresa : CFG.tel || '',
-    reply_to    : CFG.emailjs_reply_to || '',
+    reply_to    : _ejsCfg().reply_to || '',
     link_relatorio: pdfUrl,
     link_pdf    : pdfUrl ? `📄 Baixar o relatório completo em PDF: ${pdfUrl}` : '',
   };
 
   try{
     initEmailJS();
-    await emailjs.send(CFG.emailjs_service, CFG.emailjs_template, params);
+    const _e=_ejsCfg(); await emailjs.send(_e.service, _e.template, params);
     return true;
   }catch(e){
     console.error('EmailJS send error:', e);
@@ -8918,7 +8932,7 @@ async function enviarEmailVistoria(vis){
 
 async function testarEmailJS(){
   const st = document.getElementById('ejs-status');
-  if(!CFG.emailjs_pubkey || !CFG.emailjs_service || !CFG.emailjs_template){
+  const _e=_ejsCfg(); if(!_e.pubkey || !_e.service || !_e.template){
     if(st) st.textContent='⚠️ Preencha e salve os 3 campos antes de testar.';
     return;
   }
