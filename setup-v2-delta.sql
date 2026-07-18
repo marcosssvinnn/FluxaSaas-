@@ -133,5 +133,15 @@ FROM orcamentos GROUP BY empresa_id;
 
 GRANT SELECT ON vw_analise_produtos, vw_analise_financeiro_mensal, vw_analise_orcamentos TO authenticated;
 
+-- ───────── ORCAMENTOS: colunas de pagamento + data_aprovacao (faltavam) ─────────
+-- O app (salvarApenas) grava pag_cod/pag_parcelas/pag_entrada e o fluxo de
+-- aprovação grava data_aprovacao. Sem estas colunas o dbInsert resiliente as
+-- REMOVE silenciosamente → os detalhes de pagamento e a data de aprovação não
+-- persistiam no Supabase (ficavam só no localStorage). Aditivo e idempotente.
+ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS pag_cod text;
+ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS pag_parcelas integer;
+ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS pag_entrada numeric(10,2);
+ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS data_aprovacao timestamptz;
+
 -- Recarrega o schema cache do PostgREST (para as novas tabelas/views aparecerem no REST)
 NOTIFY pgrst, 'reload schema';

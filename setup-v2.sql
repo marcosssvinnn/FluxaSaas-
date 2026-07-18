@@ -103,11 +103,12 @@ CREATE TABLE IF NOT EXISTS orcamentos (
   tel_cliente text, servicos jsonb,
   subtotal numeric(10,2), desconto numeric(10,2),
   total numeric(10,2), pagamento text,
+  pag_cod text, pag_parcelas integer, pag_entrada numeric(10,2),
   validade_dias integer, validade_data text,
   data_servico text, escopo text, obs text,
   foto_base64 text, assinatura_base64 text,
   valor_recebido numeric(10,2) DEFAULT 0,
-  status text DEFAULT 'pendente',
+  status text DEFAULT 'pendente', data_aprovacao timestamptz,
   nota_interna text, cnpj text, loja_id text, origem_cliente text,
   data_criacao timestamptz DEFAULT now()
 );
