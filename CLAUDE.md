@@ -1008,6 +1008,17 @@ Sem isso, vistorias/planos sincronizam SEM o vínculo local_id (degradado, mas n
 
 ---
 
+## Sessão 2026-07-18 — banco v2 conectado + pré-login neutro (fim da TDZ)
+
+- **Credenciais Supabase v2 preenchidas** (projeto `auoklaiffalbdgazrbdu`) em `app.js` (`SUPABASE_URL`/`SUPABASE_ANON_KEY`) — commit `9ccd7aa` (feito pela outra guia). Repo v2 = `github.com/marcosssvinnn/FluxaSaas-`.
+- **Pré-login neutro — parte 2 (bug de cor residual).** A outra guia já tinha corrigido a *lógica* (`_estaPreLogin()` passou a depender só de `authUser`, não do `EMPRESA_ID` restaurado do cache) — commit `b039d8f`. Mas a **cor de destaque da empresa (`--c1`) ainda vazava** na tela de conta.
+  - **Causa:** `resetMarcaSaaS()`/`aplicarCFG()` rodam cedo no boot e acessavam `const SAAS_C1` antes da sua declaração (~l.1562) → **Temporal Dead Zone**. O erro caía no `catch` (`Cannot access 'SAAS_C1' before initialization`) e abortava o reset ANTES de setar a cor neutra; o `--c1` ficava com a cor da empresa vinda do cache.
+  - **Fix:** `const SAAS_C1/SAAS_C2` movidas para o topo do arquivo (junto de `SUPABASE_*`), antes de qualquer uso no boot. Commit `2ebc3b4`. `sw.js` v13 → **v14**.
+  - **Validado ao vivo** (localhost:8778, `EMPRESA_ID` em cache + sem sessão de conta): `--c1 #F07820`, título/marca "Fluxa", logo escondida, **sem warning de TDZ no console**.
+- **Lição p/ o protocolo de verificação:** validar branding testando o **boot real** (recarregar a página), não só chamando as funções manualmente pós-boot — a TDZ só aparece na ordem de execução do boot, e some se a função for chamada depois que os `const` já inicializaram.
+
+---
+
 ## Sessão 2026-06-13 — auditoria de schema + correções de sync
 
 - **Auditoria completa** das colunas gravadas vs reais (todas as tabelas). 4 brechas da mesma classe encontradas e corrigidas:
