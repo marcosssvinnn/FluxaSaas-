@@ -226,6 +226,31 @@ CREATE TABLE IF NOT EXISTS estoque_movimentos (
 CREATE INDEX IF NOT EXISTS idx_mov_produto ON estoque_movimentos(produto_id);
 CREATE INDEX IF NOT EXISTS idx_mov_ref ON estoque_movimentos(ref);
 
+-- Compras: fornecedores + ordens de compra (reabastecimento do estoque)
+CREATE TABLE IF NOT EXISTS fornecedores (
+  id text PRIMARY KEY,
+  empresa_id uuid NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+  loja_id text,
+  nome text, contato text, whatsapp text, email text, obs text,
+  ativo boolean DEFAULT true,
+  data_criacao timestamptz DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS ordens_compra (
+  id text PRIMARY KEY,
+  empresa_id uuid NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
+  loja_id text,
+  numero integer,
+  fornecedor_id text,
+  data text,
+  status text DEFAULT 'rascunho',   -- 'rascunho' | 'enviada' | 'recebida'
+  itens jsonb DEFAULT '[]',
+  total numeric(10,2) DEFAULT 0,
+  obs text,
+  data_recebimento timestamptz,
+  data_criacao timestamptz DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS auditoria (
   id text PRIMARY KEY,
   empresa_id uuid NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
@@ -257,7 +282,7 @@ BEGIN
   FOREACH t IN ARRAY ARRAY[
     'lojas','usuarios','clientes','orcamentos','ordens_servico','agendamentos',
     'vistorias','locais_vistoria','equipamentos','despesas','notas_fiscais',
-    'produtos','estoque_movimentos','auditoria'
+    'produtos','estoque_movimentos','auditoria','fornecedores','ordens_compra'
   ] LOOP
     EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%I_empresa ON %I(empresa_id);', t, t);
   END LOOP;
@@ -287,7 +312,7 @@ BEGIN
   FOREACH t IN ARRAY ARRAY[
     'lojas','usuarios','clientes','orcamentos','ordens_servico','agendamentos',
     'vistorias','locais_vistoria','equipamentos','despesas','notas_fiscais',
-    'produtos','estoque_movimentos','auditoria'
+    'produtos','estoque_movimentos','auditoria','fornecedores','ordens_compra'
   ] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY;', t);
     EXECUTE format('DROP POLICY IF EXISTS "isolamento por empresa" ON %I;', t);
@@ -306,7 +331,7 @@ GRANT EXECUTE ON FUNCTION proximo_numero(uuid, text) TO authenticated;
 DO $$
 DECLARE t text;
 BEGIN
-  FOREACH t IN ARRAY ARRAY['orcamentos','clientes','agendamentos','equipamentos','despesas','vistorias','produtos','estoque_movimentos','locais_vistoria'] LOOP
+  FOREACH t IN ARRAY ARRAY['orcamentos','clientes','agendamentos','equipamentos','despesas','vistorias','produtos','estoque_movimentos','locais_vistoria','fornecedores','ordens_compra'] LOOP
     BEGIN
       EXECUTE format('ALTER PUBLICATION supabase_realtime ADD TABLE %I;', t);
     EXCEPTION WHEN duplicate_object THEN NULL;

@@ -9023,8 +9023,8 @@ async function loadEstoque(){
       const [{data:prods,error:e1},{data:movs,error:e2},{data:fornecs},{data:ocs}] = await Promise.all([
         db.from('produtos').select('*').eq('empresa_id',EMPRESA_ID).order('nome',{ascending:true}),
         db.from('estoque_movimentos').select('*').eq('empresa_id',EMPRESA_ID).order('data',{ascending:false}).limit(5000),
-        db.from('fornecedores').select('*').order('nome',{ascending:true}),
-        db.from('ordens_compra').select('*').order('data_criacao',{ascending:false}).limit(200)
+        db.from('fornecedores').select('*').eq('empresa_id',EMPRESA_ID).order('nome',{ascending:true}),
+        db.from('ordens_compra').select('*').eq('empresa_id',EMPRESA_ID).order('data_criacao',{ascending:false}).limit(200)
       ]);
       if(fornecs){ todosFornecedores=fornecs; lsFornecSalvar(fornecs); }
       if(ocs){ todasOC=ocs.map(o=>({...o,itens:typeof o.itens==='string'?JSON.parse(o.itens||'[]'):o.itens||[]})); lsOCSalvar(todasOC); }
@@ -10132,7 +10132,7 @@ async function loadFornecedores(){
   todosFornecedores = lsFornecLer();
   if(dbOk&&db){
     try{
-      const {data}=await db.from('fornecedores').select('*').order('nome',{ascending:true});
+      const {data}=await db.from('fornecedores').select('*').eq('empresa_id',EMPRESA_ID).order('nome',{ascending:true});
       if(data){ todosFornecedores=data; lsFornecSalvar(data); }
     }catch(e){ console.warn('[fornecedores]',e?.message||e); }
   }
@@ -10231,7 +10231,7 @@ async function loadOC(){
   todasOC = lsOCLer();
   if(dbOk&&db){
     try{
-      const {data}=await db.from('ordens_compra').select('*').order('data_criacao',{ascending:false}).limit(200);
+      const {data}=await db.from('ordens_compra').select('*').eq('empresa_id',EMPRESA_ID).order('data_criacao',{ascending:false}).limit(200);
       if(data){ todasOC=data; lsOCSalvar(data); }
     }catch(e){ console.warn('[OC load]',e?.message||e); }
   }
@@ -10346,7 +10346,7 @@ async function salvarOC(status){
   const idx=todasOC.findIndex(o=>o.id===id);
   if(idx>=0) todasOC[idx]=rec; else todasOC.unshift(rec);
   lsOCSalvar(todasOC);
-  if(dbOk&&db){ (async()=>{ try{ await dbUpsert('ordens_compra',{...rec,itens:JSON.stringify(rec.itens)}); }catch(e){ console.warn('[OC save]',e?.message||e); } })(); }
+  if(dbOk&&db){ (async()=>{ try{ await dbUpsert('ordens_compra',rec); }catch(e){ console.warn('[OC save]',e?.message||e); } })(); }
   fecharOCFormModal(); renderOCList(); toast(`✅ OC #${rec.numero} salva`);
 }
 
