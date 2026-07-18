@@ -1072,11 +1072,22 @@ Sem isso, vistorias/planos sincronizam SEM o vínculo local_id (degradado, mas n
 ### Conta ROOT da plataforma
 `marcos.vinicius.04@hotmail.com` — conta separada, **sem nenhuma empresa vinculada** (por desenho — só existe pra dar acesso ao painel admin via `plataforma_admins`). Criada via onboarding normal com uma empresa placeholder ("Admin"), que foi apagada logo depois (cascata limpa) — a conta ficou só com o registro em `plataforma_admins`.
 
-### ⚠️ Pendências (atualizado — 3 antigas resolvidas, nenhuma nova crítica)
+### 🧪 Bateria de testes de regressão (final desta sessão, antes de fechar)
+Rodada após todos os fixes acima, cobrindo schema + client. **1 bug real encontrado e corrigido; resto passou.**
+
+- **Schema (via PAT, contra o banco real):**
+  - 24 tabelas/views no `public` ✅; as 11 RPCs esperadas existem com assinatura certa ✅.
+  - 🔴 **BUG achado:** `portal_responder_orcamento` no banco estava com a assinatura ANTIGA (3 parâmetros, sem `p_assinatura`) — desatualizada em relação ao código (T11) e ao próprio `setup-v2.sql` (que já tinha a versão certa). **Aprovar orçamento COM assinatura pelo portal dava erro 404 `PGRST202`.** Reproduzido via curl, corrigido na hora (`setup-v2-delta5.sql`), reverificado com `HTTP 200`.
+  - As 16 tabelas de tenant continuam com a policy `"isolamento por empresa"` intacta, escopada só a `authenticated` — nenhum delta do painel admin enfraqueceu a RLS.
+- **Client (local, mocks cobrindo os cenários exatos dos bugs já corrigidos hoje):** `checarAdminPlataforma` funciona com `dbOk=false` (bug de hoje) ✅; `_autoLoginMembroDaConta` monta sessão certa e retorna `false` nos 3 casos de fallback ✅; `entrarModoPlataforma` esconde tudo de tenant e mostra só o painel ✅; `_injetarEmpresa`/namespace de localStorage/`flagAtiva`/`_rtCfg`/`_ejsCfg` (T4/T6/T8/T10/T12) sem regressão ✅; `emitirNota` continua sem chamar a API fiscal (T9) ✅; `renderPortal`/`loadAnalises` renderizam certo dado um pacote/mock válido (T11/T13) ✅.
+- **`setup-v2-delta5.sql`** registra o fix do portal (já aplicado ao banco — arquivo é só o histórico).
+
+### ⚠️ Pendências (atualizado — 4 resolvidas nesta sessão, nenhuma nova crítica)
 - ~~Dados de teste no banco~~ → **resolvido** (limpeza rodada e confirmada).
 - ~~`criar_empresa` não semeia `config.nome`~~ → **resolvido** (delta2 + delta4: semeia nome da empresa E nome da pessoa).
 - ~~`clientes` insert não envia `portal_token`~~ → **resolvido** (6 call sites corrigidos).
-- **Login end-to-end não foi testado por mim (Claude) com credenciais reais** — não posso digitar senha/criar conta; toda validação de login foi via mock local + confirmação do Marcos ao vivo. Se algo quebrar no fluxo real, precisa ser reproduzido por ele (como aconteceu com os 2 bugs desta sessão).
+- ~~`portal_responder_orcamento` desatualizada no banco~~ → **resolvido** (delta5, achado na bateria de regressão).
+- **Login end-to-end não foi testado por mim (Claude) com credenciais reais** — não posso digitar senha/criar conta; toda validação de login foi via mock local + confirmação do Marcos ao vivo, e via checagem direta do schema/RPCs no banco (PAT). Continua valendo: se algo quebrar no clique-a-clique real, precisa ser reproduzido por ele.
 - **SMTP próprio ainda não configurado** (ver aviso no Roadmap — e-mail de confirmação/recovery do Supabase é limitado; só afeta quando houver clientes externos de verdade).
 
 ---
