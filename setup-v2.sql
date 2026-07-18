@@ -32,8 +32,15 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE v_id uuid;
 BEGIN
   IF auth.uid() IS NULL THEN RAISE EXCEPTION 'não autenticado'; END IF;
-  INSERT INTO empresas (nome, slug)
-  VALUES (p_nome, regexp_replace(lower(p_nome), '[^a-z0-9]+', '-', 'g') || '-' || substr(gen_random_uuid()::text, 1, 4))
+  -- config semeado com o nome informado no onboarding (nome/appName): sem isso
+  -- o CFG.nome ficava vazio e o header/tela de login mostravam "Minha Empresa"
+  -- até o gestor preencher manualmente em Dados da Empresa.
+  INSERT INTO empresas (nome, slug, config)
+  VALUES (
+    p_nome,
+    regexp_replace(lower(p_nome), '[^a-z0-9]+', '-', 'g') || '-' || substr(gen_random_uuid()::text, 1, 4),
+    jsonb_build_object('nome', p_nome, 'appName', p_nome)
+  )
   RETURNING id INTO v_id;
   INSERT INTO membros (user_id, empresa_id, perfil) VALUES (auth.uid(), v_id, 'gestor');
   INSERT INTO lojas (empresa_id, nome) VALUES (v_id, p_nome);

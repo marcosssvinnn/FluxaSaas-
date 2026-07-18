@@ -1564,7 +1564,7 @@ async function carregarClientesRemoto(){
     if(document.getElementById('page-clientes').classList.contains('on')) renderClientes();
     // Sobe ao Supabase clientes criados offline
     soLocal.forEach(c=>{
-      dbInsert('clientes',{id:c.id,nome:c.nome,telefone:c.tel||null,endereco:c.end||null,cnpj:c.cnpj||null,email_responsavel:c.email_responsavel||null,loja_id:c.loja_id||null}).catch(()=>{});
+      dbInsert('clientes',{id:c.id,nome:c.nome,telefone:c.tel||null,endereco:c.end||null,cnpj:c.cnpj||null,email_responsavel:c.email_responsavel||null,loja_id:c.loja_id||null,portal_token:c.portal_token||undefined}).catch(()=>{});
     });
   }catch(e){ console.warn('[carregarClientesRemoto]', e?.message||e); }
 }
@@ -3104,7 +3104,7 @@ function _migrarClientesDeOrcamentos(){
     if(jaExiste) return;
     const novo={id:'cli_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),nome,tel:o.tel_cliente||'',end:o.local_servico||'',cnpj:o.cnpj||'',email_responsavel:'',tipo:'',portal_token:crypto.randomUUID(),loja_id:lojaId};
     lista.unshift(novo); mudou=true;
-    if(dbOk&&db) dbInsert('clientes',{id:novo.id,nome,telefone:novo.tel||null,endereco:novo.end||null,cnpj:novo.cnpj||null,loja_id:lojaId}).catch(()=>{});
+    if(dbOk&&db) dbInsert('clientes',{id:novo.id,nome,telefone:novo.tel||null,endereco:novo.end||null,cnpj:novo.cnpj||null,loja_id:lojaId,portal_token:novo.portal_token}).catch(()=>{});
   });
   if(mudou){ lsCliSalvar(lista); console.log('[migração] base de clientes atualizada'); }
 }
@@ -4424,7 +4424,7 @@ function _autoSalvarCliente(nome, tel, end, cnpj, lojaId){
   if(idx>=0) return; // já existe
   const novo={id:'cli_'+Date.now(),nome,tel:tel||'',end:end||'',cnpj:cnpj||'',email_responsavel:'',tipo:'',portal_token:crypto.randomUUID(),loja_id:lojaId||null};
   lista.unshift(novo); lsCliSalvar(lista);
-  if(dbOk&&db) dbInsert('clientes',{id:novo.id,nome,telefone:tel||null,endereco:end||null,cnpj:cnpj||null,loja_id:novo.loja_id}).catch(()=>{});
+  if(dbOk&&db) dbInsert('clientes',{id:novo.id,nome,telefone:tel||null,endereco:end||null,cnpj:cnpj||null,loja_id:novo.loja_id,portal_token:novo.portal_token}).catch(()=>{});
 }
 
 async function salvarNovoCliente(){
@@ -4447,7 +4447,7 @@ async function salvarNovoCliente(){
   const novo={id:'cli_'+Date.now(), nome, tel:gV('cli-new-tel').trim(), end:gV('cli-new-end').trim(), cnpj:gV('cli-new-cnpj').trim(), email_responsavel:gV('cli-new-email').trim(), tipo:document.getElementById('cli-new-tipo')?.value||'', portal_token:crypto.randomUUID(), loja_id:lojaAtiva||LOJA_PADRAO_ID};
   const lista=lsCliLer(); lista.unshift(novo); lsCliSalvar(lista);
   if(dbOk&&db){
-    dbInsert('clientes',{id:novo.id,nome:novo.nome,telefone:novo.tel,endereco:novo.end,cnpj:novo.cnpj||null,email_responsavel:novo.email_responsavel||null,tipo:novo.tipo||null,loja_id:novo.loja_id}).catch(e=>console.warn('cli sync:',e?.message||e));
+    dbInsert('clientes',{id:novo.id,nome:novo.nome,telefone:novo.tel,endereco:novo.end,cnpj:novo.cnpj||null,email_responsavel:novo.email_responsavel||null,tipo:novo.tipo||null,loja_id:novo.loja_id,portal_token:novo.portal_token}).catch(e=>console.warn('cli sync:',e?.message||e));
   }
   document.getElementById('cli-form-wrap').style.display='none';
   renderClientes(); toast('✅ Cliente salvo!');
@@ -4598,7 +4598,7 @@ async function importarClientesDeOrcamentos(){
     } else {
       const novo={id:'cli_'+Date.now()+Math.random(),nome:o.cliente,tel:o.tel_cliente||'',end:o.local_servico||'',cnpj:o.cnpj||'',portal_token:crypto.randomUUID()};
       lista.unshift(novo); lsCliSalvar(lista);
-      if(dbOk&&db){ dbInsert('clientes',{id:novo.id,nome:novo.nome,telefone:novo.tel,endereco:novo.end,cnpj:novo.cnpj||null,loja_id:lojaAtiva||LOJA_PADRAO_ID}).catch(e=>console.warn('[cli:insert]',e?.message||e)); }
+      if(dbOk&&db){ dbInsert('clientes',{id:novo.id,nome:novo.nome,telefone:novo.tel,endereco:novo.end,cnpj:novo.cnpj||null,loja_id:lojaAtiva||LOJA_PADRAO_ID,portal_token:novo.portal_token}).catch(e=>console.warn('[cli:insert]',e?.message||e)); }
       novos++;
     }
   }
@@ -4621,7 +4621,7 @@ async function autoSalvarClienteDoOrc(dados){
   }
   const novo={id:'cli_'+Date.now(),nome:dados.cli,tel:dados.tel||'',end:dados.loc||'',cnpj:dados.cnpj||'',portal_token:crypto.randomUUID()};
   lista.unshift(novo); lsCliSalvar(lista);
-  if(dbOk&&db){ dbInsert('clientes',{id:novo.id,nome:novo.nome,telefone:novo.tel,endereco:novo.end,cnpj:novo.cnpj||null,loja_id:novo.loja_id||LOJA_PADRAO_ID}).catch(e=>console.warn('[cli:auto-insert]',e?.message||e)); }
+  if(dbOk&&db){ dbInsert('clientes',{id:novo.id,nome:novo.nome,telefone:novo.tel,endereco:novo.end,cnpj:novo.cnpj||null,loja_id:novo.loja_id||LOJA_PADRAO_ID,portal_token:novo.portal_token}).catch(e=>console.warn('[cli:auto-insert]',e?.message||e)); }
 }
 
 // ──────────────────────────────────────────────────
