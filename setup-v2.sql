@@ -339,26 +339,29 @@ BEGIN
   END LOOP;
 END $$;
 
--- ───────── STORAGE (PDFs por empresa) ─────────
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('vistorias-pdf', 'vistorias-pdf', true)
+-- ───────── STORAGE (PDFs e fotos de vistoria, por empresa) ─────────
+-- Dois buckets públicos p/ leitura; escrita só na PASTA da empresa (1º segmento
+-- do caminho = empresa_id do usuário). Ex.: <empresa_id>/<vistoria>.pdf.
+INSERT INTO storage.buckets (id, name, public) VALUES ('vistorias-pdf', 'vistorias-pdf', true)
+ON CONFLICT (id) DO UPDATE SET public = true;
+INSERT INTO storage.buckets (id, name, public) VALUES ('vistorias-fotos', 'vistorias-fotos', true)
 ON CONFLICT (id) DO UPDATE SET public = true;
 
 DROP POLICY IF EXISTS "upload na pasta da empresa" ON storage.objects;
 CREATE POLICY "upload na pasta da empresa" ON storage.objects
   FOR INSERT TO authenticated
-  WITH CHECK (bucket_id = 'vistorias-pdf'
+  WITH CHECK (bucket_id IN ('vistorias-pdf','vistorias-fotos')
     AND (storage.foldername(name))[1] IN (SELECT minhas_empresas()::text));
 
 DROP POLICY IF EXISTS "update na pasta da empresa" ON storage.objects;
 CREATE POLICY "update na pasta da empresa" ON storage.objects
   FOR UPDATE TO authenticated
-  USING (bucket_id = 'vistorias-pdf'
+  USING (bucket_id IN ('vistorias-pdf','vistorias-fotos')
     AND (storage.foldername(name))[1] IN (SELECT minhas_empresas()::text));
 
 DROP POLICY IF EXISTS "leitura publica pdf" ON storage.objects;
 CREATE POLICY "leitura publica pdf" ON storage.objects
-  FOR SELECT TO public USING (bucket_id = 'vistorias-pdf');
+  FOR SELECT TO public USING (bucket_id IN ('vistorias-pdf','vistorias-fotos'));
 
 -- ───────── PORTAL DO CLIENTE (acesso público por token, sem login) ─────────
 -- O portal (#portal/<token>) é usado pelo cliente FINAL, sem conta. Com a RLS

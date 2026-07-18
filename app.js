@@ -7864,6 +7864,7 @@ function visRemoverFoto(id, idx){
 // Retorna null se falhar (a foto base64 original fica preservada localmente).
 async function _uploadFotoStorage(base64, path){
   if(!base64 || base64.startsWith('http')) return base64; // já é URL ou vazio
+  if(!db || !EMPRESA_ID) return null; // precisa da sessão autenticada + empresa
   try{
     const [meta, data] = base64.split(',');
     const mime = (meta.match(/:(.*?);/)||[])[1]||'image/jpeg';
@@ -7871,15 +7872,12 @@ async function _uploadFotoStorage(base64, path){
     const arr = new Uint8Array(bytes.length);
     for(let i=0;i<bytes.length;i++) arr[i]=bytes.charCodeAt(i);
     const blob = new Blob([arr], {type:mime});
-    const sbUrl = SUPABASE_URL;
-    const sbKey = SUPABASE_ANON_KEY;
-    const res = await fetch(`${sbUrl}/storage/v1/object/vistorias-fotos/${path}`, {
-      method:'POST',
-      headers:{ 'apikey':sbKey, 'Authorization':'Bearer '+sbKey, 'Content-Type':mime, 'x-upsert':'true' },
-      body: blob
-    });
-    if(!res.ok){ console.warn('[uploadFoto] HTTP', res.status, await res.text()); return null; }
-    return `${sbUrl}/storage/v1/object/public/vistorias-fotos/${path}`;
+    // v2: upload autenticado (SDK) na PASTA DA EMPRESA — a política exige a pasta.
+    const fullPath = `${EMPRESA_ID}/${path}`;
+    const { error } = await db.storage.from('vistorias-fotos').upload(fullPath, blob, { contentType:mime, upsert:true });
+    if(error){ console.warn('[uploadFoto]', error.message); return null; }
+    const { data:pub } = db.storage.from('vistorias-fotos').getPublicUrl(fullPath);
+    return pub?.publicUrl || null;
   }catch(e){ console.warn('[uploadFoto]', e?.message||e); return null; }
 }
 
@@ -8830,7 +8828,8 @@ async function gerarEUploadPDFVistoria(vis){
       .output('blob');
     element.setAttribute('style', prevStyle || 'display:none');
 
-    const filename = `${vis.loja_id||'fluxa'}/${vis.id||Date.now()}.pdf`;
+    // v2: pasta = EMPRESA_ID (a política do bucket exige a pasta da empresa).
+    const filename = `${EMPRESA_ID}/${vis.id||Date.now()}.pdf`;
     const { error } = await db.storage.from('vistorias-pdf').upload(filename, blob, {
       contentType:'application/pdf', upsert:true
     });
