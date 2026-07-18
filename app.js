@@ -195,13 +195,8 @@ function atualizarBadgeUsuario(){
   const elNome=document.getElementById('hdr-user-nome');
   const avatarExtra = s?.perfil==='gestor'?' gestor': s?.perfil==='vendas'?' vendas':'';
   if(el){ el.textContent=s?.perfil==='vendas'?'💼':inicial; el.className='hdr-user-avatar'+avatarExtra; }
-  // Técnico: mostra a empresa da sessão ao lado do nome (Fortemp/Aquamotor)
-  let suf='';
-  if(s?.perfil==='tecnico'){
-    const emp=s?.empresa_tec||visEmpresaTecnico||sessionStorage.getItem('fluxa_vis_empresa_tec')||'';
-    if(emp) suf=' · '+(emp==='aquamotor'?'Aquamotor':'Fortemp');
-  }
-  if(elNome) elNome.textContent=nome+suf;
+  // v2: uma empresa por tenant — sem sufixo de empresa no nome do técnico.
+  if(elNome) elNome.textContent=nome;
 }
 
 function fazerLogout(){
@@ -912,14 +907,12 @@ async function fazerLogin(){
   }
 }
 
+// v2: gestor sem loja fixa escolhe a unidade a gerenciar (ou "Todas"). As unidades
+// vêm da tabela lojas da empresa ativa — nada de empresa chumbada. Com <=1 unidade,
+// entra direto em "Todas".
 function mostrarSelecaoLojaGestor(){
   const list=document.getElementById('login-loja-list');
-  const _nomeLogin=loginUserSelecionado?.nome;
-  const forthemp=LOJAS.filter(l=>l.grupo==='forthemp');
-  // Empresas separadas só aparecem para quem tem acesso (ex.: Aquamotor → Marcos/Tamara)
-  const outros=LOJAS.filter(l=>l.grupo!=='forthemp' && podeAcessarGrupo(l.grupo, _nomeLogin));
-  const corGrupo={aquamotor:'#16a34a'};
-
+  if((LOJAS||[]).length<=1){ confirmarLojaGestor(''); return; }
   function lojaBtn(id, cor, icon, nome, sub){
     return `<button class="login-loja-btn" onclick="confirmarLojaGestor('${id}')">
       <div class="login-loja-circle" style="background:${cor}">${icon}</div>
@@ -929,18 +922,10 @@ function mostrarSelecaoLojaGestor(){
       </div>
     </button>`;
   }
-
-  let html = lojaBtn('','var(--c1)','📊','Todas as unidades','Camboriú + Itapema consolidado');
-  forthemp.forEach(l=>{
-    html += lojaBtn(l.id,'var(--c2)',l.nome.replace('Fortemp ','').charAt(0),esc(l.nome),'Gerenciar esta unidade');
+  let html = lojaBtn('','var(--c1)','📊','Todas as unidades', esc(FLUXA_CONFIG.todasLabel||'Consolidado'));
+  LOJAS.forEach(l=>{
+    html += lojaBtn(l.id,'var(--c2)',(l.nome||'?').charAt(0),esc(l.nome||'Unidade'),'Gerenciar esta unidade');
   });
-  if(outros.length){
-    html += `<div class="login-section-label" style="margin-top:14px">Outras empresas</div>`;
-    outros.forEach(l=>{
-      html += lojaBtn(l.id,corGrupo[l.grupo]||'var(--blue)',l.nome.charAt(0),esc(l.nome),'Gerenciar empresa');
-    });
-  }
-
   list.innerHTML = html;
   document.getElementById('login-step-users').style.display='none';
   document.getElementById('login-step-loja').classList.add('show');
@@ -966,43 +951,26 @@ function confirmarLojaGestor(lojaId){
   go('history');
 }
 
-// Técnico escolhe a empresa da sessão (Fortemp ou Aquamotor) — reusa a tela de seleção
+// v2: o técnico pertence a UMA empresa (tenant) — não há escolha de empresa no login
+// (o modelo forthemp/aquamotor era do v1, quando 3 empresas dividiam o banco). Segue
+// direto para o app.
 function mostrarSelecaoEmpresaTecnico(){
-  const list=document.getElementById('login-loja-list');
-  const corGrupo={forthemp:'var(--c1)',aquamotor:'#16a34a'};
-  function empBtn(grupo,icon,nome,sub){
-    return `<button class="login-loja-btn" onclick="confirmarEmpresaTecnico('${grupo}')">
-      <div class="login-loja-circle" style="background:${corGrupo[grupo]}">${icon}</div>
-      <div>
-        <div class="login-loja-info-nome">${nome}</div>
-        <div class="login-loja-info-sub">${sub}</div>
-      </div>
-    </button>`;
-  }
-  // Aquamotor só para técnicos com acesso. Se só sobrar Fortemp, entra direto (sem picker).
-  const temAquamotor=podeAcessarGrupo('aquamotor', loginUserSelecionado?.nome);
-  if(!temAquamotor){ confirmarEmpresaTecnico('forthemp'); return; }
-  list.innerHTML =
-    empBtn('forthemp','F','Fortemp','Vistorias Camboriú + Itapema')+
-    empBtn('aquamotor','A','Aquamotor','Vistorias da Aquamotor');
-  document.getElementById('login-step-users').style.display='none';
-  document.getElementById('login-step-loja').classList.add('show');
+  confirmarEmpresaTecnico('');
 }
 
 function confirmarEmpresaTecnico(grupo){
-  visEmpresaTecnico = grupo;
-  // lojaAtiva guia cor/header; vistorias herdam a empresa do LOCAL, não daqui
-  lojaAtiva = (grupo==='aquamotor') ? 'aquamotor' : '';
-  sessionStorage.setItem('fluxa_loja_ativa', lojaAtiva);
-  sessionStorage.setItem('fluxa_vis_empresa_tec', grupo);
-  const sessao={perfil:'tecnico', loja_id:loginUserSelecionado.loja_id||null, nome:loginUserSelecionado.nome, empresa_tec:grupo};
+  visEmpresaTecnico = grupo||'';
+  lojaAtiva = '';
+  sessionStorage.setItem('fluxa_loja_ativa', '');
+  sessionStorage.setItem('fluxa_vis_empresa_tec', visEmpresaTecnico);
+  const sessao={perfil:'tecnico', loja_id:loginUserSelecionado.loja_id||null, nome:loginUserSelecionado.nome, empresa_tec:visEmpresaTecnico};
   setSessao(sessao);
   document.getElementById('login-overlay').style.display='none';
   document.getElementById('login-step-loja').classList.remove('show');
   atualizarBadgeUsuario();
   aplicarPermissoesPerfil();
   atualizarHeaderLoja();
-  logAcao('login', loginUserSelecionado.nome+' (técnico '+(grupo==='aquamotor'?'Aquamotor':'Fortemp')+')');
+  logAcao('login', loginUserSelecionado.nome+' (técnico)');
   go('minhas-os');
 }
 
@@ -3066,7 +3034,7 @@ async function loadHist(){
 
 // Migração única: aprovados sem data_aprovacao → usa data_criacao como referência contábil
 // Importa clientes de orçamentos/OS históricos para a base (roda uma vez após sync)
-// Regra: loja_id='aquamotor' → grupo Aquamotor. Qualquer outra → grupo Fortemp.
+// v2: a base já é escopada por empresa (RLS + empresa_id), então dedup é por nome.
 function _migrarClientesDeOrcamentos(){
   const todos=[...todosOrc,...todosOS];
   let lista=lsCliLer();
@@ -3074,11 +3042,7 @@ function _migrarClientesDeOrcamentos(){
   todos.forEach(o=>{
     const nome=(o.cliente||'').trim(); if(!nome||nome==='—') return;
     const lojaId=o.loja_id||null;
-    const eAqua=lojaId==='aquamotor';
-    const jaExiste=lista.some(c=>
-      (c.nome||'').toLowerCase()===nome.toLowerCase() &&
-      (eAqua ? c.loja_id==='aquamotor' : c.loja_id!=='aquamotor')
-    );
+    const jaExiste=lista.some(c=>(c.nome||'').toLowerCase()===nome.toLowerCase());
     if(jaExiste) return;
     const novo={id:'cli_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),nome,tel:o.tel_cliente||'',end:o.local_servico||'',cnpj:o.cnpj||'',email_responsavel:'',tipo:'',portal_token:crypto.randomUUID(),loja_id:lojaId};
     lista.unshift(novo); mudou=true;
@@ -4202,13 +4166,8 @@ function lsCliSalvar(l){ lsSet(LS_CLI_FULL,JSON.stringify(l)); }
 
 
 function renderClientes(){
-  // Regra simples: loja_id='aquamotor' → Aquamotor. Tudo mais → Fortemp.
-  let lista=lsCliLer();
-  if(lojaAtiva==='aquamotor'){
-    lista=lista.filter(c=>c.loja_id==='aquamotor');
-  } else {
-    lista=lista.filter(c=>c.loja_id!=='aquamotor');
-  }
+  // v2: filtro genérico por unidade/grupo ativo (sem nome de empresa chumbado)
+  let lista=filtrarPorLoja(lsCliLer());
   const el=document.getElementById('clientes-lista');
   const busca=(document.getElementById('cli-busca')?.value||'').toLowerCase().trim();
   if(busca){
@@ -4397,21 +4356,14 @@ function editarCliente(id){
 }
 
 // Auto-cadastra cliente ao gerar orçamento/OS.
-// Aquamotor é isolada: clientes dela nunca se mesclam com a Fortemp.
-// Fortemp Camboriú e Itapema compartilham a mesma base.
-// Auto-cadastra cliente ao salvar orçamento.
-// Regra: loja_id='aquamotor' → grupo Aquamotor. Qualquer outra → grupo Fortemp.
-// Nunca mistura entre grupos.
+// Auto-cadastra cliente ao salvar orçamento. v2: a base já é escopada por empresa
+// (RLS + empresa_id), então dedup é por nome.
 function _autoSalvarCliente(nome, tel, end, cnpj, lojaId){
   if(!nome||nome==='—') return;
   const nomeL=nome.toLowerCase();
-  const eAqua=lojaId==='aquamotor';
   const lista=lsCliLer();
-  const idx=lista.findIndex(c=>
-    (c.nome||'').toLowerCase()===nomeL &&
-    (eAqua ? c.loja_id==='aquamotor' : c.loja_id!=='aquamotor')
-  );
-  if(idx>=0) return; // já existe neste grupo
+  const idx=lista.findIndex(c=>(c.nome||'').toLowerCase()===nomeL);
+  if(idx>=0) return; // já existe
   const novo={id:'cli_'+Date.now(),nome,tel:tel||'',end:end||'',cnpj:cnpj||'',email_responsavel:'',tipo:'',portal_token:crypto.randomUUID(),loja_id:lojaId||null};
   lista.unshift(novo); lsCliSalvar(lista);
   if(dbOk&&db) dbInsert('clientes',{id:novo.id,nome,telefone:tel||null,endereco:end||null,cnpj:cnpj||null,loja_id:novo.loja_id}).catch(()=>{});
@@ -6920,10 +6872,10 @@ function _grupoDaLoja(lid){ const L=LOJAS.find(x=>x.id===_normLojaId(lid)); retu
 function _empresaEmFoco(){
   const s=getSessao();
   if(s?.perfil==='tecnico'){
-    const emp=visEmpresaTecnico||s?.empresa_tec||sessionStorage.getItem('fluxa_vis_empresa_tec')||'forthemp';
+    const emp=visEmpresaTecnico||s?.empresa_tec||sessionStorage.getItem('fluxa_vis_empresa_tec')||_grupoPadrao();
     return {tipo:'grupo', valor:emp};
   }
-  if(!lojaAtiva) return {tipo:'grupo', valor:'forthemp'};
+  if(!lojaAtiva) return {tipo:'grupo', valor:_grupoPadrao()};
   return {tipo:'loja', valor:lojaAtiva};
 }
 // true se a loja_id (de um local ou vistoria) está dentro da empresa em foco
@@ -7042,7 +6994,7 @@ function abrirLocForm(id){
   // seletor de unidade — visível quando gestor está em "Todas" e há múltiplas unidades no grupo
   const lojaRow=document.getElementById('loc-loja-row');
   const lojaSel=document.getElementById('loc-loja');
-  const _unidades=LOJAS.filter(l=>l.grupo===(_grupoDaLoja(lojaAtiva)||'forthemp'));
+  const _unidades=LOJAS.filter(l=>l.grupo===(_grupoDaLoja(lojaAtiva)||_grupoPadrao()));
   if(lojaRow&&lojaSel&&!lojaAtiva&&_unidades.length>1){
     lojaSel.innerHTML=_unidades.map(l=>`<option value="${l.id}">${l.nome}</option>`).join('');
     lojaRow.style.display='';
@@ -10340,7 +10292,7 @@ function enviarListaComprasWhatsApp(fornecId){
   const forn=todosFornecedores.find(f=>f.id===fornecId);
   if(!forn?.whatsapp){ toast('Fornecedor sem WhatsApp cadastrado'); return; }
   const LC=getLojaConfig(lojaAtiva);
-  let txt='🛒 *Pedido de compra* — '+(LC.nome||'Forthemp')+'\n'+new Date().toLocaleDateString('pt-BR')+'\n\n';
+  let txt='🛒 *Pedido de compra* — '+(LC.nome||FLUXA_CONFIG.appName||'Empresa')+'\n'+new Date().toLocaleDateString('pt-BR')+'\n\n';
   txt+=itens.map(x=>`• ${x.p.nome}: *${fmtQtd(x.qtd)} ${x.p.unidade||''}*${x.motivo==='encomenda'?' ⚠️ urgente':''}`).join('\n');
   const total=itens.reduce((a,x)=>a+(parseFloat(x.p.custo)||0)*x.qtd,0);
   txt+=`\n\n💰 Total estimado: ${brl(total)}`;
@@ -10510,7 +10462,7 @@ async function enviarOCWhatsApp(){
   if(!forn?.whatsapp){ toast('OC salva. Fornecedor sem WhatsApp cadastrado.'); return; }
   const LC=getLojaConfig(lojaAtiva);
   const oc=todasOC.find(o=>o.id===(gV('oc-edit-id')||todasOC[0]?.id));
-  let txt=`📄 *Ordem de Compra #${oc?.numero||'?'}*\n${LC.nome||'Forthemp'} · ${new Date().toLocaleDateString('pt-BR')}\n\n`;
+  let txt=`📄 *Ordem de Compra #${oc?.numero||'?'}*\n${LC.nome||FLUXA_CONFIG.appName||'Empresa'} · ${new Date().toLocaleDateString('pt-BR')}\n\n`;
   txt+=_ocEditItens.map(x=>`• ${x.nome}: *${fmtQtd(x.qtd)} ${x.unidade}* — ${brl(x.custo_unit)}/un`).join('\n');
   txt+=`\n\n💰 *Total: ${brl(_ocEditItens.reduce((a,x)=>a+x.qtd*x.custo_unit,0))}*`;
   if(oc?.obs) txt+=`\n📝 ${oc.obs}`;
