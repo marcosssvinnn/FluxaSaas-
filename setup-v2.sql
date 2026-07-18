@@ -400,12 +400,19 @@ BEGIN
                   WHERE s.empresa_id = v_cli.empresa_id AND s.cliente = v_cli.nome), '[]'::jsonb),
     'vistorias', COALESCE((SELECT jsonb_agg(to_jsonb(v))
                   FROM vistorias v
-                  WHERE v.empresa_id = v_cli.empresa_id AND v.cliente = v_cli.nome), '[]'::jsonb)
+                  WHERE v.empresa_id = v_cli.empresa_id AND v.cliente = v_cli.nome), '[]'::jsonb),
+    'equipamentos', COALESCE((SELECT jsonb_agg(to_jsonb(eq) - 'foto_base64')
+                  FROM equipamentos eq
+                  WHERE eq.empresa_id = v_cli.empresa_id AND eq.cliente_nome = v_cli.nome AND eq.ativo = true), '[]'::jsonb)
   ) INTO v_out;
   RETURN v_out;
 END $$;
 
-CREATE OR REPLACE FUNCTION portal_responder_orcamento(p_token uuid, p_orc_id uuid, p_aprovar boolean)
+-- Aprova/recusa um orçamento pelo token (cliente sem login). p_assinatura (opcional)
+-- carrega {base64, hash, meta} da assinatura do cliente na aprovação. A RESERVA de
+-- estoque NÃO acontece aqui (o portal é anon, sem acesso ao estoque): ela roda no
+-- app do gestor ao receber a atualização por realtime. Ver T11 no CLAUDE.md.
+CREATE OR REPLACE FUNCTION portal_responder_orcamento(p_token uuid, p_orc_id uuid, p_aprovar boolean, p_assinatura jsonb DEFAULT NULL)
 RETURNS boolean
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE v_cli clientes%ROWTYPE;
@@ -415,7 +422,11 @@ BEGIN
     LIMIT 1;
   IF v_cli.id IS NULL THEN RETURN false; END IF;
   UPDATE orcamentos
-    SET status = CASE WHEN p_aprovar THEN 'aprovado' ELSE 'recusado' END
+    SET status = CASE WHEN p_aprovar THEN 'aprovado' ELSE 'recusado' END,
+        assinatura_base64 = COALESCE(p_assinatura->>'base64', assinatura_base64),
+        assinatura_data   = CASE WHEN p_assinatura IS NOT NULL THEN now() ELSE assinatura_data END,
+        assinatura_hash   = COALESCE(p_assinatura->>'hash', assinatura_hash),
+        assinatura_meta   = COALESCE(p_assinatura->>'meta', assinatura_meta)
     WHERE id = p_orc_id
       AND empresa_id = v_cli.empresa_id
       AND cliente = v_cli.nome
@@ -424,4 +435,4 @@ BEGIN
 END $$;
 
 GRANT EXECUTE ON FUNCTION portal_dados(uuid) TO anon;
-GRANT EXECUTE ON FUNCTION portal_responder_orcamento(uuid, uuid, boolean) TO anon;
+GRANT EXECUTE ON FUNCTION portal_responder_orcamento(uuid, uuid, boolean, jsonb) TO anon;

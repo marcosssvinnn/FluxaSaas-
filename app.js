@@ -4695,6 +4695,9 @@ function iniciarRealtimeSync(){
       if(idx>=0) todosOrc[idx]={...todosOrc[idx],...novo}; else todosOrc.unshift(novo);
       atualizarDash();
       if(document.getElementById('page-history').classList.contains('on')) renderTabela();
+      // Reconcilia a reserva de estoque quando o status muda (ex.: cliente aprovou
+      // pelo portal → este app, logado como gestor, faz a reserva). É idempotente.
+      try{ if(typeof sincronizarReservaOrcamento==='function' && !eVendas()) sincronizarReservaOrcamento(novo); }catch(e){ console.warn('[rt orc reserva]', e?.message||e); }
     })
     .on('postgres_changes',_rtCfg('DELETE','orcamentos'), p=>{
       const id=p.old.id;
@@ -4970,6 +4973,8 @@ function btnNotif(msg, tel){
 //  MÓDULO 5 — PORTAL DO CLIENTE
 // ══════════════════════════════════════════════════
 let portalCliente = null;
+let portalDados = null;   // pacote da RPC portal_dados (cliente + orçamentos + OS + …)
+let portalToken = null;   // token do portal em uso (para portal_responder_orcamento)
 
 async function checkPortalHash(){
   const hash=window.location.hash;
@@ -4991,20 +4996,22 @@ async function checkPortalHash(){
     if(SUPABASE_URL!=='PREENCHER_DEPOIS') await conectarDB(SUPABASE_URL,SUPABASE_ANON_KEY,false);
   }
 
-  // Busca cliente pelo token
+  // v2: o portal é público (anon). A RLS bloqueia queries diretas, então usamos a
+  // RPC portal_dados(token) — que valida o token e devolve o pacote do cliente
+  // (cliente + orçamentos + OS + vistorias + equipamentos). Nenhuma query direta aqui.
+  portalToken = token;
   try{
-    let cli=null;
+    let bundle=null;
     if(dbOk&&db){
-      const {data}=await db.from('clientes').select('*').eq('portal_token',token).single();
-      cli=data;
-    } else {
-      const todos=JSON.parse(ls('fluxa_clientes_full')||'[]');
-      cli=todos.find(x=>x.portal_token===token)||null;
+      const {data,error}=await db.rpc('portal_dados',{p_token:token});
+      if(error) throw error;
+      bundle=data;
     }
-    if(!cli){ mostrarErroPortal(); return true; }
-    portalCliente=cli;
-    await renderPortal(cli);
-  }catch(e){ mostrarErroPortal(); }
+    if(!bundle || !bundle.cliente){ mostrarErroPortal(); return true; }
+    portalCliente=bundle.cliente;
+    portalDados=bundle;
+    await renderPortal(bundle);
+  }catch(e){ console.warn('[portal]', e?.message||e); mostrarErroPortal(); }
   return true;
 }
 
@@ -5013,27 +5020,23 @@ function mostrarErroPortal(){
   document.getElementById('portal-erro').style.display='block';
 }
 
-async function renderPortal(cli){
+async function renderPortal(bundle){
+  // Aceita o pacote da RPC (portal_dados) ou, por compat, só o cliente.
+  const b = (bundle && bundle.cliente) ? bundle : (portalDados || {cliente:bundle});
+  const cli = b.cliente || {};
   document.getElementById('portal-loading').style.display='none';
   document.getElementById('portal-content').style.display='block';
 
-  // fix #C: usa branding da loja do cliente, não o CFG global
-  const LC = getLojaConfig(cli.loja_id);
-  document.getElementById('portal-empresa-nome').textContent=LC.nome||'';
-  document.getElementById('portal-empresa-sub').textContent=LC.sub||'';
+  // v2: branding vem da empresa do pacote (portal é público, sem CFG carregado).
+  const econf = (b.empresa && b.empresa.config) || {};
+  document.getElementById('portal-empresa-nome').textContent = econf.appName || econf.nome || (b.empresa&&b.empresa.nome) || '';
+  document.getElementById('portal-empresa-sub').textContent = econf.sub || '';
   const logo=document.getElementById('portal-logo');
-  if(LC.logoB64){ logo.src=LC.logoB64; logo.classList.add('has-logo'); }
-  document.getElementById('portal-cli-nome').textContent='Olá, '+cli.nome+' 👋';
+  if(econf.logoB64){ logo.src=econf.logoB64; logo.classList.add('has-logo'); }
+  document.getElementById('portal-cli-nome').textContent='Olá, '+(cli.nome||'')+' 👋';
 
-  // Próxima visita (busca OS agendadas do cliente)
-  const osLocal=JSON.parse(ls('fluxa_os_hist')||'[]');
-  let osCliente=osLocal.filter(o=>(o.cliente||'').toLowerCase()===cli.nome.toLowerCase());
-  if(dbOk&&db){
-    try{
-      const {data}=await db.from('ordens_servico').select('*').ilike('cliente',cli.nome).order('data_servico',{ascending:true});
-      if(data) osCliente=data;
-    }catch(e){ console.warn('[portal:OS]', e?.message||e); }
-  }
+  // Próxima visita — OS do pacote (sem query direta)
+  let osCliente = Array.isArray(b.ordens_servico) ? b.ordens_servico : [];
   const hoje=new Date(); hoje.setHours(0,0,0,0);
   const futuras=osCliente.filter(o=>o.status==='agendado'&&o.data_servico&&new Date(o.data_servico+'T12:00:00')>=hoje).sort((a,b)=>new Date(a.data_servico)-new Date(b.data_servico));
   const secVisita=document.getElementById('portal-sec-visita');
@@ -5064,20 +5067,8 @@ async function renderPortal(cli){
       </div>`).join('');
   }
 
-  // Orçamentos pendentes — fix #D: busca do Supabase se todosOrc estiver vazio (portal aberto sem login prévio)
-  let orcsCliente=filtrarPorLoja(todosOrc).filter(o=>(o.cliente||'').toLowerCase()===cli.nome.toLowerCase()&&o.status==='pendente');
-  if(!orcsCliente.length && dbOk && db){
-    try{
-      let qOrc=db.from('orcamentos').select('*').ilike('cliente',cli.nome).eq('status','pendente').order('data_criacao',{ascending:false});
-      if(cli.loja_id) qOrc=qOrc.eq('loja_id',cli.loja_id);
-      const {data:orcDb}=await qOrc;
-      if(orcDb&&orcDb.length){
-        orcsCliente=orcDb;
-        // Adiciona ao cache em memória para aprovarOrcPortal funcionar
-        orcDb.forEach(o=>{ if(!todosOrc.find(x=>x.id===o.id)) todosOrc.unshift(o); });
-      }
-    }catch(e){ console.warn('[portal:orcs]', e?.message||e); }
-  }
+  // Orçamentos pendentes — do pacote (sem query direta)
+  const orcsCliente=(Array.isArray(b.orcamentos)?b.orcamentos:[]).filter(o=>o.status==='pendente');
   const secOrc=document.getElementById('portal-sec-orc');
   if(orcsCliente.length){
     secOrc.style.display='block';
@@ -5095,14 +5086,8 @@ async function renderPortal(cli){
       </div>`).join('');
   }
 
-  // Equipamentos
-  let eqCliente=todosEq.filter(e=>(e.cliente_nome||'').toLowerCase()===cli.nome.toLowerCase());
-  if(dbOk&&db&&!eqCliente.length){
-    try{
-      const {data}=await db.from('equipamentos').select('*').ilike('cliente_nome',cli.nome).eq('ativo',true);
-      if(data&&data.length) eqCliente.push(...data);
-    }catch(e){ console.warn('[portal:equipamentos]', e?.message||e); }
-  }
+  // Equipamentos — do pacote (sem query direta)
+  const eqCliente = Array.isArray(b.equipamentos) ? b.equipamentos : [];
   const secEq=document.getElementById('portal-sec-eq');
   if(eqCliente.length){
     secEq.style.display='block';
@@ -5208,34 +5193,39 @@ async function verificarAssinaturaOrc(o){
   const h=await _hashDocumentoOrc(o);
   return h===o.assinatura_hash ? 'ok' : 'alterado';
 }
+// v2: o portal é anon — usa a RPC portal_responder_orcamento (não pode dar update
+// direto nem mexer no estoque). A RESERVA de estoque é disparada no app do GESTOR
+// ao receber a atualização por realtime (ver iniciarRealtimeSync / T11 no CLAUDE.md).
 async function aprovarOrcPortal(id, sigB64){
-  const oAtual=todosOrc.find(x=>x.id===id)||{};
-  const agora=new Date().toISOString();
-  const upd={status:'aprovado', data_aprovacao:agora};
+  if(!dbOk||!db||!portalToken){ toast('⚠️ Sem conexão com o servidor'); return; }
+  const oAtual=(portalDados&&portalDados.orcamentos||[]).find(x=>x.id===id)||{};
+  let assinatura=null;
   if(sigB64){
-    upd.assinatura_base64=sigB64;
-    upd.assinatura_data=agora;                                   // quando foi assinado
-    upd.assinatura_hash=await _hashDocumentoOrc(oAtual);         // conteúdo assinado (anti-adulteração)
-    upd.assinatura_meta=(navigator.userAgent||'').slice(0,180);  // dispositivo que assinou
+    assinatura={ base64:sigB64, hash:await _hashDocumentoOrc(oAtual), meta:(navigator.userAgent||'').slice(0,180) };
   }
-  todosOrc=todosOrc.map(o=>o.id===id?{...o,...upd}:o);
-  lsOrcAtualizar(id,upd);
-  sincronizarBaixaOrcamento(todosOrc.find(o=>o.id===id)); // baixa do estoque na aprovação pelo cliente
-  if(dbOk&&db) orcSyncUpdate(id, upd).catch(e=>console.warn('[aprovarOrcPortal]', e?.message||e));
-  if(portalCliente) await renderPortal(portalCliente);
-  toast('✅ Orçamento aprovado e assinado!');
+  try{
+    const {data:ok,error}=await db.rpc('portal_responder_orcamento',{p_token:portalToken, p_orc_id:id, p_aprovar:true, p_assinatura:assinatura});
+    if(error) throw error;
+    if(!ok){ toast('⚠️ Não foi possível aprovar (orçamento já respondido?).'); return; }
+    if(portalDados&&portalDados.orcamentos) portalDados.orcamentos=portalDados.orcamentos.map(o=>o.id===id?{...o,status:'aprovado'}:o);
+    await renderPortal(portalDados);
+    toast('✅ Orçamento aprovado e assinado!');
+  }catch(e){ console.warn('[aprovarOrcPortal]', e?.message||e); toast('Erro ao aprovar. Tente novamente.'); }
 }
 
 function recusarOrcPortal(id){
   confirmar('Recusar este orçamento?', ()=>_recusarOrcPortalConfirmado(id), 'Recusar Orçamento');
 }
 async function _recusarOrcPortalConfirmado(id){
-  todosOrc=todosOrc.map(o=>o.id===id?{...o,status:'recusado'}:o);
-  lsOrcAtualizar(id,{status:'recusado'});
-  sincronizarBaixaOrcamento(todosOrc.find(o=>o.id===id)); // estorna se já tinha sido baixado
-  if(dbOk&&db) db.from('orcamentos').update({status:'recusado'}).eq('id',id).then(()=>{}).catch(()=>{});
-  if(portalCliente) await renderPortal(portalCliente);
-  toast('❌ Orçamento recusado');
+  if(!dbOk||!db||!portalToken){ toast('⚠️ Sem conexão com o servidor'); return; }
+  try{
+    const {data:ok,error}=await db.rpc('portal_responder_orcamento',{p_token:portalToken, p_orc_id:id, p_aprovar:false});
+    if(error) throw error;
+    if(!ok){ toast('⚠️ Não foi possível recusar.'); return; }
+    if(portalDados&&portalDados.orcamentos) portalDados.orcamentos=portalDados.orcamentos.map(o=>o.id===id?{...o,status:'recusado'}:o);
+    await renderPortal(portalDados);
+    toast('❌ Orçamento recusado');
+  }catch(e){ console.warn('[recusarOrcPortal]', e?.message||e); toast('Erro ao recusar. Tente novamente.'); }
 }
 
 function abrirWAPortal(){
