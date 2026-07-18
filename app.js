@@ -393,8 +393,13 @@ async function _aplicarContextoEmpresa(){
   // 4) derivados de config/lojas
   FLUXA_CONFIG.lojaPadrao = CFG.lojaPadrao || (LOJAS[0]?.id || '');
   LOJA_PADRAO_ID = FLUXA_CONFIG.lojaPadrao;
+  // GRUPO_PRINCIPAL = ids das lojas vistas juntas em "Todas". filtrarPorLoja e
+  // populaLojaSelect comparam GRUPO_PRINCIPAL contra loja_id / l.id (IDS de loja),
+  // então aqui precisa ser l.id — não l.grupo. (Com l.grupo, numa empresa nova o
+  // grupo default 'principal' nunca batia com o loja_id UUID e TODOS os registros
+  // com loja_id sumiam do histórico/dashboard.)
   if(!FLUXA_CONFIG.grupoPrincipal.length){
-    FLUXA_CONFIG.grupoPrincipal = [...new Set(LOJAS.map(l=>l.grupo).filter(Boolean))];
+    FLUXA_CONFIG.grupoPrincipal = [...new Set(LOJAS.map(l=>l.id).filter(Boolean))];
   }
   GRUPO_PRINCIPAL = FLUXA_CONFIG.grupoPrincipal;
   // 5) aplica na UI
