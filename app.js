@@ -2475,14 +2475,28 @@ async function dbUpsert(table, payload){
   }
   return { data:null, error:{ message:'dbUpsert: colunas faltantes demais em '+table } };
 }
-// Insere um registro atribuindo o próximo `numero` de forma segura contra
-// concorrência. Sem isto, dois usuários simultâneos liam o mesmo "max+1" e
-// geravam OS/orçamentos com número duplicado. Aqui, se o banco rejeitar o
-// número por já existir (UNIQUE, código 23505), tentamos o próximo automaticamente.
-// Requer índice único em `numero` (ver migração migracao-numero-unico.sql).
+// v2: numeração POR EMPRESA via RPC atômica proximo_numero (tabela contadores).
+// A RPC incrementa o contador da empresa num passo atômico — sem corrida entre
+// usuários e sem depender de índice único. Offline, o chamador já usou um número
+// provisório local; ao reconciliar no sync o registro passa por aqui e recebe o
+// número definitivo do servidor.
+const _TIPO_NUMERO = { orcamentos:'orcamento', ordens_servico:'os' };
 async function dbInsertNumerado(table, payload, tentativas=6){
+  const tipo=_TIPO_NUMERO[table]||table;
+  // 1) número autoritativo via RPC (caminho normal, online)
+  if(EMPRESA_ID){
+    try{
+      const {data:num, error}=await _dbRace(db.rpc('proximo_numero',{p_empresa:EMPRESA_ID, p_tipo:tipo}));
+      if(!error && num!=null){
+        const r=await dbInsert(table, {...payload, numero:num});
+        if(!r.error) return r; // sucesso
+        // colisão improvável (dados legados) → cai no fallback max+1
+      } else if(error){ console.warn('[proximo_numero]', error.message||error); }
+    }catch(e){ console.warn('[proximo_numero]', e?.message||e); }
+  }
+  // 2) fallback: max+1 escopado por empresa, com retry por conflito de UNIQUE
   for(let t=0;t<tentativas;t++){
-    const {data:rows}=await _dbRace(db.from(table).select('numero').order('numero',{ascending:false}).limit(1));
+    const {data:rows}=await _dbRace(db.from(table).select('numero').eq('empresa_id',EMPRESA_ID).order('numero',{ascending:false}).limit(1));
     const num=(rows&&rows.length?(rows[0].numero||0):0)+1+t; // +t evita reusar o mesmo nº em colisões seguidas
     const r=await dbInsert(table, {...payload, numero:num});
     if(!r.error) return r;
