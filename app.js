@@ -478,8 +478,8 @@ async function escolherEmpresa(id){
 // Fluxa v2 é um SaaS pool: UM deploy + UM banco servindo N empresas, isoladas por
 // RLS. Preencher as duas constantes quando o projeto Supabase existir (o banco é
 // criado depois do código pronto). Ativar o app = só preencher aqui.
-const SUPABASE_URL      = 'PREENCHER_DEPOIS';
-const SUPABASE_ANON_KEY = 'PREENCHER_DEPOIS';
+const SUPABASE_URL      = 'https://auoklaiffalbdgazrbdu.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF1b2tsYWlmZmFsYmRnYXpyYmR1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzNDU5OTMsImV4cCI6MjA5OTkyMTk5M30.VvEhdTy0wsV0VkRM_rY6sYBSaVTRx9_Xb9WGfFMp-WY';
 
 // ══════════════════════════════════════════════════
 //  CONTEXTO DA EMPRESA (tenant ativo) — populado APÓS o login
