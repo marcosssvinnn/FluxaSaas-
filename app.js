@@ -223,6 +223,118 @@ function fazerLogout(){
 }
 
 // ══════════════════════════════════════════════════
+//  AUTENTICAÇÃO DE CONTA (Supabase Auth) — camada externa do multi-tenant
+// ══════════════════════════════════════════════════
+// A conta (e-mail/senha) identifica o usuário e, via tabela `membros` + RLS, dá
+// acesso à(s) empresa(s) dele. Depois de autenticado, o PIN interno escolhe a
+// persona (gestor/vendas/técnico) — o fluxo antigo NÃO morre, vira a etapa seguinte.
+let authUser = null;      // usuário do Supabase Auth (session.user) ou null
+let authModo = 'login';   // 'login' | 'criar'
+
+// Cria o cliente Supabase uma única vez (reusado por conectarDB e pelo Auth).
+// Sem credenciais preenchidas (PREENCHER_DEPOIS) → retorna null (modo local/dev).
+function criarClienteSupabase(){
+  if(db) return db;
+  if(!SUPABASE_URL || SUPABASE_URL==='PREENCHER_DEPOIS' || !SUPABASE_ANON_KEY || SUPABASE_ANON_KEY==='PREENCHER_DEPOIS') return null;
+  try{ const {createClient}=supabase; db=createClient(SUPABASE_URL, SUPABASE_ANON_KEY); return db; }
+  catch(e){ console.warn('[criarClienteSupabase]', e?.message||e); return null; }
+}
+
+function mostrarTelaAuth(){
+  const a=document.getElementById('login-step-auth'); if(a) a.style.display='';
+  const u=document.getElementById('login-step-users'); if(u) u.style.display='none';
+  const sl=document.getElementById('login-step-loja'); if(sl) sl.classList.remove('show');
+  document.getElementById('login-overlay').style.display='flex';
+}
+// Esconde a tela de conta e revela a etapa interna (usuário + PIN).
+function esconderTelaAuth(){
+  const a=document.getElementById('login-step-auth'); if(a) a.style.display='none';
+  const u=document.getElementById('login-step-users'); if(u) u.style.display='';
+}
+
+function authToggleModo(){
+  authModo = (authModo==='login') ? 'criar' : 'login';
+  const criar = authModo==='criar';
+  document.getElementById('auth-empresa-wrap').style.display = criar ? '' : 'none';
+  document.getElementById('auth-title').textContent = criar ? 'Criar minha empresa' : 'Entrar na sua conta';
+  document.getElementById('auth-sub').textContent   = criar ? 'Comece grátis — leva 1 minuto' : 'Acesse com seu e-mail e senha';
+  document.getElementById('auth-btn').textContent   = criar ? 'Criar empresa →' : 'Entrar →';
+  document.getElementById('auth-toggle-txt').textContent  = criar ? 'Já tem conta?' : 'Ainda não tem conta?';
+  document.getElementById('auth-toggle-link').textContent = criar ? 'Fazer login' : 'Criar minha empresa';
+  document.getElementById('auth-err').textContent = '';
+}
+
+function _msgAuthErro(e){
+  const m=(e?.message||'').toLowerCase();
+  if(m.includes('invalid login')||m.includes('credentials')) return 'E-mail ou senha incorretos.';
+  if(m.includes('already registered')||m.includes('already exists')) return 'Este e-mail já tem conta. Faça login.';
+  if(m.includes('confirm')) return 'Conta criada. Confirme o e-mail e faça login.';
+  if(m.includes('password')&&m.includes('6')) return 'A senha precisa de ao menos 6 caracteres.';
+  return 'Não foi possível concluir. Tente novamente.';
+}
+
+async function authLogin(email, senha){
+  const { data, error } = await db.auth.signInWithPassword({ email, password: senha });
+  if(error) throw error;
+  authUser = data.user;
+  return data;
+}
+
+async function authCriarEmpresa(nome, email, senha){
+  const { data:su, error:e1 } = await db.auth.signUp({ email, password: senha });
+  if(e1) throw e1;
+  // Se a confirmação de e-mail estiver ligada, signUp não devolve sessão → tenta login.
+  if(!su.session){
+    const { error:e2 } = await db.auth.signInWithPassword({ email, password: senha });
+    if(e2) throw new Error('confirm'); // cai em _msgAuthErro → "confirme o e-mail"
+  }
+  authUser = (await db.auth.getUser()).data?.user || su.user;
+  const { data:empId, error:e3 } = await db.rpc('criar_empresa', { p_nome: nome });
+  if(e3) throw e3;
+  return empId;
+}
+
+async function authSubmit(){
+  const email=(gV('auth-email')||'').trim(), senha=gV('auth-senha')||'';
+  const err=document.getElementById('auth-err'); err.textContent='';
+  const btn=document.getElementById('auth-btn'); const _t=btn.textContent;
+  if(!db){ err.textContent='Banco ainda não configurado (preencha as credenciais).'; return; }
+  if(!email||!senha){ err.textContent='Preencha e-mail e senha.'; return; }
+  btn.disabled=true; btn.textContent='…';
+  try{
+    if(authModo==='criar'){
+      const nome=(gV('auth-empresa')||'').trim();
+      if(!nome){ err.textContent='Informe o nome da empresa.'; return; }
+      await authCriarEmpresa(nome, email, senha);
+    } else {
+      await authLogin(email, senha);
+    }
+    await conectarDB();          // conecta/realtime já autenticado
+    await definirEmpresaAtiva(); // contexto da empresa (T3)
+    esconderTelaAuth();
+    try{ todosUsuarios=JSON.parse(ls('fluxa_usuarios')||'[]'); }catch(e){ todosUsuarios=[]; }
+    renderLoginUsers();
+  }catch(e){
+    console.warn('[authSubmit]', e?.message||e);
+    err.textContent=_msgAuthErro(e);
+  }finally{ btn.disabled=false; btn.textContent=_t; }
+}
+
+// Logout de CONTA (encerra a sessão Auth) + limpa estado. Diferente de fazerLogout
+// (troca de usuário interno dentro da mesma conta/empresa).
+async function authLogout(){
+  try{ if(db && db.auth) await db.auth.signOut(); }catch(e){ console.warn('[authLogout]', e?.message||e); }
+  authUser=null; EMPRESA_ID=null; EMPRESA=null;
+  clearSessao();
+  try{ closeSidebar(); closeGear(); }catch(e){}
+  // Recarrega para garantir estado limpo em memória (sem vazar dados entre contas).
+  location.reload();
+}
+
+// Contexto da empresa — implementação real na T3. Stub para o boot/auth funcionarem.
+async function definirEmpresaAtiva(){ /* T3: carrega empresas, define EMPRESA_ID/LOJAS/FLUXA_CONFIG */ }
+
+// ══════════════════════════════════════════════════
 //  CONEXÃO SUPABASE (multi-tenant) — ÚNICO ponto de credenciais
 // ══════════════════════════════════════════════════
 // Fluxa v2 é um SaaS pool: UM deploy + UM banco servindo N empresas, isoladas por
@@ -867,24 +979,42 @@ function lsOrcProxNum(){ return lsOrcLer().reduce((a,o)=>Math.max(a,o.numero||0)
   // ── Seed técnicos iniciais (roda 1x se não houver usuários) ──
   seedTecnicosIniciais();
 
-  // ── Login check ──
-  const sessaoExistente = getSessao();
-  if(sessaoExistente){
-    // Restaura loja ativa: gestor específico usa loja_id da sessão;
-    // gestor principal usa o valor salvo no sessionStorage (persiste em F5)
-    if(sessaoExistente.loja_id) lojaAtiva = sessaoExistente.loja_id;
-    else { const sal=sessionStorage.getItem('fluxa_loja_ativa'); if(sal) lojaAtiva=sal; }
-    // Defesa: se restaurou uma empresa separada sem acesso, volta p/ Forthemp
-    { const _lr=getLoja(lojaAtiva); if(_lr && !podeAcessarGrupo(_lr.grupo, sessaoExistente.nome)){ lojaAtiva=''; sessionStorage.setItem('fluxa_loja_ativa',''); } }
-    // Restaura a empresa escolhida pelo técnico (Fortemp/Aquamotor) em F5
-    visEmpresaTecnico = sessaoExistente.empresa_tec || sessionStorage.getItem('fluxa_vis_empresa_tec') || '';
-    document.getElementById('login-overlay').style.display='none';
-    atualizarBadgeUsuario();
-    aplicarPermissoesPerfil();
+  // ── Cliente Supabase (uma vez) + gate de sessão de CONTA (Auth) ──
+  criarClienteSupabase();
+  const temCreds = !!db;
+  let authSession = null;
+  if(temCreds){
+    try{ const { data } = await db.auth.getSession(); authSession = data?.session || null; }
+    catch(e){ console.warn('[getSession]', e?.message||e); }
+    authUser = authSession?.user || null;
+    // Reage a login/logout (inclusive em outra aba)
+    try{ db.auth.onAuthStateChange((_ev, s)=>{ authUser = s?.user || null; }); }catch(e){ console.warn('[onAuthStateChange]', e?.message||e); }
+  }
+
+  if(temCreds && !authSession){
+    // Sem sessão de conta → tela de autenticação (login / criar empresa).
+    mostrarTelaAuth();
   } else {
-    try{ todosUsuarios=JSON.parse(ls('fluxa_usuarios')||'[]'); }catch(e){ todosUsuarios=[]; }
-    renderLoginUsers();
-    document.getElementById('login-overlay').style.display='flex';
+    // Com sessão de conta (ou modo local sem credenciais) → carrega empresa e segue
+    // para a etapa INTERNA (usuário + PIN), preservando o fluxo antigo.
+    if(authUser){ try{ await definirEmpresaAtiva(); }catch(e){ console.warn('[definirEmpresaAtiva]', e?.message||e); } }
+    esconderTelaAuth();
+
+    const sessaoExistente = getSessao();
+    if(sessaoExistente){
+      // Restaura unidade ativa: usuário de unidade específica usa loja_id da sessão;
+      // gestor principal usa o valor salvo no sessionStorage (persiste em F5)
+      if(sessaoExistente.loja_id) lojaAtiva = sessaoExistente.loja_id;
+      else { const sal=sessionStorage.getItem('fluxa_loja_ativa'); if(sal) lojaAtiva=sal; }
+      visEmpresaTecnico = sessaoExistente.empresa_tec || sessionStorage.getItem('fluxa_vis_empresa_tec') || '';
+      document.getElementById('login-overlay').style.display='none';
+      atualizarBadgeUsuario();
+      aplicarPermissoesPerfil();
+    } else {
+      try{ todosUsuarios=JSON.parse(ls('fluxa_usuarios')||'[]'); }catch(e){ todosUsuarios=[]; }
+      renderLoginUsers();
+      document.getElementById('login-overlay').style.display='flex';
+    }
   }
 
   // ── Credenciais do Supabase (ponto único: constantes SUPABASE_URL/ANON_KEY) ──
@@ -1544,8 +1674,12 @@ function setDbSt(ok, txt){
 }
 async function conectarDB(url, key, mostrarErro=true){
   try{
-    const {createClient}=supabase;
-    db=createClient(url,key);
+    // Reusa o cliente já criado (o mesmo que guarda a sessão do Auth). Só cria um
+    // novo se ainda não existir — nunca recriar, para não perder a sessão.
+    if(!db){
+      const {createClient}=supabase;
+      db=createClient(url||SUPABASE_URL, key||SUPABASE_ANON_KEY);
+    }
     const {error}=await db.from('orcamentos').select('id').limit(1);
     if(error) throw error;
     dbOk=true; setDbSt(true,'conectado'); iniciarRealtimeSync(); return true;

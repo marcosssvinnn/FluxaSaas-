@@ -42,8 +42,40 @@
   <div class="login-right">
     <div class="login-card">
 
-      <!-- Formulário único: nome + PIN -->
-      <div id="login-step-users">
+      <!-- PASSO 0 — Autenticação da CONTA (Supabase Auth): login ou criar empresa.
+           Camada externa do multi-tenant. O PIN abaixo é a etapa INTERNA (usuário
+           gestor/vendas/técnico dentro da empresa). -->
+      <div id="login-step-auth" style="display:none">
+        <div class="login-card-title" id="auth-title">Entrar na sua conta</div>
+        <div class="login-card-sub" id="auth-sub">Acesse com seu e-mail e senha</div>
+        <div style="margin-top:18px;display:flex;flex-direction:column;gap:12px">
+          <div id="auth-empresa-wrap" style="display:none">
+            <label style="font-size:12px;font-weight:600;color:var(--gray);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:5px">Nome da empresa</label>
+            <input id="auth-empresa" type="text" autocomplete="organization" placeholder="Ex.: Fluxa Piscinas"
+              style="width:100%;box-sizing:border-box;padding:11px 14px;border:1.5px solid var(--gray-mid);border-radius:10px;font-size:15px;font-family:'Inter',sans-serif;outline:none">
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:600;color:var(--gray);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:5px">E-mail</label>
+            <input id="auth-email" type="email" autocomplete="email" inputmode="email" placeholder="voce@empresa.com"
+              style="width:100%;box-sizing:border-box;padding:11px 14px;border:1.5px solid var(--gray-mid);border-radius:10px;font-size:15px;font-family:'Inter',sans-serif;outline:none">
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:600;color:var(--gray);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:5px">Senha</label>
+            <input id="auth-senha" type="password" autocomplete="current-password" placeholder="••••••••"
+              style="width:100%;box-sizing:border-box;padding:11px 14px;border:1.5px solid var(--gray-mid);border-radius:10px;font-size:15px;font-family:'Inter',sans-serif;outline:none"
+              onkeydown="if(event.key==='Enter')authSubmit()">
+          </div>
+          <div class="login-err" id="auth-err" style="margin-top:-4px"></div>
+          <button class="login-btn" id="auth-btn" onclick="authSubmit()" style="margin-top:2px">Entrar →</button>
+          <div style="text-align:center;font-size:13px;color:var(--gray)">
+            <span id="auth-toggle-txt">Ainda não tem conta?</span>
+            <a href="#" id="auth-toggle-link" onclick="authToggleModo();return false" style="color:var(--c1);font-weight:600;text-decoration:none">Criar minha empresa</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Formulário único: nome + PIN (etapa INTERNA — usuário da empresa) -->
+      <div id="login-step-users" style="display:none">
         <div class="login-card-title">Bem-vindo 👋</div>
         <div class="login-card-sub">Entre com seu nome e senha para continuar</div>
 
@@ -131,7 +163,8 @@
         <button id="gear-btn-empresa" onclick="closeGear();go('empresa')">🏢 Dados da Empresa</button>
         <button id="gear-btn-usuarios" onclick="closeGear();go('usuarios')">👥 Usuários</button>
         <button id="gear-btn-auditoria" onclick="closeGear();go('auditoria')">🔐 Auditoria</button>
-        <button onclick="closeGear();fazerLogout()" style="color:var(--red)">🔓 Sair / Trocar usuário</button>
+        <button onclick="closeGear();fazerLogout()">🔄 Trocar usuário</button>
+        <button onclick="closeGear();authLogout()" style="color:var(--red)">🚪 Sair da conta</button>
       </div>
     </div>
   </div>
