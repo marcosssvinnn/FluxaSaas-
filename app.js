@@ -2042,7 +2042,7 @@ async function criarOSjunto(dados, orcNum){
   try{
     if(dbOk&&db){
       const {data:insOS}=await dbInsertNumerado('ordens_servico',{
-        orcamento_id:editId||null, cliente:dados.cli,
+        orcamento_id:editId||null, cliente:dados.cli, cliente_id:dados.cliId||null,
         local_servico:dados.loc, data_servico:data, hora, tecnico:tec,
         servicos:osSvcsData, materiais:'', obs_tecnica:'', total:dados.tot, status:'agendado'
       });
@@ -2090,7 +2090,7 @@ async function criarOSdeAprovacao(){
     if(dbOk&&db){
       const {data:insOS,error}=await dbInsertNumerado('ordens_servico',{
         orcamento_id:String(orcId).startsWith('local_')?null:orcId,
-        cliente:orc.cliente, local_servico:orc.local_servico,
+        cliente:orc.cliente, cliente_id:orc.cliente_id||null, local_servico:orc.local_servico,
         data_servico:data, hora, tecnico:tec,
         servicos:osSvcs, materiais:'', obs_tecnica:'',
         total:orc.total, status:'agendado', loja_id:orc.loja_id||LOJA_PADRAO_ID
