@@ -1493,29 +1493,38 @@ Bucket `vistorias-pdf` público + policies (instruções na tela Empresa → E-m
 2. **Concluir OS / botão Entregar** → `entregarOrcamento(orc, origem)` baixa física + libera reserva (refs `baixa:orc:id:pid` / `libres:orc:id:pid`)
 3. **Reverter/excluir** → cancela reserva automaticamente
 
-### ⚠️ Auditoria de estoque (2026-07-19) — 2 gaps reais, NÃO corrigidos (exigem mudança de arquitetura, não patch)
+### ⚠️ Auditoria de estoque (2026-07-19) — 1 gap corrigido, 1 gap real ainda aberto (exige mudança de schema)
 Verificados por rastreamento de código (não teste com dado real). Edição/exclusão/reversão de
 orçamento, idempotência em um único cliente, liberação de reserva na entrega, isolamento
-multi-tenant e proteção contra `produto_id` nulo — tudo **confirmado correto**. Os 2 gaps reais:
+multi-tenant e proteção contra `produto_id` nulo — tudo **confirmado correto**.
 
-1. **Corrida entre clientes (2 abas/dispositivos reconciliando quase ao mesmo tempo).**
-   `sincronizarReservaOrcamento`/`entregarOrcamento` calculam o delta a reservar/entregar
-   somando o `todosMovEstoque` **em memória local** (não é uma soma feita no servidor). Cada
-   escrita usa um `ref` já único (`res:orc:<id>:<pid>:<timestamp+random>`), então não existe
-   trava de unicidade no banco que impeça duplicata — a proteção depende só do cliente já ter
-   visto os movimentos anteriores. Se dois gestores (ou duas abas) reagirem à mesma atualização
-   de orçamento por realtime quase ao mesmo tempo, cada um pode calcular o delta a partir de um
-   `todosMovEstoque` desatualizado e escrever reserva/baixa duplicada — na entrega, isso significa
-   **baixar estoque físico 2x**. Correção de verdade: mover o cálculo do delta para uma RPC
-   `SECURITY DEFINER` que lê o estado atual direto no banco (atômico), em vez de no array do
-   cliente. Não fiz — é uma mudança arquitetural, não um ajuste pontual, e não dá pra testar
-   corrida real sem 2 sessões simultâneas de verdade.
-2. **Editar um orçamento aprovado para AUMENTAR a quantidade de um produto já entregue não
-   reserva/sinaliza a diferença.** `_entregueProdutoOrc` trata "já teve QUALQUER movimento de
-   baixa/liberação" como "resolvido", sem comparar quantidade. Cenário: orçamento aprovado,
-   entregue com 2 unidades de um produto; gestor edita e sobe pra 5 unidades — as 3 extras não
-   entram na reserva nem aparecem como pendente de entrega. Corrigir exige `_entregueProdutoOrc`
-   comparar quantidade entregue vs. quantidade atual do orçamento, não só existência.
+1. ~~Corrida entre clientes (2 abas/dispositivos reconciliando quase ao mesmo tempo)~~ →
+   **corrigido (`setup-v2-delta11.sql`)**. `sincronizarReservaOrcamento`/`entregarOrcamento`
+   calculavam o delta somando `todosMovEstoque` **em memória local** — sem trava nenhuma, 2
+   sessões reconciliando o mesmo orçamento quase ao mesmo tempo podiam duplicar reserva/baixa
+   (na entrega, baixar estoque físico 2x). Movido para as RPCs `rpc_sincronizar_reserva_orcamento`/
+   `rpc_entregar_orcamento` (`SECURITY DEFINER`), que travam a linha do orçamento (`FOR UPDATE`)
+   antes de ler/escrever — uma 2ª chamada concorrente espera a 1ª commitar e lê o estado já
+   atualizado. Elimina a corrida por construção (travamento de linha do Postgres), não por
+   timing. `app.js` chama a RPC quando online; se offline (ou a RPC falhar), cai no cálculo
+   local antigo (`_sincronizarReservaOrcamentoLocal`/`_entregarOrcamentoLocal`, comportamento
+   idêntico ao de antes, só renomeado) — sem regressão pro caso offline. Testado localmente
+   (fallback local: reserva, entrega parcial, reversão, idempotência — todos batendo). A parte
+   que roda no servidor (RPC em si) **não foi testada contra Supabase real** nesta sessão — só
+   revisada por leitura cuidadosa. **Falta rodar `setup-v2-delta11.sql` no Supabase.**
+2. **Editar um orçamento aprovado para AUMENTAR a quantidade de um produto já entregue ainda
+   NÃO reserva/sinaliza a diferença** (não corrigido). `_entregueProdutoOrc` trata "já teve
+   QUALQUER movimento de baixa/liberação" como "resolvido", sem comparar quantidade. Cenário:
+   orçamento aprovado, entregue com 2 unidades de um produto; gestor edita e sobe pra 5 unidades
+   — as 3 extras não entram na reserva nem aparecem como pendente de entrega. **Tentei corrigir
+   isso na mesma RPC do item 1 e desisti ao perceber um regressão real**: o ledger atual não
+   distingue "entregue parcialmente" de "explicitamente marcado como não levado" (`qtyMap` com
+   0) — os dois casos deixam só um movimento `libres:` de liberação, sem guardar a quantidade
+   realmente entregue. Trocar a checagem de existência por uma de quantidade teria feito a
+   reserva REABRIR sozinha itens que o gestor marcou deliberadamente como "não precisa mais".
+   Corrigir de verdade exige guardar a quantidade entregue de forma explícita no schema (ex.:
+   uma coluna `qtd_entregue` por linha de serviço, ou um novo tipo de movimento que registre
+   "não levado" separado de "entregue parcial") — mudança de schema, não patch pontual.
 
 ### Funções-chave:
 ```js

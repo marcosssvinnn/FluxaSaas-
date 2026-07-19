@@ -8987,9 +8987,27 @@ function orcTemEntregaPendente(orc){
 
 // ── Reconciliação da RESERVA de um orçamento (aprovar/reverter/editar/excluir) ──
 // Aprovado e não entregue → reserva os produtos. Reverteu/excluiu/entregou → libera.
-// Idempotente: lança só a diferença entre o que deveria estar reservado e o que já está.
-function sincronizarReservaOrcamento(orc){
+// v2 (achado de auditoria): quando online, roda no SERVIDOR via RPC — evita a
+// corrida de 2 sessões reconciliando o MESMO orçamento ao mesmo tempo (a versão
+// local calcula o delta a partir do array em memória, sem trava nenhuma). A RPC
+// trava a linha do orçamento (FOR UPDATE), então uma 2ª chamada concorrente
+// espera a 1ª terminar e lê o estado já atualizado. Offline (ou se a RPC
+// falhar) cai no cálculo local antigo, como fallback.
+async function sincronizarReservaOrcamento(orc){
   if(!orc||!orc.id) return;
+  if(dbOk && db && !String(orc.id).startsWith('local_')){
+    try{
+      const {error} = await db.rpc('rpc_sincronizar_reserva_orcamento', {p_orc_id: orc.id});
+      if(error) throw error;
+      await loadEstoque();
+      return;
+    }catch(e){ console.warn('[sincronizarReservaOrcamento RPC]', e?.message||e); }
+  }
+  _sincronizarReservaOrcamentoLocal(orc);
+}
+// Fallback local (offline, ou RPC indisponível) — idempotente: lança só a diferença
+// entre o que deveria estar reservado e o que já está, calculado no array local.
+function _sincronizarReservaOrcamentoLocal(orc){
   const aprovado = orc.status==='aprovado';
   const desejado={};
   if(aprovado){
@@ -9024,9 +9042,27 @@ function sincronizarReservaOrcamento(orc){
 // ── Entrega: converte reserva em baixa física (OS concluída, botão manual ou validação de itens) ──
 // qtyMap (opcional): { produto_id: quantidade realmente levada }. Item ausente = leva a qtd do
 // orçamento; item com 0 = não foi levado (não baixa física, mas libera a reserva).
-function entregarOrcamento(orc, origem, qtyMap){
+// v2 (achado de auditoria): roda no servidor via RPC quando online, mesmo motivo
+// da reserva acima — evita baixar o mesmo produto 2x se 2 sessões clicarem
+// "Entregar" quase ao mesmo tempo. Fallback local se offline ou a RPC falhar.
+async function entregarOrcamento(orc, origem, qtyMap){
   if(!orc||!orc.id) return;
   if(orc.status!=='aprovado'){ if(origem==='manual'||origem==='validar') toast('⚠️ Só dá baixa de orçamento aprovado'); return; }
+  if(dbOk && db && !String(orc.id).startsWith('local_')){
+    try{
+      const {data:baixou, error} = await db.rpc('rpc_entregar_orcamento', {p_orc_id: orc.id, p_qty_map: qtyMap||null});
+      if(error) throw error;
+      await loadEstoque();
+      if(typeof renderTabela==='function') renderTabela();
+      atualizarDash&&atualizarDash();
+      if(baixou){ if(origem==='manual'||origem==='validar') toast('✅ Itens confirmados e baixa realizada'); }
+      else if(origem==='manual'||origem==='validar'){ toast('Nada a baixar (sem produtos ou já confirmado)'); }
+      return;
+    }catch(e){ console.warn('[entregarOrcamento RPC]', e?.message||e); }
+  }
+  _entregarOrcamentoLocal(orc, origem, qtyMap);
+}
+function _entregarOrcamentoLocal(orc, origem, qtyMap){
   let baixou=false;
   (orc.servicos||[]).filter(s=>s.produto_id).forEach(s=>{
     const pid=s.produto_id;
