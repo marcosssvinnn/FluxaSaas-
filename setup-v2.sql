@@ -188,7 +188,7 @@ CREATE TABLE IF NOT EXISTS locais_vistoria (
 CREATE TABLE IF NOT EXISTS equipamentos (
   id text PRIMARY KEY,  -- app gera id texto (ex.: 'eq_...'); NÃO usar uuid
   empresa_id uuid NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
-  cliente_id uuid, cliente_nome text,
+  cliente_id text, cliente_nome text,
   tipo text, marca text, modelo text, potencia text,
   numero_serie text, data_instalacao text,
   garantia_meses integer DEFAULT 12, garantia_vencimento text,
