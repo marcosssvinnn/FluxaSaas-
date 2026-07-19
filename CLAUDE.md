@@ -153,6 +153,7 @@ Outra IA pode ter commitado desde a última vez. **Nunca trabalhe sobre um estad
 1. **No início da sessão:** `git fetch origin && git log --oneline -5 origin/main`. Se seu working tree divergiu, sincronize: `git reset --hard origin/main` (o trabalho antigo já está no remoto). Confirme os arquivos reais: `index.html` (casca), `app.js` (todo o JS), `styles.css` (todo o CSS).
 2. **Antes de cada `push`:** `git push` ou, se rejeitado, `git pull --rebase origin main` e empurre de novo. Nunca force-push.
 3. **Se algo parecer "desatualizado" (função/tela que você não reconhece):** provavelmente a outra IA mudou — confie no `origin/main`, não no seu cache. Este mês (jul/2026) o app foi refatorado de single-file para **multi-arquivo**; código single-file antigo NÃO deve voltar.
+4. **⚠️ Risco real confirmado (2026-07-19):** um `git reset --hard origin/main` rodado pela OUTRA IA no meio de uma sessão apaga silenciosamente qualquer edição sua ainda não commitada (aconteceu: uma remoção de código morto sumiu do disco sem aviso, teve que ser refeita). Mitigação: em tarefas com múltiplos edits sequenciais, **commite e dê push a cada mudança logicamente completa**, não só no final da sessão — não acumule trabalho não commitado por muito tempo.
 
 ### Toda sessão de trabalho deve:
 1. **Começar sincronizando com o `origin/main`** (acima) e **lendo este arquivo**
@@ -1286,14 +1287,25 @@ restaurante, não se aplica a uma empresa de piscinas).
   repetem o mesmo boilerplate `.from(tabela).select('*').eq('empresa_id',...)`.
   Funciona corretamente hoje; extrair um helper comum é só ganho de
   manutenção, não corrige nada quebrado — não fiz por não ser prioridade.
-- **Feature possivelmente órfã:** `iniciarVistoriaLocal()` e
-  `concluirVisDetalhada()` (e o modal `#concluir-vis-bg` que eles abrem, com
-  `salvarConcluirVis()`/`fecharConcluirVis()` funcionando de verdade por trás)
-  não têm mais nenhum botão/chamada que os acione em lugar nenhum do app —
-  parecem ter sido substituídos por `iniciarVistoriaPlena()` (que É chamado) e
-  ficaram pra trás. Não removi porque não sei se foi intencional ou se é um
-  fluxo "rápido" que ainda deveria estar acessível — perguntar ao Marcos antes
-  de apagar ~230 linhas de um modal inteiro.
+- ~~Feature possivelmente órfã~~ → **removida** (commit `47ed27a`).
+  `iniciarVistoriaLocal()`, `concluirVisDetalhada()`, `salvarConcluirVis()`,
+  `fecharConcluirVis()`, `renderConcluirVisEquips()` + o modal
+  `#concluir-vis-bg` inteiro: confirmado por `git log -S` que já vieram assim
+  desde o **primeiro commit** do v2 (seed do v1) — nunca tiveram um botão que
+  os acionasse; a única tela real de vistoria sempre foi
+  `iniciarVistoriaPlena()`. Zero call site em `app.js`/`index.html` antes de
+  remover.
+- **Lazy-load de fotos base64 (orçamentos/OS) — investigado, NÃO
+  implementado.** `todosOrc`/`todosOS` (o array carregado da tabela inteira)
+  são lidos e mutados diretamente em 30+ pontos espalhados (edição, geração
+  de PDF, sync offline, mudança de status via `Object.assign`). Não existe um
+  único ponto de entrada "abrir registro" pra trocar por um fetch completo —
+  faria a correção virar um refactor grande no fluxo financeiro principal,
+  arriscado demais pra fazer no meio de uma rodada de revisão. O caminho certo
+  aqui é o mesmo já usado pra foto de vistoria: tirar o base64 da linha e
+  subir pro Storage (ver pendência "orç/OS/equip ainda em base64" já
+  registrada) — não "carregar sob demanda". Fica como tarefa própria e
+  dedicada.
 
 **Testado no navegador (mobile 375×812 e desktop):** boot limpo sem erros de
 console antes/depois das mudanças; telas de login e "Criar minha empresa"
