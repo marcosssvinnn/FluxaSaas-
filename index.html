@@ -2348,46 +2348,6 @@
   </div>
 </div>
 
-<!-- ══ MODAL: Concluir Vistoria Rápida ══ -->
-<div class="modal-bg" id="concluir-vis-bg" role="dialog" aria-modal="true" onclick="if(event.target===this)fecharConcluirVis()">
-  <div class="modal" style="max-width:520px;max-height:90vh;overflow-y:auto">
-    <h3 style="margin-bottom:4px">✅ Registrar visita</h3>
-    <p id="concluir-vis-nome" style="font-size:13px;color:var(--gray);margin-bottom:16px;font-weight:600"></p>
-    <input type="hidden" id="concluir-vis-id">
-    <!-- Data + hora + técnico -->
-    <div class="row" style="margin-bottom:12px">
-      <div class="fl">
-        <label>Data da visita</label>
-        <input type="date" id="concluir-vis-data" style="width:100%">
-      </div>
-      <div class="fl">
-        <label>Horário de chegada</label>
-        <input type="time" id="concluir-vis-hora" style="width:100%">
-      </div>
-    </div>
-    <div class="fl" style="margin-bottom:14px">
-      <label>Técnico responsável</label>
-      <input type="text" id="concluir-vis-tec" placeholder="Nome do técnico" style="width:100%">
-    </div>
-    <!-- Equipamentos cadastrados no plano -->
-    <div id="concluir-vis-equips-wrap" style="display:none;margin-bottom:14px">
-      <div style="font-size:13px;font-weight:700;color:var(--c2);margin-bottom:8px;display:flex;align-items:center;gap:6px">
-        🔧 Condição dos equipamentos
-        <span style="font-size:11px;font-weight:400;color:var(--gray)">(marque o status de cada um)</span>
-      </div>
-      <div id="concluir-vis-equip-list"></div>
-    </div>
-    <!-- Observação geral -->
-    <div class="fl" style="margin-bottom:16px">
-      <label>Observações gerais <span style="font-weight:400;color:var(--gray)">(opcional)</span></label>
-      <textarea id="concluir-vis-obs" rows="2" placeholder="Ex: Sistema funcionando normalmente, limpeza realizada…" style="width:100%;resize:vertical;padding:9px 12px;border:1.5px solid var(--gray-mid);border-radius:8px;font-family:'Inter',sans-serif;font-size:13px;color:var(--c2);outline:none"></textarea>
-    </div>
-    <div class="modal-acts">
-      <button class="btn-sec" onclick="fecharConcluirVis()">Cancelar</button>
-      <button class="btn-primary" onclick="salvarConcluirVis()" style="flex:1">✅ Confirmar visita</button>
-    </div>
-  </div>
-</div>
 
 <!-- ══ MODAL: NF-e / NFS-e ══ -->
 <div class="nfe-modal-bg" id="nfe-modal-bg" onclick="if(event.target===this)fecharModalNFe()">
