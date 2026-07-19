@@ -204,6 +204,9 @@ function fazerLogout(){
   closeSidebar();
   document.body.classList.add('no-sbar');
   clearSessao();
+  // Opção A (flag on): a persona é uma SESSÃO real → trocar de usuário encerra a
+  // sessão do funcionário. (Voltar a ser o dono/gestor = login pela conta, e-mail+senha.)
+  if(flagAtiva('auth_perfil') && db){ try{ db.auth.signOut(); authUser=null; }catch(e){ console.warn('[fazerLogout:signOut]', e?.message||e); } }
   loginUserSelecionado=null;
   // Resetar passos
   const su=document.getElementById('login-step-users');
@@ -232,6 +235,44 @@ function criarClienteSupabase(){
   if(!SUPABASE_URL || SUPABASE_URL==='PREENCHER_DEPOIS' || !SUPABASE_ANON_KEY || SUPABASE_ANON_KEY==='PREENCHER_DEPOIS') return null;
   try{ const {createClient}=supabase; db=createClient(SUPABASE_URL, SUPABASE_ANON_KEY); return db; }
   catch(e){ console.warn('[criarClienteSupabase]', e?.message||e); return null; }
+}
+
+// ── Opção A (atrás de flagAtiva('auth_perfil')): login REAL por pessoa ──
+// Cada funcionário tem conta própria (e-mail sintético + PIN), então a RLS por
+// perfil vale de verdade. Ver docs/opcao-a-fase2.md. Com a flag OFF, nada disso roda.
+function _emailSintetico(usuarioId){
+  const slug = (EMPRESA && EMPRESA.slug) || String(EMPRESA_ID||'').slice(0,8) || 'x';
+  return String(usuarioId)+'@'+slug+'.fluxa.local';
+}
+// Supabase Auth exige senha >= 6; o PIN tem 4 → deriva determinística (o PIN segue
+// sendo a única entropia). O PIN CRU vai só para a RPC vincular_funcionario.
+function _senhaDePin(pin){ return 'fluxa_'+String(pin||''); }
+
+// Entra como o funcionário: signIn (ou signUp no 1º acesso) + vincula pelo PIN, e
+// re-inicializa o contexto sob a NOVA sessão. Retorna true se autenticou.
+async function _loginRealFuncionario(usuarioId, pin){
+  if(!db || !EMPRESA_ID) return false;
+  const email = _emailSintetico(usuarioId);
+  const senha = _senhaDePin(pin);
+  try{
+    let { error } = await db.auth.signInWithPassword({ email, password: senha });
+    if(error){
+      const { error: e2 } = await db.auth.signUp({ email, password: senha });
+      if(e2){
+        if(/already registered|already exists/i.test(e2.message||'')) return false; // conta existe → PIN errado
+        console.warn('[loginReal:signUp]', e2.message); return false;
+      }
+      // signUp já deixa a sessão logada como o funcionário
+    }
+    // vínculo membros (idempotente; valida o PIN no servidor)
+    const { error: e3 } = await db.rpc('vincular_funcionario',
+      { p_empresa: EMPRESA_ID, p_usuario_id: usuarioId, p_pin: pin });
+    if(e3){ console.warn('[vincular_funcionario]', e3.message); return false; }
+    // re-init do contexto sob o JWT do funcionário
+    try{ authUser = (await db.auth.getUser()).data?.user || authUser; }catch(e){}
+    try{ await definirEmpresaAtiva(); }catch(e){ console.warn('[loginReal:definirEmpresa]', e?.message||e); }
+    return true;
+  }catch(e){ console.warn('[_loginRealFuncionario]', e?.message||e); return false; }
 }
 
 function mostrarTelaAuth(){
@@ -851,10 +892,16 @@ async function fazerLogin(){
     return;
   }
   try{
-    const usuarioIdParaCheck = loginUserSelecionado.id==='__gestor__' ? null : loginUserSelecionado.id;
-    const { data, error } = await db.rpc('verificar_pin_interno', { p_empresa: EMPRESA_ID, p_usuario_id: usuarioIdParaCheck, p_pin_tentado: pin });
-    if(error) throw error;
-    pinCorreto = !!data;
+    if(flagAtiva('auth_perfil') && loginUserSelecionado.id !== '__gestor__'){
+      // Opção A: autentica o funcionário na conta PRÓPRIA (RLS por perfil vale de verdade)
+      pinCorreto = await _loginRealFuncionario(loginUserSelecionado.id, pin);
+    } else {
+      // Fluxo atual: valida o PIN no servidor sob a sessão do dono (persona só na UI)
+      const usuarioIdParaCheck = loginUserSelecionado.id==='__gestor__' ? null : loginUserSelecionado.id;
+      const { data, error } = await db.rpc('verificar_pin_interno', { p_empresa: EMPRESA_ID, p_usuario_id: usuarioIdParaCheck, p_pin_tentado: pin });
+      if(error) throw error;
+      pinCorreto = !!data;
+    }
   }catch(e){
     console.warn('[fazerLogin]', e?.message||e);
     err.textContent='Não foi possível verificar agora. Tente novamente.';

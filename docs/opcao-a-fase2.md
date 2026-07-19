@@ -19,9 +19,25 @@
   - **Conferir:** a outra IA criou `setup-v2-delta8.sql` — checar se mexe em RLS/policies
     antes de aplicar a Fase 1 (evitar conflito de policy).
 
-- **Fase 2 (app.js) — ESPECIFICADA aqui, NÃO implementada.** Motivo de não codar às
-  cegas: só valida com a Fase 1 aplicada no banco (Marcos roda) + login real (Marcos
-  digita PIN) + 2 decisões de UX abaixo. Implementar+testar juntos quando ele voltar.
+- **Fase 2 (app.js) — IMPLEMENTADA (atrás de `flagAtiva('auth_perfil')`, flag OFF).**
+  Feito: helpers `_emailSintetico`/`_senhaDePin`, `_loginRealFuncionario` (signIn/signUp
+  sintético + `vincular_funcionario` + re-init de contexto), bifurcação em `fazerLogin`
+  e `signOut` real em `fazerLogout`. Boot limpo, flag OFF = comportamento atual intacto.
+  - **Fluxo (flag ON):** dono loga (conta) → "Trocar usuário" encerra a sessão dele →
+    funcionário digita nome+PIN → autentica na conta própria → RLS por perfil vale.
+    Reload: `_autoLoginMembroDaConta` reaplica a persona por `membros.perfil`.
+  - **Follow-ups NÃO feitos (não bloqueiam o piloto):**
+    1. **Bootstrapping de aparelho novo** (funcionário sem o dono ter logado antes ali):
+       mostrar nome+PIN direto no boot via `usuarios_para_login` (RPC anon). Hoje o
+       funcionário loga a partir do "Trocar usuário" depois do dono estabelecer contexto.
+    2. **Voltar a ser dono/gestor:** usar "Sair da conta" (`authLogout`) → tela de conta
+       (e-mail+senha). Decisão de UX (a) confirmada.
+    3. **Reset de PIN:** como PIN=senha derivada, trocar o PIN não muda a senha de auth.
+       V1: desativar o usuário e recriar com novo id (novo e-mail sintético).
+  - **TESTE REAL (Marcos):** ligar a flag numa empresa de teste
+    (`empresas.config.flags = {"auth_perfil": true}`), cadastrar um técnico com PIN,
+    logar como ele e confirmar que não acessa financeiro. Claude não digita senha/PIN
+    em campo; o enforcement no banco já está provado (teste RLS 9/9).
 
 ## Modelo de sessão (decidido)
 
