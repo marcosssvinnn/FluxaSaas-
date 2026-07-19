@@ -378,22 +378,29 @@ INSERT INTO storage.buckets (id, name, public) VALUES ('vistorias-pdf', 'vistori
 ON CONFLICT (id) DO UPDATE SET public = true;
 INSERT INTO storage.buckets (id, name, public) VALUES ('vistorias-fotos', 'vistorias-fotos', true)
 ON CONFLICT (id) DO UPDATE SET public = true;
+-- orcamentos-fotos/os-fotos: infraestrutura pronta pra quando a migração de
+-- foto embutida (base64) pra Storage for feita nesses 2 módulos (ver CLAUDE.md).
+-- O app.js ainda não usa esses 2 buckets.
+INSERT INTO storage.buckets (id, name, public) VALUES ('orcamentos-fotos', 'orcamentos-fotos', true)
+ON CONFLICT (id) DO UPDATE SET public = true;
+INSERT INTO storage.buckets (id, name, public) VALUES ('os-fotos', 'os-fotos', true)
+ON CONFLICT (id) DO UPDATE SET public = true;
 
 DROP POLICY IF EXISTS "upload na pasta da empresa" ON storage.objects;
 CREATE POLICY "upload na pasta da empresa" ON storage.objects
   FOR INSERT TO authenticated
-  WITH CHECK (bucket_id IN ('vistorias-pdf','vistorias-fotos')
+  WITH CHECK (bucket_id IN ('vistorias-pdf','vistorias-fotos','orcamentos-fotos','os-fotos')
     AND (storage.foldername(name))[1] IN (SELECT minhas_empresas()::text));
 
 DROP POLICY IF EXISTS "update na pasta da empresa" ON storage.objects;
 CREATE POLICY "update na pasta da empresa" ON storage.objects
   FOR UPDATE TO authenticated
-  USING (bucket_id IN ('vistorias-pdf','vistorias-fotos')
+  USING (bucket_id IN ('vistorias-pdf','vistorias-fotos','orcamentos-fotos','os-fotos')
     AND (storage.foldername(name))[1] IN (SELECT minhas_empresas()::text));
 
 DROP POLICY IF EXISTS "leitura publica pdf" ON storage.objects;
 CREATE POLICY "leitura publica pdf" ON storage.objects
-  FOR SELECT TO public USING (bucket_id IN ('vistorias-pdf','vistorias-fotos'));
+  FOR SELECT TO public USING (bucket_id IN ('vistorias-pdf','vistorias-fotos','orcamentos-fotos','os-fotos'));
 
 -- ───────── PORTAL DO CLIENTE (acesso público por token, sem login) ─────────
 -- O portal (#portal/<token>) é usado pelo cliente FINAL, sem conta. Com a RLS
