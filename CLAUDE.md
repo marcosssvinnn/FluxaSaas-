@@ -1493,6 +1493,30 @@ Bucket `vistorias-pdf` público + policies (instruções na tela Empresa → E-m
 2. **Concluir OS / botão Entregar** → `entregarOrcamento(orc, origem)` baixa física + libera reserva (refs `baixa:orc:id:pid` / `libres:orc:id:pid`)
 3. **Reverter/excluir** → cancela reserva automaticamente
 
+### ⚠️ Auditoria de estoque (2026-07-19) — 2 gaps reais, NÃO corrigidos (exigem mudança de arquitetura, não patch)
+Verificados por rastreamento de código (não teste com dado real). Edição/exclusão/reversão de
+orçamento, idempotência em um único cliente, liberação de reserva na entrega, isolamento
+multi-tenant e proteção contra `produto_id` nulo — tudo **confirmado correto**. Os 2 gaps reais:
+
+1. **Corrida entre clientes (2 abas/dispositivos reconciliando quase ao mesmo tempo).**
+   `sincronizarReservaOrcamento`/`entregarOrcamento` calculam o delta a reservar/entregar
+   somando o `todosMovEstoque` **em memória local** (não é uma soma feita no servidor). Cada
+   escrita usa um `ref` já único (`res:orc:<id>:<pid>:<timestamp+random>`), então não existe
+   trava de unicidade no banco que impeça duplicata — a proteção depende só do cliente já ter
+   visto os movimentos anteriores. Se dois gestores (ou duas abas) reagirem à mesma atualização
+   de orçamento por realtime quase ao mesmo tempo, cada um pode calcular o delta a partir de um
+   `todosMovEstoque` desatualizado e escrever reserva/baixa duplicada — na entrega, isso significa
+   **baixar estoque físico 2x**. Correção de verdade: mover o cálculo do delta para uma RPC
+   `SECURITY DEFINER` que lê o estado atual direto no banco (atômico), em vez de no array do
+   cliente. Não fiz — é uma mudança arquitetural, não um ajuste pontual, e não dá pra testar
+   corrida real sem 2 sessões simultâneas de verdade.
+2. **Editar um orçamento aprovado para AUMENTAR a quantidade de um produto já entregue não
+   reserva/sinaliza a diferença.** `_entregueProdutoOrc` trata "já teve QUALQUER movimento de
+   baixa/liberação" como "resolvido", sem comparar quantidade. Cenário: orçamento aprovado,
+   entregue com 2 unidades de um produto; gestor edita e sobe pra 5 unidades — as 3 extras não
+   entram na reserva nem aparecem como pendente de entrega. Corrigir exige `_entregueProdutoOrc`
+   comparar quantidade entregue vs. quantidade atual do orçamento, não só existência.
+
 ### Funções-chave:
 ```js
 registrarMovimento({produto_id, tipo, quantidade, custo_unit, motivo, ref, lojaId})
