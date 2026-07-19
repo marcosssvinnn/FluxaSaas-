@@ -42,6 +42,10 @@ function _emailSintetico(usuarioId){
   const slug = (EMPRESA?.slug) || (EMPRESA_ID||'').slice(0,8) || 'x';
   return String(usuarioId)+'@'+slug+'.fluxa.local';
 }
+// CRÍTICO: Supabase Auth exige senha >= 6 chars, mas o PIN tem 4. A senha de auth
+// é DERIVADA do PIN de forma determinística (padding). O PIN continua sendo a única
+// entropia; o prefixo fixo só satisfaz o mínimo de 6. Validado no teste da RLS.
+function _senhaDePin(pin){ return 'fluxa_' + String(pin||''); }
 ```
 (Precisa de `EMPRESA.slug` — já existe na tabela empresas; garantir que
 `definirEmpresaAtiva`/`_ativarEmpresa` guardem `slug` no objeto EMPRESA.)
@@ -60,11 +64,12 @@ if(flagAtiva('auth_perfil') && loginUserSelecionado.id !== '__gestor__'){
 ```js
 async function _loginRealFuncionario(usuarioId, pin){
   const email = _emailSintetico(usuarioId);
+  const senha = _senhaDePin(pin); // senha de auth >= 6 (o PIN cru vai só p/ a RPC)
   // 1) tenta entrar
-  let { error } = await db.auth.signInWithPassword({ email, password: pin });
+  let { error } = await db.auth.signInWithPassword({ email, password: senha });
   if(error){
     // 2) conta não existe → cria e vincula (prova o PIN no servidor)
-    const { error: e2 } = await db.auth.signUp({ email, password: pin });
+    const { error: e2 } = await db.auth.signUp({ email, password: senha });
     if(e2){
       if(/already registered/i.test(e2.message||'')) return false; // conta existe, PIN errado
       throw e2;

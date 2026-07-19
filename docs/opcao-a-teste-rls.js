@@ -12,6 +12,7 @@
   const K = 'COLE_A_ANON_KEY_AQUI'; // = SUPABASE_ANON_KEY do app.js
   const H = t => ({ apikey: K, Authorization: 'Bearer ' + (t || K), 'Content-Type': 'application/json' });
   const rnd = Math.random().toString(36).slice(2, 8);
+  const pad = pin => 'fluxa_' + pin; // senha de auth >= 6 derivada do PIN (ver Fase 2)
   const results = [];
   const check = (nome, ok) => { results.push((ok ? '✅ PASS' : '❌ FAIL') + ' — ' + nome); };
 
@@ -55,7 +56,7 @@
   check('gestor lê orcamentos', (await sel(tokGestor, `orcamentos?empresa_id=eq.${EMP}`)).rows?.length > 0);
 
   // 3) VENDAS: conta sintética + vínculo pelo PIN
-  const tokVendas = await signup(`usr_v_${rnd}@${emp.slug}.fluxa.local`, '1111');
+  const tokVendas = await signup(`usr_v_${rnd}@${emp.slug}.fluxa.local`, pad('1111'));
   const vv = await rpc(tokVendas, 'vincular_funcionario', { p_empresa: EMP, p_usuario_id: 'usr_v_' + rnd, p_pin: '1111' });
   check('vincular vendas (retorna perfil "vendas")', vv.body === 'vendas');
   check('vendas LÊ orcamentos', (await sel(tokVendas, `orcamentos?empresa_id=eq.${EMP}`)).rows?.length > 0);
@@ -63,7 +64,7 @@
   check('vendas NÃO edita empresas', (await upd(tokVendas, `empresas?id=eq.${EMP}`, { nome: 'hack' })).status >= 400 || (await sel(tokGestor, `empresas?select=nome&id=eq.${EMP}`)).rows?.[0]?.nome !== 'hack');
 
   // 4) TÉCNICO: conta sintética + vínculo
-  const tokTec = await signup(`usr_t_${rnd}@${emp.slug}.fluxa.local`, '2222');
+  const tokTec = await signup(`usr_t_${rnd}@${emp.slug}.fluxa.local`, pad('2222'));
   const vt = await rpc(tokTec, 'vincular_funcionario', { p_empresa: EMP, p_usuario_id: 'usr_t_' + rnd, p_pin: '2222' });
   check('vincular técnico (retorna "tecnico")', vt.body === 'tecnico');
   check('técnico NÃO lê orcamentos (financeiro)', ((await sel(tokTec, `orcamentos?empresa_id=eq.${EMP}`)).rows || []).length === 0);
