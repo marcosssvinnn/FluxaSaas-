@@ -1298,18 +1298,23 @@ restaurante, não se aplica a uma empresa de piscinas).
   também) — **falta rodar o delta7 no Supabase**.
 
 **Achado, documentado, NÃO corrigido nesta rodada (decisão de produto/risco maior):**
-- **Vínculo cliente↔orçamento/OS/vistoria é por NOME (texto), não por ID.**
-  `orcamentos.cliente`, `ordens_servico.cliente`, `vistorias.cliente` guardam
-  o nome do cliente como string solta, e o portal (`portal_dados`) filtra por
-  `WHERE empresa_id = X AND cliente = <nome do token>`. Se uma empresa tiver
-  dois clientes com o mesmo nome, o portal de um mostra (e permite aprovar
-  /recusar) os orçamentos do outro. É herdado do v1, não é bug novo do v2 —
-  mas nunca foi corrigido. Resolver de verdade exige adicionar `cliente_id`
-  (FK) nessas 3 tabelas e migrar as queries do portal para filtrar por ID, com
-  uma estratégia de backfill dos dados já existentes (o texto `cliente` de
-  registros antigos pode não bater 1:1 com um `clientes.id`). Não fiz essa
-  migração sozinho porque mexe em dado de produção e precisa de decisão sobre
-  como tratar os registros antigos ambíguos.
+- ~~Vínculo cliente↔orçamento/OS/vistoria por NOME~~ → **resolvido (2026-07-19,
+  `setup-v2-delta8.sql`)**. Adicionado `cliente_id` (text) em `orcamentos`,
+  `ordens_servico`, `vistorias` + índice. Backfill rodou só nos casos
+  INAMBÍGUOS (exatamente 1 cliente com aquele nome na empresa); ambíguos
+  ficam `cliente_id IS NULL` e continuam servidos pelo fallback de nome — não
+  piora nada, só não resolve retroativamente o que já era ambíguo.
+  `portal_dados`/`portal_responder_orcamento` agora filtram por
+  `(cliente_id = v_cli.id OR (cliente_id IS NULL AND cliente = v_cli.nome))`.
+  No app (`app.js`), toda seleção de cliente (sugestão inline, modal de busca,
+  e a criação automática de cliente novo via `_autoSalvarCliente`) agora
+  captura/gera o `cliente_id` real e manda junto no orçamento/OS/vistoria —
+  campos ocultos `cli-id`/`os-cli-id`/`vis-cli-id`, limpos ao digitar de novo
+  (evita vínculo errado se o nome mudar) e preservados ao editar/duplicar um
+  registro existente. **Falta rodar `setup-v2-delta8.sql` no Supabase.**
+  Fora do escopo: `equipamentos.cliente_id` já existe no schema mas foi criado
+  como `uuid` (incompatível com `clientes.id` que é `text`) e nunca foi
+  populado pelo formulário — não mexi, é uma correção separada.
 - **Selects sem paginação em `orcamentos`, `ordens_servico`, `clientes`,
   `despesas`** — carregam a tabela inteira da empresa a cada boot/tela, sem
   `.limit()`. Piora porque `orcamentos.foto_base64`/`assinatura_base64` e

@@ -541,6 +541,7 @@
           <label class="req">Nome do Cliente</label>
           <div class="cli-input-wrap">
             <input type="text" id="cli" placeholder="Ex: João Silva" oninput="upd();mostrarSugestoesCli(this.value)" autocomplete="off" name="cli_nofill_orc" data-lpignore="true" data-form-type="other" readonly onfocus="this.removeAttribute('readonly')" onblur="setTimeout(()=>hideSugCli(),200)">
+            <input type="hidden" id="cli-id">
             <button type="button" class="cli-search-btn" onclick="abrirBuscaCli('orc')" title="Buscar cliente na base">🔍</button>
             <div class="cli-suggestions" id="cli-suggestions" style="display:none"></div>
           </div>
@@ -743,6 +744,7 @@
         <div class="fl"><label class="req">Cliente</label>
           <div class="cli-input-wrap">
             <input type="text" id="os-cli" placeholder="Nome do cliente" oninput="mostrarSugestoesCliOS(this.value)" autocomplete="off" name="cli_nofill_os" data-lpignore="true" data-form-type="other" readonly onfocus="this.removeAttribute('readonly')" onblur="setTimeout(()=>hideSugCliOS(),200)">
+            <input type="hidden" id="os-cli-id">
             <button type="button" class="cli-search-btn" onclick="abrirBuscaCli('os')" title="Buscar cliente na base">🔍</button>
             <div class="cli-suggestions" id="os-cli-suggestions" style="display:none"></div>
           </div>
@@ -2036,6 +2038,7 @@
           <div class="fl"><label>Cliente</label>
             <div class="cli-input-wrap">
               <input type="text" id="vis-cli" placeholder="Nome do cliente" oninput="mostrarSugestoesCliVis(this.value)" autocomplete="off" name="cli_nofill_vis" data-lpignore="true" data-form-type="other" readonly onfocus="this.removeAttribute('readonly')" onblur="setTimeout(()=>hideSugCliVis(),200)">
+              <input type="hidden" id="vis-cli-id">
               <button type="button" class="cli-search-btn" onclick="abrirBuscaCli('vis')" title="Buscar cliente">🔍</button>
               <div class="cli-suggestions" id="vis-cli-suggestions" style="display:none"></div>
             </div>

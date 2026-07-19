@@ -113,7 +113,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_clientes_portal_token ON clientes(portal_t
 CREATE TABLE IF NOT EXISTS orcamentos (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   empresa_id uuid NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
-  numero integer, cliente text, local_servico text,
+  numero integer, cliente text, cliente_id text, local_servico text,
   tel_cliente text, servicos jsonb,
   subtotal numeric(10,2), desconto numeric(10,2),
   total numeric(10,2), pagamento text,
@@ -131,7 +131,7 @@ CREATE TABLE IF NOT EXISTS ordens_servico (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   empresa_id uuid NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
   numero integer, orcamento_id uuid,
-  cliente text, local_servico text,
+  cliente text, cliente_id text, local_servico text,
   data_servico text, hora text,
   tecnico text, servicos jsonb,
   materiais text, obs_tecnica text,
@@ -159,13 +159,18 @@ CREATE TABLE IF NOT EXISTS agendamentos (
 CREATE TABLE IF NOT EXISTS vistorias (
   id text PRIMARY KEY,
   empresa_id uuid NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
-  loja_id text, cliente text, local text,
+  loja_id text, cliente text, cliente_id text, local text,
   data text, hora text, tecnico text, mes_ref text,
   hora_checkin text, hora_checkout text,
   obs_geral text, email_responsavel text,
   equipamentos jsonb DEFAULT '[]', local_id text,
   created_at timestamptz DEFAULT now()
 );
+-- cliente_id: vínculo por ID (não só nome) usado pelo portal do cliente —
+-- evita misturar dados de dois clientes com o mesmo nome na mesma empresa.
+CREATE INDEX IF NOT EXISTS idx_orcamentos_cliente_id ON orcamentos(cliente_id);
+CREATE INDEX IF NOT EXISTS idx_os_cliente_id ON ordens_servico(cliente_id);
+CREATE INDEX IF NOT EXISTS idx_vistorias_cliente_id ON vistorias(cliente_id);
 
 CREATE TABLE IF NOT EXISTS locais_vistoria (
   id text PRIMARY KEY,
@@ -414,13 +419,16 @@ BEGIN
                   FROM empresas e WHERE e.id = v_cli.empresa_id),
     'orcamentos', COALESCE((SELECT jsonb_agg(to_jsonb(o) - 'foto_base64')
                   FROM orcamentos o
-                  WHERE o.empresa_id = v_cli.empresa_id AND o.cliente = v_cli.nome), '[]'::jsonb),
+                  WHERE o.empresa_id = v_cli.empresa_id
+                    AND (o.cliente_id = v_cli.id OR (o.cliente_id IS NULL AND o.cliente = v_cli.nome))), '[]'::jsonb),
     'ordens_servico', COALESCE((SELECT jsonb_agg(to_jsonb(s) - 'fotos')
                   FROM ordens_servico s
-                  WHERE s.empresa_id = v_cli.empresa_id AND s.cliente = v_cli.nome), '[]'::jsonb),
+                  WHERE s.empresa_id = v_cli.empresa_id
+                    AND (s.cliente_id = v_cli.id OR (s.cliente_id IS NULL AND s.cliente = v_cli.nome))), '[]'::jsonb),
     'vistorias', COALESCE((SELECT jsonb_agg(to_jsonb(v))
                   FROM vistorias v
-                  WHERE v.empresa_id = v_cli.empresa_id AND v.cliente = v_cli.nome), '[]'::jsonb),
+                  WHERE v.empresa_id = v_cli.empresa_id
+                    AND (v.cliente_id = v_cli.id OR (v.cliente_id IS NULL AND v.cliente = v_cli.nome))), '[]'::jsonb),
     'equipamentos', COALESCE((SELECT jsonb_agg(to_jsonb(eq) - 'foto_base64')
                   FROM equipamentos eq
                   WHERE eq.empresa_id = v_cli.empresa_id AND eq.cliente_nome = v_cli.nome AND eq.ativo = true), '[]'::jsonb)
@@ -449,7 +457,7 @@ BEGIN
         assinatura_meta   = COALESCE(p_assinatura->>'meta', assinatura_meta)
     WHERE id = p_orc_id
       AND empresa_id = v_cli.empresa_id
-      AND cliente = v_cli.nome
+      AND (cliente_id = v_cli.id OR (cliente_id IS NULL AND cliente = v_cli.nome))
       AND status = 'pendente';
   RETURN FOUND;
 END $$;

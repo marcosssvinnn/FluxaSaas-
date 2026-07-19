@@ -2120,7 +2120,7 @@ async function criarOSdeAprovacao(){
 function _limparCamposOrc(){
   editId=null; fotosB64=[];
   svcs=[{id:Date.now(),d:'',p:''}];
-  ['cli','loc','tel-cli','cnpj-cli','obs','escopo','data-svc','data-orc','nota-interna','origem-cli','origem-cli-outro','pag-parcelas','pag-entrada'].forEach(id=>setV(id,''));
+  ['cli','cli-id','loc','tel-cli','cnpj-cli','obs','escopo','data-svc','data-orc','nota-interna','origem-cli','origem-cli-outro','pag-parcelas','pag-entrada'].forEach(id=>setV(id,''));
   updOrigemCli();
   setV('pag','A combinar'); setV('val','5'); setV('disc-v',''); setV('disc-t','R$');
   setV('orc-loja', lojaAtiva||LOJA_PADRAO_ID);
@@ -2606,7 +2606,7 @@ async function salvarApenas(){
   try{
     const now=new Date().toISOString();
     const camposBase={
-      cliente:dados.cli, local_servico:dados.loc, tel_cliente:dados.tel, cnpj:dados.cnpj||null,
+      cliente:dados.cli, cliente_id:dados.cliId||_autoSalvarCliente(dados.cli,dados.tel,dados.loc,dados.cnpj,dados.loja_id)||null, local_servico:dados.loc, tel_cliente:dados.tel, cnpj:dados.cnpj||null,
       loja_id:dados.loja_id||LOJA_PADRAO_ID,
       origem_cliente:dados.origem||null,
       servicos:dados.svcs, subtotal:dados.sub, desconto:dados.desc, total:dados.tot,
@@ -2690,7 +2690,7 @@ async function gerarPDF(){
   const dados=dadosPre;
   const now=new Date().toISOString();
   const camposBase={
-    cliente:dados.cli, local_servico:dados.loc, tel_cliente:dados.tel, cnpj:dados.cnpj||null,
+    cliente:dados.cli, cliente_id:dados.cliId||_autoSalvarCliente(dados.cli,dados.tel,dados.loc,dados.cnpj,dados.loja_id)||null, local_servico:dados.loc, tel_cliente:dados.tel, cnpj:dados.cnpj||null,
     loja_id:dados.loja_id||LOJA_PADRAO_ID,
     origem_cliente:dados.origem||null,
     servicos:dados.svcs, subtotal:dados.sub, desconto:dados.desc, total:dados.tot,
@@ -2780,7 +2780,7 @@ function coletarForm(){
   const base=gV('data-orc'), dias=parseInt(gV('val'))||5;
   let dataStr=new Date().toLocaleDateString('pt-BR'), vData='';
   if(base){ dataStr=new Date(base+'T12:00:00').toLocaleDateString('pt-BR'); const dv=new Date(base+'T12:00:00'); dv.setDate(dv.getDate()+dias); vData=dv.toLocaleDateString('pt-BR'); }
-  return { cli:gV('cli')||'—', loc:gV('loc'), tel:gV('tel-cli'), cnpj:gV('cnpj-cli'),
+  return { cli:gV('cli')||'—', cliId:gV('cli-id')||null, loc:gV('loc'), tel:gV('tel-cli'), cnpj:gV('cnpj-cli'),
     loja_id:gV('orc-loja')||LOJA_PADRAO_ID,
     origem:getOrigemCli(),
     pag:gV('pag'), pagFormatado:formatPagamento(gV('pag'),tot()),
@@ -2952,7 +2952,7 @@ async function gerarOSPDF(modo='os'){
     try{
       const orcId=osOrcId||null;
       const lojaIdOS=gV('os-loja')||LOJA_PADRAO_ID;
-      const payload={orcamento_id:orcId,loja_id:lojaIdOS,cliente:dados.cli,local_servico:dados.loc,cnpj:dados.cnpj||null,data_servico:dados.data,hora:dados.hora,tecnico:dados.tec,servicos:dados.svcs,materiais:dados.mat,obs_tecnica:dados.obs,total:dados.tot,fotos:dados.fotos,video_link:dados.videoLink||null,checklist:dados.checklist.length?JSON.stringify(dados.checklist):null};
+      const payload={orcamento_id:orcId,loja_id:lojaIdOS,cliente:dados.cli,cliente_id:gV('os-cli-id')||_autoSalvarCliente(dados.cli,null,dados.loc,dados.cnpj,lojaIdOS)||null,local_servico:dados.loc,cnpj:dados.cnpj||null,data_servico:dados.data,hora:dados.hora,tecnico:dados.tec,servicos:dados.svcs,materiais:dados.mat,obs_tecnica:dados.obs,total:dados.tot,fotos:dados.fotos,video_link:dados.videoLink||null,checklist:dados.checklist.length?JSON.stringify(dados.checklist):null};
       if(osEditId && !String(osEditId).startsWith('local_')){
         // EDIÇÃO: atualiza a OS existente (mantém número e status)
         const existente=todosOS.find(x=>x.id===osEditId);
@@ -3686,6 +3686,7 @@ function abrirOrc(id){
   const o=todosOrc.find(x=>x.id===id); if(!o) return;
   editId=id;
   setV('cli',o.cliente||''); setV('loc',o.local_servico||''); setV('tel-cli',o.tel_cliente||''); setV('cnpj-cli',o.cnpj||'');
+  setV('cli-id',o.cliente_id||'');
   setV('orc-loja',o.loja_id||lojaAtiva||LOJA_PADRAO_ID); // fix #4: lojaAtiva como fallback para registros antigos
   // Restaura condição de pagamento: pag_cod=código do select; pag_parcelas/pag_entrada=detalhes
   const _PAG_CODIGOS=['boleto-parc','entrada-boleto','entrada-pix','cartao-parc'];
@@ -3737,7 +3738,7 @@ function verOrcPDF(id){
 function duplicarOrc(id){
   const o=todosOrc.find(x=>x.id===id); if(!o) return;
   editId=null; fotosB64=[];
-  setV('cli',o.cliente||''); setV('loc',o.local_servico||''); setV('tel-cli',o.tel_cliente||''); setV('cnpj-cli',o.cnpj||'');
+  setV('cli',o.cliente||''); setV('cli-id',o.cliente_id||''); setV('loc',o.local_servico||''); setV('tel-cli',o.tel_cliente||''); setV('cnpj-cli',o.cnpj||'');
   const _PAG_COD2=['boleto-parc','entrada-boleto','entrada-pix','cartao-parc'];
   setV('pag',o.pag_cod||(_PAG_COD2.includes(o.pagamento)?o.pagamento:'A combinar')); updPag();
   if(o.pag_parcelas) setV('pag-parcelas',String(o.pag_parcelas));
@@ -3764,7 +3765,7 @@ function gerarOS_deOrc(id){
   const o=todosOrc.find(x=>x.id===id); if(!o) return;
   osEditId = null;
   osOrcId = id;
-  setV('os-cli',o.cliente||''); setV('os-loc',o.local_servico||''); setV('os-cnpj',o.cnpj||'');
+  setV('os-cli',o.cliente||''); setV('os-cli-id',o.cliente_id||''); setV('os-loc',o.local_servico||''); setV('os-cnpj',o.cnpj||'');
   setV('os-loja',o.loja_id||lojaAtiva||LOJA_PADRAO_ID);
   setV('os-data',o.data_servico||''); setV('os-total',String(o.total||0));
   osSvcs=(o.servicos||[]).map(s=>({id:Date.now()+Math.random(),d:s.desc}));
@@ -3806,7 +3807,7 @@ function novaOS(){
     if(lbl) lbl.textContent='Tirar/selecionar';
     if(inp) inp.value='';
   });
-  setV('os-video-link','');
+  setV('os-video-link',''); setV('os-cli-id','');
   setV('os-loja', lojaAtiva||LOJA_PADRAO_ID);
   document.getElementById('os-src-badge').textContent='';
   document.getElementById('btn-os-both').style.display='none';
@@ -3955,7 +3956,7 @@ function editarOS(id){
 function _abrirOSForm(o){
   osEditId=o.id;
   osOrcId=o.orcamento_id||null;
-  setV('os-cli',o.cliente||''); setV('os-loc',o.local_servico||'');
+  setV('os-cli',o.cliente||''); setV('os-cli-id',o.cliente_id||''); setV('os-loc',o.local_servico||'');
   setV('os-data',o.data_servico||''); setV('os-hora',o.hora||'08:00');
   // Técnico: auto-preencher com o usuário logado se o campo estiver vazio
   const nomeSessao=getSessao()?.nome||'';
@@ -4421,14 +4422,15 @@ function editarCliente(id){
 // Auto-cadastra cliente ao salvar orçamento. v2: a base já é escopada por empresa
 // (RLS + empresa_id), então dedup é por nome.
 function _autoSalvarCliente(nome, tel, end, cnpj, lojaId){
-  if(!nome||nome==='—') return;
+  if(!nome||nome==='—') return null;
   const nomeL=nome.toLowerCase();
   const lista=lsCliLer();
   const idx=lista.findIndex(c=>(c.nome||'').toLowerCase()===nomeL);
-  if(idx>=0) return; // já existe
+  if(idx>=0) return lista[idx].id; // já existe
   const novo={id:'cli_'+Date.now(),nome,tel:tel||'',end:end||'',cnpj:cnpj||'',email_responsavel:'',tipo:'',portal_token:crypto.randomUUID(),loja_id:lojaId||null};
   lista.unshift(novo); lsCliSalvar(lista);
   if(dbOk&&db) dbInsert('clientes',{id:novo.id,nome,telefone:tel||null,endereco:end||null,cnpj:cnpj||null,loja_id:novo.loja_id,portal_token:novo.portal_token}).catch(()=>{});
+  return novo.id;
 }
 
 async function salvarNovoCliente(){
@@ -4473,7 +4475,7 @@ function _baseClientesUnificada(){
   const cadastrados=lsCliLer();
   const vistos=new Map(); // nome lowercase → {nome, end, tel, cnpj, _cadastrado}
   // Supabase retorna telefone/endereco; registros locais usam tel/end — aceita ambos
-  cadastrados.forEach(c=>{ if(c.nome) vistos.set(c.nome.toLowerCase(),{nome:c.nome,end:c.end||c.endereco||'',tel:c.tel||c.telefone||'',cnpj:c.cnpj||'',_cadastrado:true}); });
+  cadastrados.forEach(c=>{ if(c.nome) vistos.set(c.nome.toLowerCase(),{id:c.id,nome:c.nome,end:c.end||c.endereco||'',tel:c.tel||c.telefone||'',cnpj:c.cnpj||'',_cadastrado:true}); });
   (todosOrc||[]).forEach(o=>{
     const n=(o.cliente||'').trim(); if(!n) return;
     const k=n.toLowerCase();
@@ -4489,17 +4491,18 @@ function _baseClientesUnificada(){
 
 function mostrarSugestoesCli(val){
   const box=document.getElementById('cli-suggestions'); if(!box) return;
+  setV('cli-id',''); // digitou de novo → invalida vínculo de uma sugestão anterior
   if(!val||val.length<2){ box.style.display='none'; return; }
   const q=val.toLowerCase(); const qd=q.replace(/\D/g,'');
   const lista=_baseClientesUnificada().filter(c=>
     (c.nome||'').toLowerCase().includes(q)||(qd&&(c.cnpj||'').replace(/\D/g,'').includes(qd))
   ).sort((a,b)=>(b._cadastrado-a._cadastrado)).slice(0,6);
   if(!lista.length){ box.style.display='none'; return; }
-  box.innerHTML=lista.map(c=>`<div class="cli-suggestion-item" onmousedown="selecionarSugestaoCli('${esc(c.nome)}','${esc(c.end||'')}','${esc(c.tel||'')}','${esc(c.cnpj||'')}')"><div class="cli-sug-name">${esc(c.nome)}${c._cadastrado?'':' <span style=\'font-size:10px;color:var(--gray);font-weight:400\'>(sem cadastro)</span>'}</div><div class="cli-sug-tel">${[c.tel,c.cnpj].filter(Boolean).map(x=>esc(x)).join(' · ')}</div></div>`).join('');
+  box.innerHTML=lista.map(c=>`<div class="cli-suggestion-item" onmousedown="selecionarSugestaoCli('${esc(c.id||'')}','${esc(c.nome)}','${esc(c.end||'')}','${esc(c.tel||'')}','${esc(c.cnpj||'')}')"><div class="cli-sug-name">${esc(c.nome)}${c._cadastrado?'':' <span style=\'font-size:10px;color:var(--gray);font-weight:400\'>(sem cadastro)</span>'}</div><div class="cli-sug-tel">${[c.tel,c.cnpj].filter(Boolean).map(x=>esc(x)).join(' · ')}</div></div>`).join('');
   box.style.display='block';
 }
-function selecionarSugestaoCli(nome,end,tel,cnpj){
-  setV('cli',nome); if(end) setV('loc',end); if(tel) setV('tel-cli',tel); if(cnpj) setV('cnpj-cli',cnpj);
+function selecionarSugestaoCli(id,nome,end,tel,cnpj){
+  setV('cli',nome); setV('cli-id',id||''); if(end) setV('loc',end); if(tel) setV('tel-cli',tel); if(cnpj) setV('cnpj-cli',cnpj);
   // Cliente da base → pré-sugere origem "Já é cliente" (editável)
   if(!gV('origem-cli')) setOrigemCli('Já é cliente');
   document.getElementById('cli-suggestions').style.display='none'; upd();
@@ -4508,17 +4511,18 @@ function hideSugCli(){ const b=document.getElementById('cli-suggestions'); if(b)
 
 function mostrarSugestoesCliOS(val){
   const box=document.getElementById('os-cli-suggestions'); if(!box) return;
+  setV('os-cli-id',''); // digitou de novo → invalida vínculo de uma sugestão anterior
   if(!val||val.length<2){ box.style.display='none'; return; }
   const q=val.toLowerCase(); const qd=q.replace(/\D/g,'');
   const lista=_baseClientesUnificada().filter(c=>
     (c.nome||'').toLowerCase().includes(q)||(qd&&(c.cnpj||'').replace(/\D/g,'').includes(qd))
   ).sort((a,b)=>(b._cadastrado-a._cadastrado)).slice(0,6);
   if(!lista.length){ box.style.display='none'; return; }
-  box.innerHTML=lista.map(c=>`<div class="cli-suggestion-item" onmousedown="selecionarSugestaoCliOS('${esc(c.nome)}','${esc(c.end||'')}','${esc(c.cnpj||'')}')"><div class="cli-sug-name">${esc(c.nome)}${c._cadastrado?'':' <span style=\'font-size:10px;color:var(--gray);font-weight:400\'>(sem cadastro)</span>'}</div><div class="cli-sug-tel">${[c.tel,c.cnpj].filter(Boolean).map(x=>esc(x)).join(' · ')}</div></div>`).join('');
+  box.innerHTML=lista.map(c=>`<div class="cli-suggestion-item" onmousedown="selecionarSugestaoCliOS('${esc(c.id||'')}','${esc(c.nome)}','${esc(c.end||'')}','${esc(c.cnpj||'')}')"><div class="cli-sug-name">${esc(c.nome)}${c._cadastrado?'':' <span style=\'font-size:10px;color:var(--gray);font-weight:400\'>(sem cadastro)</span>'}</div><div class="cli-sug-tel">${[c.tel,c.cnpj].filter(Boolean).map(x=>esc(x)).join(' · ')}</div></div>`).join('');
   box.style.display='block';
 }
-function selecionarSugestaoCliOS(nome,end,cnpj){
-  setV('os-cli',nome); if(end) setV('os-loc',end); if(cnpj) setV('os-cnpj',cnpj);
+function selecionarSugestaoCliOS(id,nome,end,cnpj){
+  setV('os-cli',nome); setV('os-cli-id',id||''); if(end) setV('os-loc',end); if(cnpj) setV('os-cnpj',cnpj);
   document.getElementById('os-cli-suggestions').style.display='none';
 }
 function hideSugCliOS(){ const b=document.getElementById('os-cli-suggestions'); if(b) b.style.display='none'; }
@@ -4553,18 +4557,18 @@ function filtrarListaCli(val){
     return;
   }
   el.innerHTML = lista.slice(0,60).map(c=>`
-    <div class="modal-cli-item" onmousedown="selecionarCliModal('${esc(c.nome)}','${esc(c.end||'')}','${esc(c.tel||'')}','${esc(c.cnpj||'')}')">
+    <div class="modal-cli-item" onmousedown="selecionarCliModal('${esc(c.id||'')}','${esc(c.nome)}','${esc(c.end||'')}','${esc(c.tel||'')}','${esc(c.cnpj||'')}')">
       <div class="mcn">${esc(c.nome)}</div>
       <div class="mcd">${[c.end,c.tel,c.cnpj].filter(Boolean).map(x=>esc(x)).join('  ·  ')}</div>
     </div>`).join('');
 }
-function selecionarCliModal(nome, end, tel, cnpj){
+function selecionarCliModal(id, nome, end, tel, cnpj){
   if(_buscaCliCtx === 'os'){
-    setV('os-cli', nome);
+    setV('os-cli', nome); setV('os-cli-id', id||'');
     if(end) setV('os-loc', end);
     if(cnpj) setV('os-cnpj', cnpj);
   } else if(_buscaCliCtx === 'vis'){
-    setV('vis-cli', nome);
+    setV('vis-cli', nome); setV('vis-cli-id', id||'');
     if(end) setV('vis-loc', end);
     // auto-fill email from client record
     const clis=JSON.parse(ls('fluxa_clientes_full')||'[]');
@@ -4574,7 +4578,7 @@ function selecionarCliModal(nome, end, tel, cnpj){
       const st=document.getElementById('vis-email-status'); if(st) st.textContent=`📧 ${cliVis.email_responsavel} (do cadastro)`;
     }
   } else {
-    setV('cli', nome);
+    setV('cli', nome); setV('cli-id', id||'');
     if(end) setV('loc', end);
     if(tel) setV('tel-cli', tel);
     if(cnpj) setV('cnpj-cli', cnpj);
@@ -7986,16 +7990,18 @@ function visCheckout(){
 // ── Autocomplete cliente no campo vis-cli ──
 function mostrarSugestoesCliVis(val){
   const sug = document.getElementById('vis-cli-suggestions'); if(!sug) return;
+  setV('vis-cli-id',''); // digitou de novo → invalida vínculo de uma sugestão anterior
   if(!val||val.length<2){ sug.style.display='none'; return; }
   const clientes = JSON.parse(ls('fluxa_clientes_full')||'[]');
   const hits = clientes.filter(c=>(c.nome||'').toLowerCase().includes(val.toLowerCase())).slice(0,5);
   if(!hits.length){ sug.style.display='none'; return; }
-  sug.innerHTML = hits.map(c=>`<div class="cli-suggestion-item" onmousedown="selecionarCliVis('${esc(c.nome||'')}','${esc(c.local||c.endereco||'')}')"><div class="cli-sug-name">${esc(c.nome)}</div><div class="cli-sug-tel">${esc(c.local||c.endereco||c.tel||'')}</div></div>`).join('');
+  sug.innerHTML = hits.map(c=>`<div class="cli-suggestion-item" onmousedown="selecionarCliVis('${esc(c.id||'')}','${esc(c.nome||'')}','${esc(c.local||c.endereco||'')}')"><div class="cli-sug-name">${esc(c.nome)}</div><div class="cli-sug-tel">${esc(c.local||c.endereco||c.tel||'')}</div></div>`).join('');
   sug.style.display='block';
 }
 function hideSugCliVis(){ const el=document.getElementById('vis-cli-suggestions'); if(el) el.style.display='none'; }
-function selecionarCliVis(nome, local){
+function selecionarCliVis(id, nome, local){
   const inp=document.getElementById('vis-cli'); if(inp) inp.value=nome;
+  setV('vis-cli-id', id||'');
   const loc=document.getElementById('vis-loc'); if(loc&&local&&!loc.value) loc.value=local;
   // Auto-fill email from client record
   const clientes=JSON.parse(ls('fluxa_clientes_full')||'[]');
@@ -8103,12 +8109,15 @@ function _montarRecVistoria(){
   const _loc=window._visLocalId ? (locaisVistoria||[]).find(x=>x.id===window._visLocalId) : null;
   const _editExist=visEditId ? lsVisLer().find(v=>v.id===visEditId) : null;
   const _lojaRec=(_editExist&&_editExist.loja_id&&_editExist.loja_id!=='default') ? _editExist.loja_id : _lojaDaVistoria(_loc);
+  const _clienteVis=(document.getElementById('vis-cli')?.value||'').trim();
+  const _localVis=(document.getElementById('vis-loc')?.value||'').trim();
   return {
     id,
     loja_id: _lojaRec,
     local_id: window._visLocalId||'',
-    cliente:(document.getElementById('vis-cli')?.value||'').trim(),
-    local:(document.getElementById('vis-loc')?.value||'').trim(),
+    cliente:_clienteVis,
+    cliente_id:(document.getElementById('vis-cli-id')?.value||null)||_autoSalvarCliente(_clienteVis,null,_localVis,null,_lojaRec)||null,
+    local:_localVis,
     data: document.getElementById('vis-data')?.value||_hojeLocal(),
     hora,
     tecnico: (document.getElementById('vis-tec')?.value||'')||(s?.nome||''),
@@ -8744,6 +8753,7 @@ function novaVistoria(cliNome, cliLocal, tecNome){
   visCheckoutTime=null;
   visEditId=null;
   _visDraftId=null;
+  setV('vis-cli-id','');
   if(visCheckinInterval){ clearInterval(visCheckinInterval); visCheckinInterval=null; }
   go('visitas');
   visTab('nova');
@@ -8800,7 +8810,7 @@ function editarVistoria(id){
   const pb=document.getElementById('vis-plano-banner'); if(pb) pb.style.display='none';
   const pc=document.getElementById('vis-precarga-banner'); if(pc) pc.style.display='none';
   const set=(elId,val)=>{ const e=document.getElementById(elId); if(e) e.value=val||''; };
-  set('vis-cli',vis.cliente); set('vis-loc',vis.local);
+  set('vis-cli',vis.cliente); set('vis-cli-id',vis.cliente_id); set('vis-loc',vis.local);
   const _en=new Date(); const _ed=`${_en.getFullYear()}-${String(_en.getMonth()+1).padStart(2,'0')}-${String(_en.getDate()).padStart(2,'0')}`;
   set('vis-data',vis.data||_ed);
   set('vis-mes-ref',vis.mes_ref||_ed.slice(0,7));
