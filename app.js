@@ -690,7 +690,9 @@ async function carregarUsuarios(){
   // Tenta carregar do Supabase e faz merge
   try{
     if(dbOk&&db){
-      const {data}=await db.from('usuarios').select('*').eq('empresa_id',EMPRESA_ID).eq('ativo',true).order('nome');
+      // usuarios_lista (view): nunca traz o hash de PIN pro navegador (achado de
+      // segurança — ver verificar_pin_interno). Expõe tem_pin em vez do valor.
+      const {data}=await db.from('usuarios_lista').select('*').eq('empresa_id',EMPRESA_ID).eq('ativo',true).order('nome');
       if(data){
         // Registros locais temporários (usr_xxx) não presentes no Supabase
         const locaisNaoSincronizados=local.filter(u=>
@@ -700,7 +702,9 @@ async function carregarUsuarios(){
         for(const u of locaisNaoSincronizados){
           try{
             const payload={nome:u.nome,perfil:u.perfil,loja_id:u.loja_id||null,loja_nome:u.loja_nome||null,pin:u.pin||null,ativo:true};
-            const {data:ins}=await dbInsert('usuarios', payload);
+            // select explícito sem 'pin' — o insert grava o hash, mas o retorno não
+            // precisa trazê-lo de volta pro navegador (achado de segurança).
+            const {data:ins}=await dbInsert('usuarios', payload, 'id,empresa_id,nome,perfil,loja_id,loja_nome,ativo,data_criacao');
             if(ins) data.push(ins);   // sincronizado → usa registro do banco
             else    data.push(u);     // insert sem retorno → mantém local
           }catch(e2){
@@ -816,17 +820,9 @@ async function hashPIN(pin){
   }catch(e){ return pin; }
 }
 
-async function pinValido(input, stored){
-  if(!stored) return false;
-  // Aceita apenas hash SHA-256 (64 chars hex). Texto plano não é mais suportado.
-  if(stored.length === 64){ const h = await hashPIN(input); return h === stored; }
-  // PIN legado (texto plano): força migração para hash no próximo login
-  if(stored === input){
-    console.warn('[fluxa] PIN legado detectado — atualize o PIN do usuário para hash.');
-    return true;
-  }
-  return false;
-}
+// v2: pinValido() (comparação local de hash) foi removida — achado de segurança.
+// A verificação agora roda inteiramente no servidor via rpc('verificar_pin_interno'),
+// que nunca expõe o hash pro navegador. Ver fazerLogin().
 
 function iniciarCountdownLockout(){
   if(lockoutTimer) clearInterval(lockoutTimer);
@@ -860,15 +856,24 @@ async function fazerLogin(){
   const pin = document.getElementById('pin-input').value;
   if(!pin || pin.length < 4){ err.textContent='Digite os 4 dígitos da senha.'; return; }
 
+  // Verificação de PIN roda no SERVIDOR (verificar_pin_interno) — o hash nunca é
+  // baixado pro navegador (achado de segurança: salt fixo tornava qualquer PIN do
+  // sistema reversível instantaneamente a partir do hash, se ele estivesse aqui).
+  // Efeito colateral aceito: trocar de perfil por PIN passa a exigir conexão.
   let pinCorreto = false;
-  if(loginUserSelecionado.id === '__gestor__'){
-    pinCorreto = await pinValido(pin, CFG.pin||'1234');
-  } else {
-    const u = todosUsuarios.find(x=>x.id===loginUserSelecionado.id);
-    if(u){
-      pinCorreto = await pinValido(pin, u.pin);
-      if(!pinCorreto && !u.pin) pinCorreto = await pinValido(pin, CFG.pin||'1234');
-    }
+  if(!db || !EMPRESA_ID){
+    err.textContent='Sem conexão — tente novamente com internet.';
+    return;
+  }
+  try{
+    const usuarioIdParaCheck = loginUserSelecionado.id==='__gestor__' ? null : loginUserSelecionado.id;
+    const { data, error } = await db.rpc('verificar_pin_interno', { p_empresa: EMPRESA_ID, p_usuario_id: usuarioIdParaCheck, p_pin_tentado: pin });
+    if(error) throw error;
+    pinCorreto = !!data;
+  }catch(e){
+    console.warn('[fazerLogin]', e?.message||e);
+    err.textContent='Não foi possível verificar agora. Tente novamente.';
+    return;
   }
 
   if(pinCorreto){
@@ -6680,7 +6685,7 @@ function renderUsuarios(){
       <div class="usr-avatar" style="${u.perfil==='vendas'?'background:#f59e0b':u.perfil==='master'?'background:#7c3aed':''}">${u.perfil==='master'?'👑':u.perfil==='vendas'?'💼':u.nome.charAt(0).toUpperCase()}</div>
       <div class="usr-info">
         <div class="usr-nome">${esc(u.nome)}</div>
-        <div class="usr-det">${u.loja_nome?'Loja: '+esc(u.loja_nome)+' · ':''}PIN: ${u.pin?'✅ definido':'⚠️ não definido'}</div>
+        <div class="usr-det">${u.loja_nome?'Loja: '+esc(u.loja_nome)+' · ':''}PIN: ${u.tem_pin?'✅ definido':'⚠️ não definido'}</div>
       </div>
       <span class="usr-badge ${perfilCor[u.perfil]||'tecnico'}">${perfilEmoji[u.perfil]||'🔧'} ${perfilLabel[u.perfil]||'Técnico'}</span>
       <div style="display:flex;gap:4px;margin-left:8px;flex-shrink:0">
@@ -6758,7 +6763,9 @@ async function salvarUsuario(){
   lsSet('fluxa_usuarios',JSON.stringify(todosUsuarios));
   if(dbOk&&db){
     try{
-      const {data:ins}=await dbInsert('usuarios', dados);
+      // select explícito sem 'pin' — grava o hash, mas não traz de volta pro
+      // navegador nem pro cache local (achado de segurança).
+      const {data:ins}=await dbInsert('usuarios', dados, 'id,empresa_id,nome,perfil,loja_id,loja_nome,ativo,data_criacao');
       if(ins){
         todosUsuarios=todosUsuarios.filter(x=>x.id!==tempId);
         todosUsuarios.push(ins);

@@ -1146,6 +1146,77 @@ reais encontrados e corrigidos.**
   telefone/cidade e rodapé corretos — logo apareceu quebrada só porque o teste
   usou uma string base64 falsa, não uma imagem real (não é bug).
 
+### 🔒 Auditoria de segurança (a pedido do Marcos) — 1 achado crítico corrigido
+> Abordagem: revisão real e verificada (grep + leitura de código + teste no banco via
+> PAT), não uma lista genérica. Cobriu XSS, RLS/autorização, exposição de segredos,
+> IDOR e armazenamento de credenciais.
+
+**🔴 CRÍTICO (corrigido): verificação de PIN interno rodava no cliente, com salt fixo.**
+- **O que era:** o app baixava `usuarios.pin` (hash SHA-256) de TODOS os usuários da
+  empresa pro navegador (pra montar a lista de login) e comparava localmente. O salt
+  é uma constante FIXA (`'fluxa2025'`) igual pra todo o sistema — um hash SHA-256 de
+  PIN de 4 dígitos com salt fixo é revertido **instantaneamente** com uma tabela
+  pré-computada de 10.000 combinações (calculada uma vez, serve pra sempre). Qualquer
+  pessoa autenticada numa empresa (mesmo perfil "vendas") podia extrair e reverter o
+  PIN de qualquer colega — inclusive do gestor — e se passar por ele. Como o
+  perfil (vendas/técnico/gestor) é só uma troca de variável no navegador (não muda a
+  sessão real do banco — RLS separa por `empresa_id`, não por perfil dentro da
+  empresa), isso permitia escalar para acesso de gestor dentro da mesma empresa.
+- **Risco real hoje:** baixo (Fluxa Piscinas ainda não tem nenhum `usuarios` cadastrado
+  — só o auto-login do gestor). Fica real assim que o gestor cadastrar funcionários.
+- **Fix (`setup-v2-delta6.sql`, já aplicado e testado no banco via PAT):**
+  - Nova RPC `verificar_pin_interno(p_empresa, p_usuario_id, p_pin_tentado)` —
+    `SECURITY DEFINER`, faz a comparação de hash **dentro do banco**; o hash nunca
+    sai do servidor. Replica exatamente a semântica antiga (PIN próprio → fallback
+    pro PIN do gestor se o usuário não tiver um próprio → default `'1234'` se a
+    empresa nunca configurou nada).
+  - **Bug pego durante o próprio teste da correção:** a função dava erro
+    `digest(text, unknown) does not exist` ao ser chamada de verdade — o
+    `pgcrypto` no Supabase vive no schema `extensions`, não `public`, e o
+    `SET search_path = public` da função não enxergava `digest()`. Corrigido pra
+    `SET search_path = public, extensions`. **Sem esse teste específico, a correção
+    teria ido pro ar quebrada** (todo login por PIN falharia).
+  - View `usuarios_lista` (sem o campo `pin` — expõe só `tem_pin boolean`) substitui
+    a leitura direta de `usuarios` em `carregarUsuarios()`.
+  - `dbInsert('usuarios', ...)` (2 pontos: sync de usuário local + criação pela tela)
+    passa a usar `select` explícito sem `pin` — antes o retorno do insert trazia o
+    hash de volta pro navegador/cache local.
+  - `fazerLogin()` chama a RPC em vez de comparar hash local; `pinValido()` (função
+    morta) removida.
+  - **Efeito colateral aceito:** trocar de perfil por PIN agora exige conexão (antes
+    funcionava 100% offline comparando o hash cacheado). Avaliado como aceitável — o
+    login por PIN normalmente acontece 1x no início do turno, não repetidamente em
+    campo sem sinal; mensagem clara ("Sem conexão — tente novamente") em vez de
+    travar. A criação/edição de OS/orçamentos/vistorias continua 100% local-first.
+- **Validado:** hash SHA-256 do PIN bate 100% entre JS (`hashPIN`) e SQL (`digest`);
+  RPC testada com sessão simulada (`set_config('request.jwt.claims',...)`) cobrindo
+  PIN certo/errado, usuário com PIN próprio, usuário sem PIN (fallback), e tentativa
+  contra empresa alheia (rejeitada) — todos os 6 cenários passaram.
+
+**Confirmado seguro (sem correção necessária):**
+- **RLS das 16 tabelas de tenant** — intacta, `authenticated`-only, verificada de novo.
+- **XSS nos pontos de maior exposição** (`renderAuditoria`, `renderTabela` — nome de
+  cliente visto por outro perfil) — já usam `esc()` corretamente. Achados menores de
+  hardening (nome de loja/empresa sem `esc()` em alguns badges/templates de PDF) são
+  **self-XSS** no máximo (só o próprio gestor da empresa poderia injetar, afetando só
+  a própria sessão) — baixa prioridade, não corrigido nesta rodada.
+- **IDOR** — bloqueado estruturalmente pela RLS (mesmo se o cliente tentasse ler um
+  ID de outra empresa direto via API, a RLS nega no banco, não depende do filtro do
+  app).
+- **Segredos** — nenhum PAT/service-role/token no código do cliente; anon key é
+  pública por natureza (correto ela estar lá).
+- **Portal (RPCs anon)** — `portal_dados`/`portal_responder_orcamento` só retornam
+  dados do cliente daquele token específico; não há como enumerar outros clientes.
+
+**Pendência maior, NÃO resolvida nesta sessão (decisão de produto, não só técnica):**
+perfil (vendas/técnico/gestor) continua sendo só um filtro de INTERFACE — no nível do
+banco, qualquer membro autenticado da empresa tem acesso total aos dados dela via API
+direta (RLS separa só por empresa, não por perfil). Resolver isso de verdade exigiria
+dar a cada perfil uma identidade real que o servidor verifique (RLS por perfil, ou
+contas de e-mail individuais por funcionário) — uma mudança de arquitetura maior, que
+precisa de decisão do Marcos sobre o modelo de confiança desejado (funcionários hoje
+são pessoas de confiança da empresa cliente; o risco é interno, não entre empresas).
+
 ### ⚠️ Pendências (atualizado — 4 resolvidas nesta sessão, nenhuma nova crítica)
 - ~~Dados de teste no banco~~ → **resolvido** (limpeza rodada e confirmada).
 - ~~`criar_empresa` não semeia `config.nome`~~ → **resolvido** (delta2 + delta4: semeia nome da empresa E nome da pessoa).

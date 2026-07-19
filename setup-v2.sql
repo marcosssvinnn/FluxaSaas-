@@ -643,3 +643,54 @@ GRANT EXECUTE ON FUNCTION admin_set_flag_empresa(uuid, text, boolean) TO authent
 -- quem já tem acesso de dono do projeto Supabase consegue popular esta tabela,
 -- nunca pelo próprio app).
 -- Exemplo: INSERT INTO plataforma_admins (user_id, nome) VALUES ('<uuid do usuário>', 'Marcos');
+
+-- ═════════════════════════════════════════════════════════════════════
+--  SEGURANÇA: verificação de PIN interno movida pro servidor
+--  (achado de auditoria de segurança — ver setup-v2-delta6.sql)
+-- ═════════════════════════════════════════════════════════════════════
+CREATE OR REPLACE FUNCTION verificar_pin_interno(p_empresa uuid, p_usuario_id text, p_pin_tentado text)
+RETURNS boolean
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions AS $$
+DECLARE
+  v_hash_tentado text := encode(digest(coalesce(p_pin_tentado,'') || 'fluxa2025', 'sha256'), 'hex');
+  v_cfg_pin text;
+  v_usr usuarios%ROWTYPE;
+  v_ok boolean := false;
+BEGIN
+  IF auth.uid() IS NULL THEN RAISE EXCEPTION 'não autenticado'; END IF;
+  IF p_empresa IS NULL OR p_empresa NOT IN (SELECT minhas_empresas()) THEN
+    RAISE EXCEPTION 'sem acesso a esta empresa';
+  END IF;
+
+  SELECT config->>'pin' INTO v_cfg_pin FROM empresas WHERE id = p_empresa;
+
+  IF p_usuario_id IS NULL OR p_usuario_id = '__gestor__' THEN
+    IF v_cfg_pin IS NULL OR v_cfg_pin = '' THEN v_ok := (p_pin_tentado = '1234');
+    ELSIF length(v_cfg_pin) = 64 THEN v_ok := (v_hash_tentado = v_cfg_pin);
+    ELSE v_ok := (v_cfg_pin = p_pin_tentado); END IF;
+    RETURN v_ok;
+  END IF;
+
+  SELECT * INTO v_usr FROM usuarios WHERE id = p_usuario_id AND empresa_id = p_empresa;
+  IF v_usr.id IS NULL THEN RETURN false; END IF;
+
+  IF v_usr.pin IS NOT NULL AND v_usr.pin <> '' THEN
+    IF length(v_usr.pin) = 64 THEN v_ok := (v_hash_tentado = v_usr.pin);
+    ELSE v_ok := (v_usr.pin = p_pin_tentado); END IF;
+  END IF;
+
+  IF NOT v_ok AND (v_usr.pin IS NULL OR v_usr.pin = '') THEN
+    IF v_cfg_pin IS NULL OR v_cfg_pin = '' THEN v_ok := (p_pin_tentado = '1234');
+    ELSIF length(v_cfg_pin) = 64 THEN v_ok := (v_hash_tentado = v_cfg_pin);
+    ELSE v_ok := (v_cfg_pin = p_pin_tentado); END IF;
+  END IF;
+
+  RETURN v_ok;
+END $$;
+GRANT EXECUTE ON FUNCTION verificar_pin_interno(uuid, text, text) TO authenticated;
+
+CREATE OR REPLACE VIEW usuarios_lista WITH (security_invoker = true) AS
+SELECT id, empresa_id, nome, perfil, loja_id, loja_nome, ativo, data_criacao,
+       (pin IS NOT NULL AND pin <> '') AS tem_pin
+FROM usuarios;
+GRANT SELECT ON usuarios_lista TO authenticated;
