@@ -243,34 +243,6 @@
 <!-- ══ MAIN CONTENT ══ -->
 <main id="main-content" role="main">
 
-<!-- ══ PAGE: SETUP ══ -->
-<div class="page" id="page-setup">
-  <div class="wrap" style="max-width:620px">
-    <div id="setup-back-row" style="display:none;align-items:center;gap:10px;margin-bottom:12px;padding-top:8px">
-      <button onclick="go('form')" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:13px;font-weight:600;font-family:'Inter',sans-serif;display:flex;align-items:center;gap:5px">← Voltar</button>
-      <span style="font-size:18px;font-weight:800;color:var(--c2)">🔌 Banco de Dados</span>
-    </div>
-    <div class="card" style="margin-top:8px">
-      <div class="setup-h">
-        <h1>Conectar Banco de Dados</h1>
-        <p>Use o Supabase (gratuito) para salvar tudo na nuvem e acessar de qualquer dispositivo.</p>
-      </div>
-      <div class="steps">
-        <div class="step"><div class="sn">1</div><div class="sb"><strong>Crie conta no Supabase</strong><p>Acesse <a href="https://supabase.com" target="_blank" style="color:var(--c1)">supabase.com</a> → "Start your project" → login com Google.</p></div></div>
-        <div class="step"><div class="sn">2</div><div class="sb"><strong>Crie um projeto</strong><p>New Project → nome <b>fluxa-orcamentos</b> → região <b>South America (São Paulo)</b>.</p></div></div>
-        <div class="step"><div class="sn">3</div><div class="sb"><strong>Execute o SQL no Supabase</strong><p>SQL Editor → New query → cole e execute:</p>
-          <code id="sql-code">-- carregando…</code>
-        </div></div>
-        <div class="step"><div class="sn">4</div><div class="sb"><strong>Cole URL e chave anon abaixo</strong><p>Project Settings → API Keys → copie a <b>Project URL</b> e a chave <b>anon public</b>.</p></div></div>
-      </div>
-      <div class="fl" style="margin-bottom:12px"><label>Project URL</label><input type="url" id="sb-url" placeholder="https://xxxxx.supabase.co"></div>
-      <div class="fl" style="margin-bottom:16px"><label>Anon Public Key</label><input type="text" id="sb-key" placeholder="eyJhbGciOiJIUzI1NiIs…"></div>
-      <button class="btn-primary" onclick="salvarBD()" id="btn-bd">Conectar e Salvar</button>
-      <p id="bd-msg" style="margin-top:10px;font-size:13px;text-align:center;min-height:18px"></p>
-    </div>
-  </div>
-</div>
-
 <!-- ══ PAGE: EMPRESA ══ -->
 <div class="page" id="page-empresa">
   <div class="wrap" style="max-width:660px">
