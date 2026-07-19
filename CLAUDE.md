@@ -1225,6 +1225,81 @@ são pessoas de confiança da empresa cliente; o risco é interno, não entre em
 - **Login end-to-end nunca foi clicado com uma senha real por mim (Claude)** — não posso digitar senha/criar conta, nem para teste. Cobri isso com: mock completo de todo o fluxo (`authSubmit`→RPC→auto-login, 6 mensagens de erro), checagem direta do schema/RPCs no banco (PAT), e revisão visual/mobile na tela real (achou os 2 bugs acima). O que fica de fora, só verificável por ele: o clique-a-clique com uma senha de verdade ponta a ponta.
 - **SMTP próprio ainda não configurado** (ver aviso no Roadmap — e-mail de confirmação/recovery do Supabase é limitado; só afeta quando houver clientes externos de verdade).
 
+### 🔍 2ª rodada de auditoria (a pedido do Marcos) — código, performance, banco
+
+Feita com o mesmo padrão da auditoria de segurança: só reporta o que foi
+verificado de fato (grep + leitura + teste no browser), sem inflar achados.
+Não incluiu a parte de estoque/compras/CMV do prompt original (é domínio de
+restaurante, não se aplica a uma empresa de piscinas).
+
+**Corrigido nesta rodada:**
+- **Bug funcional confirmado:** duas funções `filtTecOS` com o mesmo nome
+  (`app.js`, uma recebia string do `<select>` de filtro por técnico na tela de
+  Histórico de OS, outra recebia um botão da tela "Minhas OS"). A segunda
+  sobrescrevia a primeira (JS não permite duas funções com o mesmo nome no
+  mesmo escopo) — o filtro por técnico do Histórico de OS quebrava (lançava
+  erro ao tentar `string.classList.add`). Renomeada para `filtTecOSSelect` +
+  atualizado o `onchange` correspondente no `index.html`. Verificado sem
+  lançar erro nos dois casos.
+- **11 funções mortas removidas** de `app.js` (zero referências em todo o
+  projeto, confirmado por grep antes de apagar): `eMaster`, `avBtn`,
+  `toggleLoginTecs` (já era um stub vazio comentado "removido"),
+  `deselecionarUser`, `mostrarBannerNovo`, `filtrarPorPeriodo` (comentário
+  próprio já dizia "legado"), `btnNotif`, `verificarAssinaturaOrc`,
+  `copiarLinkPortal`, `movRefExiste`, `toggleMenuEstoque`. Sintaxe validada e
+  boot testado limpo depois da remoção.
+- **Índice único faltando em `clientes.portal_token`** — usado como
+  identidade única nas RPCs públicas do portal (`portal_dados`,
+  `portal_responder_orcamento`), mas sem índice nem `UNIQUE`. Sem índice, todo
+  acesso do cliente ao portal fazia table scan em `clientes` (cresce com o
+  número de clientes); sem `UNIQUE`, nada no banco impedia duas linhas com o
+  mesmo token. Corrigido em `setup-v2-delta7.sql` (aplicado a `setup-v2.sql`
+  também) — **falta rodar o delta7 no Supabase**.
+
+**Achado, documentado, NÃO corrigido nesta rodada (decisão de produto/risco maior):**
+- **Vínculo cliente↔orçamento/OS/vistoria é por NOME (texto), não por ID.**
+  `orcamentos.cliente`, `ordens_servico.cliente`, `vistorias.cliente` guardam
+  o nome do cliente como string solta, e o portal (`portal_dados`) filtra por
+  `WHERE empresa_id = X AND cliente = <nome do token>`. Se uma empresa tiver
+  dois clientes com o mesmo nome, o portal de um mostra (e permite aprovar
+  /recusar) os orçamentos do outro. É herdado do v1, não é bug novo do v2 —
+  mas nunca foi corrigido. Resolver de verdade exige adicionar `cliente_id`
+  (FK) nessas 3 tabelas e migrar as queries do portal para filtrar por ID, com
+  uma estratégia de backfill dos dados já existentes (o texto `cliente` de
+  registros antigos pode não bater 1:1 com um `clientes.id`). Não fiz essa
+  migração sozinho porque mexe em dado de produção e precisa de decisão sobre
+  como tratar os registros antigos ambíguos.
+- **Selects sem paginação em `orcamentos`, `ordens_servico`, `clientes`,
+  `despesas`** — carregam a tabela inteira da empresa a cada boot/tela, sem
+  `.limit()`. Piora porque `orcamentos.foto_base64`/`assinatura_base64` e
+  `ordens_servico.fotos` guardam imagem em base64 embutida na própria linha
+  (só as fotos de vistoria já foram pra Storage — ver pendência de
+  `orç/OS/equip ainda em base64` já registrada). Hoje é invisível (poucas
+  empresas, histórico ainda pequeno); vai ficar perceptível conforme o
+  histórico cresce. Não implementei paginação agora porque a lista já
+  carregada é reaproveitada ao abrir/editar um orçamento/OS existente (inclui
+  a foto) — cortar o `select` sem adicionar um "buscar completo ao abrir"
+  quebraria essa tela. Registrado para decisão futura, não é urgente hoje.
+- **Duplicação estrutural (não é bug):** os 3 preenchedores de documento
+  (`preencherDocOrc`, `preencherDocOS`, `preencherRelatorioVistoria`) repetem
+  o mesmo padrão de pintar cor/logo por `getLojaConfig()`. E ~70 loaders
+  repetem o mesmo boilerplate `.from(tabela).select('*').eq('empresa_id',...)`.
+  Funciona corretamente hoje; extrair um helper comum é só ganho de
+  manutenção, não corrige nada quebrado — não fiz por não ser prioridade.
+- **Feature possivelmente órfã:** `iniciarVistoriaLocal()` e
+  `concluirVisDetalhada()` (e o modal `#concluir-vis-bg` que eles abrem, com
+  `salvarConcluirVis()`/`fecharConcluirVis()` funcionando de verdade por trás)
+  não têm mais nenhum botão/chamada que os acione em lugar nenhum do app —
+  parecem ter sido substituídos por `iniciarVistoriaPlena()` (que É chamado) e
+  ficaram pra trás. Não removi porque não sei se foi intencional ou se é um
+  fluxo "rápido" que ainda deveria estar acessível — perguntar ao Marcos antes
+  de apagar ~230 linhas de um modal inteiro.
+
+**Testado no navegador (mobile 375×812 e desktop):** boot limpo sem erros de
+console antes/depois das mudanças; telas de login e "Criar minha empresa"
+renderizam sem overflow no mobile; onclick órfão checado via grep após
+remover as 11 funções mortas (nenhum encontrado).
+
 ---
 
 ## Sessão 2026-07-18 — banco v2 conectado, pré-login neutro (TDZ) + QA do onboarding (3 bugs graves)

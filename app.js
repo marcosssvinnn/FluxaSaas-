@@ -4,7 +4,6 @@
 function getSessao(){ try{ return JSON.parse(sessionStorage.getItem('fluxa_user')||'null'); }catch(e){ return null; } }
 function setSessao(u){ sessionStorage.setItem('fluxa_user',JSON.stringify(u)); }
 function clearSessao(){ sessionStorage.removeItem('fluxa_user'); }
-function eMaster(){ const s=getSessao(); return s?.perfil==='master'; }
 function eGestor(){ const s=getSessao(); return s?.perfil==='gestor'||s?.perfil==='master'; } // master herda acesso de gestor
 
 // ── Log de auditoria (quem fez o quê) ──
@@ -722,26 +721,12 @@ async function carregarUsuarios(){
 
 // ── Renderiza botão de usuário no login (layout horizontal) ──
 // slim=true → sem badge e sem seta (usado nos técnicos)
-function avBtn(id, perfil, nome, sub, cor, lojaId, slim=false){
-  const lojaParam = lojaId ? `'${lojaId}'` : 'null';
-  const inicial = nome.charAt(0).toUpperCase();
-  const badgeLbl = perfil==='gestor'?'Gestão':perfil==='vendas'?'Vendas':'Técnico';
-  return `<button class="login-av-btn${slim?' slim':''}" onclick="selecionarUserLogin(this,'${id}','${perfil}','${esc(nome)}',${lojaParam})">
-    <div class="login-av-circle" style="background:${cor}">${inicial}</div>
-    <div class="login-av-info">
-      <div class="login-av-nome">${esc(nome)}</div>
-      <div class="login-av-sub">${esc(sub)}</div>
-    </div>
-    ${slim?'':`<span class="login-av-badge ${perfil}">${badgeLbl}</span><span class="login-av-arrow">›</span>`}
-  </button>`;
-}
 
 function atualizarDotsPIN(val){
   // No novo formulário não há dots visuais — apenas foco automático ao completar 4 dígitos
   if(val && val.length === 4) setTimeout(fazerLogin, 80);
 }
 
-function toggleLoginTecs(){ /* removido — novo formulário não tem seções colapsáveis */ }
 
 // Lista interna para autocomplete; preenchida por renderLoginUsers
 let _loginUsersCache = [];
@@ -1012,15 +997,6 @@ function voltarParaPin(){
   setTimeout(()=>{ const ni=document.getElementById('login-nome-input'); if(ni) ni.focus(); },100);
 }
 
-function deselecionarUser(){
-  loginUserSelecionado=null;
-  document.getElementById('login-step-loja').classList.remove('show');
-  document.getElementById('login-step-users').style.display='';
-  const ni=document.getElementById('login-nome-input'); if(ni) ni.value='';
-  const pi=document.getElementById('pin-input'); if(pi) pi.value='';
-  const box=document.getElementById('login-nome-sugestoes'); if(box){ box.style.display='none'; box.innerHTML=''; }
-  document.getElementById('login-err').textContent='';
-}
 
 // ══════════════════════════════════════════════════
 //  CFG — configurações da empresa (white-label)
@@ -2702,17 +2678,6 @@ async function salvarApenas(){
   btn.disabled=false; btn.textContent='Salvar Orçamento';
 }
 
-function mostrarBannerNovo(num){
-  const numStr=num?'#'+String(num).padStart(3,'0'):'';
-  const existing=document.getElementById('banner-novo');
-  if(existing) existing.remove();
-  const banner=document.createElement('div');
-  banner.id='banner-novo';
-  banner.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#16a34a;color:white;padding:14px 22px;border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.2);display:flex;align-items:center;gap:14px;z-index:999;font-family:Inter,sans-serif;font-size:14px;font-weight:600';
-  banner.innerHTML=`<span>✅ Orçamento ${numStr} salvo!</span><button onclick="novoOrc();this.parentElement.remove()" style="background:rgba(255,255,255,.25);border:none;color:white;padding:6px 14px;border-radius:8px;cursor:pointer;font-family:Inter,sans-serif;font-size:13px;font-weight:700">＋ Novo Orçamento</button><button onclick="this.parentElement.remove()" style="background:none;border:none;color:rgba(255,255,255,.7);cursor:pointer;font-size:18px;line-height:1;padding:0 4px">×</button>`;
-  document.body.appendChild(banner);
-  setTimeout(()=>{ if(banner.parentElement) banner.remove(); },8000);
-}
 
 // ──────────────────────────────────────────────────
 //  GERAR PDF ORÇAMENTO
@@ -3439,7 +3404,6 @@ function renderGraficoDash(){
   });
 }
 
-function filtrarPorPeriodo(val){ filtroPeriodo=val; renderTabela(); } // legado
 
 // ── NAVEGAÇÃO DE MÊS (orçamentos) ──────────────────────────────────────────
 const _MESES_ORC=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -3895,7 +3859,7 @@ function filtOS(btn){
   renderOSTabela();
 }
 function buscarOS(v){ buscaOS=v.toLowerCase(); renderOSTabela(); }
-function filtTecOS(val){ filtroOSTec=val; renderOSTabela(); }
+function filtTecOSSelect(val){ filtroOSTec=val; renderOSTabela(); }
 
 function populaFiltTecOS(){
   const sel=document.getElementById('os-filt-tec'); if(!sel) return;
@@ -5253,10 +5217,6 @@ function enviarNotifWA(msg, telCliente){
   window.open(`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`, '_blank');
 }
 
-function btnNotif(msg, tel){
-  return `<button class="tb" title="Copiar mensagem" onclick='copiarNotif(${JSON.stringify(msg)})'>📋 Copiar</button>
-          <button class="tb" style="background:var(--wa);color:white;border-color:var(--wa)" title="Enviar WhatsApp" onclick='enviarNotifWA(${JSON.stringify(msg)}, ${JSON.stringify(tel||'')})'>💬 WA</button>`;
-}
 
 // ══════════════════════════════════════════════════
 //  MÓDULO 5 — PORTAL DO CLIENTE
@@ -5477,11 +5437,6 @@ async function _hashDocumentoOrc(o){
 }
 // Verifica se o conteúdo atual do orçamento ainda bate com o hash assinado.
 // Retorna: 'ok' | 'alterado' | 'sem_hash'
-async function verificarAssinaturaOrc(o){
-  if(!o||!o.assinatura_hash) return 'sem_hash';
-  const h=await _hashDocumentoOrc(o);
-  return h===o.assinatura_hash ? 'ok' : 'alterado';
-}
 // v2: o portal é anon — usa a RPC portal_responder_orcamento (não pode dar update
 // direto nem mexer no estoque). A RESERVA de estoque é disparada no app do GESTOR
 // ao receber a atualização por realtime (ver iniciarRealtimeSync / T11 no CLAUDE.md).
@@ -5525,13 +5480,6 @@ function abrirWAPortal(){
   window.open(`https://wa.me/${tel}?text=${encodeURIComponent('Olá! Sou '+nome+' e gostaria de falar com vocês.')}`, '_blank');
 }
 
-function copiarLinkPortal(id){
-  const lista=lsCliLer();
-  const cli=lista.find(x=>x.id===id); if(!cli||!cli.portal_token) return;
-  const url=window.location.origin+window.location.pathname+'#portal/'+cli.portal_token;
-  const msg=`Olá, ${cli.nome}! 👋\n\nAcesse seu portal exclusivo para acompanhar seus agendamentos, histórico de serviços e orçamentos:\n\n${url}\n\nQualquer dúvida estamos à disposição!\n*${CFG.nome}*`;
-  navigator.clipboard.writeText(msg).then(()=>toast('✅ Link do portal copiado!')).catch(()=>toast('✅ Copiado!'));
-}
 
 // ══════════════════════════════════════════════════
 //  MÓDULO 4 — PRODUTIVIDADE POR TÉCNICO
@@ -9417,7 +9365,6 @@ function reservadoProduto(produtoId){ return (_getSaldoCache()[produtoId]||{rese
 function disponivelProduto(produtoId){ const s=_getSaldoCache()[produtoId]||{}; return (s.fisico||0)-(s.reservado||0); }
 function saldoProduto(produtoId){ return fisicaProduto(produtoId); } // compat
 function produtoById(id){ return todosProdutos.find(p=>p.id===id)||null; }
-function movRefExiste(ref){ return todosMovEstoque.some(m=>m.ref===ref); }
 
 // Registra um movimento (local imediato + sync em background, resiliente).
 function registrarMovimento({produto_id, tipo, quantidade, custo_unit, motivo, ref, lojaId}){
@@ -10326,16 +10273,6 @@ async function salvarProduto(){
 
 // ── Modal de movimento (entrada / saída / ajuste) ──
 let _movProdId=null, _movTipo='entrada';
-function toggleMenuEstoque(id){
-  // Fecha todos os outros menus abertos primeiro
-  document.querySelectorAll('[id^="emenu_"]').forEach(el=>{ if(el.id!==id) el.style.display='none'; });
-  const el=document.getElementById(id); if(el) el.style.display=el.style.display==='none'?'block':'none';
-  // Fecha ao clicar fora
-  setTimeout(()=>{
-    function fora(e){ if(!document.getElementById(id)?.contains(e.target)){ const m=document.getElementById(id); if(m) m.style.display='none'; document.removeEventListener('click',fora); } }
-    document.addEventListener('click',fora);
-  },10);
-}
 
 function abrirMovModal(produtoId, tipo){
   _movProdId=produtoId; _movTipo=tipo;

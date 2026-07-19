@@ -1387,7 +1387,7 @@
         <button class="fb" data-oss="cancelado" onclick="filtOS(this)">❌ Cancelado</button>
         <label class="sr-only" for="os-busca-input">Buscar ordens de serviço por cliente ou número</label>
         <input class="hsrch" type="text" id="os-busca-input" placeholder="🔍 Buscar cliente ou #…" oninput="buscarOS(this.value)">
-        <select id="os-filt-tec" onchange="filtTecOS(this.value)" style="padding:6px 10px;border:1.5px solid var(--gray-mid);border-radius:50px;font-size:12px;font-family:'Inter',sans-serif;outline:none;background:white;cursor:pointer;color:var(--c2)">
+        <select id="os-filt-tec" onchange="filtTecOSSelect(this.value)" style="padding:6px 10px;border:1.5px solid var(--gray-mid);border-radius:50px;font-size:12px;font-family:'Inter',sans-serif;outline:none;background:white;cursor:pointer;color:var(--c2)">
           <option value="">👤 Todos técnicos</option>
         </select>
       </div>

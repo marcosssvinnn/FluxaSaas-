@@ -105,6 +105,10 @@ CREATE TABLE IF NOT EXISTS clientes (
   cnpj text, email_responsavel text, loja_id text,
   data_criacao timestamptz DEFAULT now()
 );
+-- Índice único: portal_token é a identidade do cliente no portal público (RPCs
+-- portal_dados/portal_responder_orcamento) — sem isto, todo acesso ao portal
+-- faz table scan e nada garante unicidade do token.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_clientes_portal_token ON clientes(portal_token);
 
 CREATE TABLE IF NOT EXISTS orcamentos (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
