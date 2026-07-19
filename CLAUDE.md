@@ -1257,6 +1257,33 @@ reais encontrados e corrigidos.**
   por perfil → confirmar que técnico NÃO lê financeiro via API direta). Claude não
   digita senha; validar o resto com mocks + checagem de RLS via PAT.
 
+**Revisão independente do `setup-v2-optionA-perfil.sql` (Fase 1, feita por outra
+sessão/IA antes de aplicar — NÃO apliquei nem editei o arquivo, só li):**
+- ⚠️ `usuarios_para_login(p_empresa)` está com `GRANT ... TO anon` — qualquer
+  pessoa na internet, SEM login nenhum, que souber (ou conseguir) o `empresa_id`
+  consegue listar nome completo + perfil (gestor/vendas/técnico) de todos os
+  funcionários daquela empresa. É mais exposição do que existe hoje (o
+  `usuarios_lista` do delta6 exige `authenticated`, ou seja, pelo menos ser
+  membro de ALGUMA empresa). Entendo a necessidade funcional (tela de nome+PIN
+  roda antes do funcionário ter sessão), mas vale considerar antes de ativar em
+  produção: é aceitável esse nível de exposição, ou dá pra escopar mais (ex.:
+  só nome, sem perfil; ou atrás de um código de convite em vez do
+  `empresa_id` cru)?
+- ⚠️ As policies de `ordens_servico`/`vistorias`/`despesas` usam
+  `tecnico = meu_nome(empresa_id)` — comparação por NOME de novo (mesmo padrão
+  que resolvi para cliente↔orçamento, ver acima). Se dois funcionários da
+  mesma empresa tiverem o mesmo nome, um técnico pode ver as OS/vistorias do
+  outro (ou não ver as próprias, se `membros.nome` não bater exatamente com o
+  texto salvo em `tecnico`, incluindo maiúsculas/acentos). Como a Fase 2 já
+  está criando identidade real por pessoa (`membros.user_id`), pode valer a
+  pena migrar essas 3 tabelas para guardar `tecnico_user_id` (uuid) em vez de
+  confiar só no nome — mesma lógica do que já fiz para `cliente_id`.
+- Sugestão operacional menor: rodar o script inteiro dentro de
+  `BEGIN;`/`COMMIT;` — se falhar no meio, algumas tabelas ficam com a policy
+  nova e outras com a antiga "isolamento por empresa" até re-rodar.
+- Confirmado: nenhum desses achados bloqueia nada do que EU fiz (`delta7`,
+  `delta8`, `delta9`) — são independentes.
+
 ### ⚠️ Pendências (atualizado — 4 resolvidas nesta sessão, nenhuma nova crítica)
 - ~~**Proteção por perfil no banco** (era "Pendência maior")~~ → **DECIDIDO (2026-07-19)**: adotado o modelo de confiança (perfil = UI, não barreira de banco; risco interno aceito conscientemente). Opção A (contas reais por pessoa via e-mail sintético, preservando login por PIN) desenhada e com rascunho de SQL pronto em `setup-v2-optionA-perfil.sql` — ativar só quando necessário, com teste e aval. Ver seção "Proteção por perfil no banco — DECIDIDO" acima.
 - ~~Dados de teste no banco~~ → **resolvido** (limpeza rodada e confirmada).
@@ -1311,10 +1338,22 @@ restaurante, não se aplica a uma empresa de piscinas).
   captura/gera o `cliente_id` real e manda junto no orçamento/OS/vistoria —
   campos ocultos `cli-id`/`os-cli-id`/`vis-cli-id`, limpos ao digitar de novo
   (evita vínculo errado se o nome mudar) e preservados ao editar/duplicar um
-  registro existente. **Falta rodar `setup-v2-delta8.sql` no Supabase.**
-  Fora do escopo: `equipamentos.cliente_id` já existe no schema mas foi criado
-  como `uuid` (incompatível com `clientes.id` que é `text`) e nunca foi
-  populado pelo formulário — não mexi, é uma correção separada.
+  registro existente. Cobri também `criarOSjunto` e `criarOSdeAprovacao` (OS
+  criada junto com/a partir de um orçamento), que tinham ficado de fora na
+  primeira passada. **Falta rodar `setup-v2-delta8.sql` no Supabase.**
+  Gap conhecido, não crítico: `gerarOSdoAgendamento` (OS gerada automaticamente
+  de um agendamento recorrente) ainda não manda `cliente_id`, porque a tabela
+  `agendamentos` não tem essa coluna e não é lida pelo portal — só cai no
+  fallback por nome, sem regressão.
+  ~~`equipamentos.cliente_id` com tipo errado~~ → **resolvido
+  (`setup-v2-delta9.sql`)**: era `uuid`, corrigido pra `text` (compatível com
+  `clientes.id`). Só o tipo — ainda não populado por nenhum formulário, é uma
+  correção maior separada se um dia quiserem ligar o vínculo em equipamentos.
+  **Falta rodar `setup-v2-delta9.sql` no Supabase.**
+  **Nota pra quem for aplicar o SQL de perfil (`setup-v2-optionA-perfil.sql`):**
+  `delta8`/`delta9` NÃO tocam em RLS/policies, só colunas/índices/backfill e 2
+  RPCs (`portal_dados`, `portal_responder_orcamento`, ambas `SECURITY DEFINER`,
+  não policies) — pode aplicar em qualquer ordem, sem conflito.
 - **Selects sem paginação em `orcamentos`, `ordens_servico`, `clientes`,
   `despesas`** — carregam a tabela inteira da empresa a cada boot/tela, sem
   `.limit()`. Piora porque `orcamentos.foto_base64`/`assinatura_base64` e
