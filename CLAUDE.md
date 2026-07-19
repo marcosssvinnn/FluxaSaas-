@@ -1209,16 +1209,56 @@ reais encontrados e corrigidos.**
 - **Portal (RPCs anon)** — `portal_dados`/`portal_responder_orcamento` só retornam
   dados do cliente daquele token específico; não há como enumerar outros clientes.
 
-**Pendência maior, NÃO resolvida nesta sessão (decisão de produto, não só técnica):**
-perfil (vendas/técnico/gestor) continua sendo só um filtro de INTERFACE — no nível do
-banco, qualquer membro autenticado da empresa tem acesso total aos dados dela via API
-direta (RLS separa só por empresa, não por perfil). Resolver isso de verdade exigiria
-dar a cada perfil uma identidade real que o servidor verifique (RLS por perfil, ou
-contas de e-mail individuais por funcionário) — uma mudança de arquitetura maior, que
-precisa de decisão do Marcos sobre o modelo de confiança desejado (funcionários hoje
-são pessoas de confiança da empresa cliente; o risco é interno, não entre empresas).
+**Proteção por perfil no banco — DECIDIDO (2026-07-19, decisão de produto + arquitetura):**
+
+> **Modelo de confiança adotado:** funcionário (vendas/técnico) é pessoa de confiança
+> da empresa cliente. A fronteira de segurança REAL do SaaS é **entre empresas** — e
+> essa é sólida (RLS `authenticated` + `minhas_empresas()`: sem um JWT válido da
+> empresa a anon key não lê nada). A fronteira **entre perfis dentro da mesma empresa**
+> é um risco INTERNO, de baixa probabilidade no público-alvo (equipes pequenas de
+> campo, dono-operador).
+>
+> **Decisão:** manter o modelo atual (persona por PIN sob a sessão única do dono) como
+> postura consciente e aceita — **perfil é conveniência de UI, NÃO uma barreira de
+> banco**. Não vender/prometer "controle de acesso por cargo" como segurança enquanto a
+> Opção A abaixo não estiver ligada. Motivo de não fazer a Opção A "crua" agora: ela
+> exige e-mail por funcionário e mata o onboarding sem e-mail (só nome+PIN), que é a
+> maior vantagem de usabilidade para este mercado — regressão de UX para resolver um
+> risco ainda não necessário no piloto.
+>
+> **Fato técnico que fecha a questão:** não existe meio-termo. Enquanto todas as
+> personas compartilham o JWT do dono, o servidor NÃO tem como saber qual persona
+> chama (o cliente controla esse dado). `verificar_pin_interno` prova quem digitou o
+> PIN, mas não muda a identidade das requisições seguintes. Logo: ou cada pessoa tem
+> identidade de auth própria (Opção A), ou não há enforcement (estado atual). Qualquer
+> policy por perfil (ex.: `gestor edita empresa`) é inócua até isso mudar.
+
+**Opção A — pronta para implementar quando for necessário (primeiro cliente maior /
+"contas por cargo" virar premium). Versão que PRESERVA o login por nome+PIN:**
+- **Identidade real por pessoa via "e-mail sintético":** o app mapeia
+  `nome → <slug-pessoa>@<slug-empresa>.fluxa.local` e usa o **PIN como senha**
+  (`signInWithPassword`). Cada funcionário ganha um JWT próprio (→ RLS por perfil de
+  verdade) SEM precisar de e-mail real — a UX continua sendo só nome + PIN.
+- **Provisionamento sem service_role no cliente:** funcionário faz `signUp` do e-mail
+  sintético no 1º login (auto se não existir) e vira membro via RPC SECURITY DEFINER
+  de convite (`aceitar_convite(codigo)` → insere `membros(user_id, empresa_id, perfil)`
+  a partir de um convite que o gestor gerou). Evita Edge Function/admin no cliente.
+  *(Alternativa: Edge Function `criar-funcionario` com service_role — mais controle p/
+  o gestor, mas exige deploy de função.)*
+- **RLS por perfil (a parte delicada — trocar a policy `FOR ALL por empresa`):**
+  helper `meu_perfil(empresa)` lê `membros.perfil` de `auth.uid()`. Tabelas sensíveis
+  ganham policies escopadas: gestor = tudo; vendas = ORC/OS/clientes/agenda (sem
+  financeiro/`empresas`/relatórios); técnico = só as OS/vistorias atribuídas a ele.
+  Migração ADITIVA e testada em empresa de teste ANTES de trocar a policy em produção
+  (errar aqui expõe ou tranca dados). PIN interno vira legado (contas reais assumem).
+- **Migração:** cada linha de `usuarios` (persona PIN) vira uma conta sintética + linha
+  em `membros` com o perfil. Rodar só com aval do Marcos.
+- **Teste que só o Marcos faz:** login real ponta a ponta (digitar PIN → sessão real
+  por perfil → confirmar que técnico NÃO lê financeiro via API direta). Claude não
+  digita senha; validar o resto com mocks + checagem de RLS via PAT.
 
 ### ⚠️ Pendências (atualizado — 4 resolvidas nesta sessão, nenhuma nova crítica)
+- ~~**Proteção por perfil no banco** (era "Pendência maior")~~ → **DECIDIDO (2026-07-19)**: adotado o modelo de confiança (perfil = UI, não barreira de banco; risco interno aceito conscientemente). Opção A (contas reais por pessoa via e-mail sintético, preservando login por PIN) desenhada e com rascunho de SQL pronto em `setup-v2-optionA-perfil.sql` — ativar só quando necessário, com teste e aval. Ver seção "Proteção por perfil no banco — DECIDIDO" acima.
 - ~~Dados de teste no banco~~ → **resolvido** (limpeza rodada e confirmada).
 - ~~`criar_empresa` não semeia `config.nome`~~ → **resolvido** (delta2 + delta4: semeia nome da empresa E nome da pessoa).
 - ~~`clientes` insert não envia `portal_token`~~ → **resolvido** (6 call sites corrigidos).
