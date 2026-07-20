@@ -386,6 +386,7 @@ function authToggleModo(){
   document.getElementById('auth-toggle-txt').textContent  = criar ? 'Já tem conta?' : 'Ainda não tem conta?';
   document.getElementById('auth-toggle-link').textContent = criar ? 'Fazer login' : 'Criar minha empresa';
   const esq=document.getElementById('auth-esqueci-wrap'); if(esq) esq.style.display = criar ? 'none' : ''; // só no login
+  const cons=document.getElementById('auth-consent-wrap'); if(cons) cons.style.display = criar ? '' : 'none'; // só no cadastro
   const ae=document.getElementById('auth-err'); if(ae){ ae.textContent=''; ae.style.color=''; }
 }
 
@@ -1309,6 +1310,10 @@ function lsOrcProxNum(){ return lsOrcLer().reduce((a,o)=>Math.max(a,o.numero||0)
     mostrarTelaRecuperar();
     return;
   }
+
+  // Páginas legais (públicas): mostra o overlay POR CIMA e deixa o boot seguir
+  // (ao fechar, cai na tela normal). Sem early return.
+  if(/^#(termos|privacidade)$/.test(location.hash||'')){ try{ abrirLegal(location.hash.replace('#','')); }catch(e){} }
 
   let modoAdminPlataforma = false;
   let semSessaoDeConta = false;
@@ -6822,8 +6827,91 @@ function imprimirQR(){
 }
 
 // Leitura de QR Code ao abrir o app — redireciona para ficha do equipamento
+// ══════════════════════════════════════════════════
+//  PÁGINAS LEGAIS — Termos de Uso e Política de Privacidade (LGPD)
+//  ⚠️ RASCUNHO gerado por IA. REVISAR com advogado antes de valer juridicamente,
+//  e confirmar razão social/CNPJ/e-mail de contato abaixo.
+// ══════════════════════════════════════════════════
+const _LEGAL_EMPRESA = '61.941.275 MARCOS VINICIUS ALVES DA SILVA (Fluxa)';
+const _LEGAL_CNPJ    = '61.941.275/0001-14';
+const _LEGAL_CIDADE  = 'Itapema/SC';
+const _LEGAL_CONTATO = 'forthempsc@gmail.com';
+const _LEGAL_ATUAL   = 'julho de 2026';
+
+function _legalDoc(tipo){
+  const h = `<div style="background:#fff3cd;border:1px solid #ffe08a;border-radius:10px;padding:12px 14px;font-size:13px;color:#7a5c00;margin-bottom:20px">
+    ⚠️ <b>Rascunho.</b> Este documento deve ser revisado por um advogado antes de ter validade jurídica.
+  </div>`;
+  const rodape = `<p style="margin-top:26px;color:var(--gray);font-size:13px">
+    ${_LEGAL_EMPRESA} · CNPJ ${_LEGAL_CNPJ} · ${_LEGAL_CIDADE}<br>Contato: ${_LEGAL_CONTATO} · Última atualização: ${_LEGAL_ATUAL}</p>`;
+  const S = t => `<h2 style="font-size:17px;color:var(--c1);margin:22px 0 6px">${t}</h2>`;
+  const P = t => `<p style="margin:0 0 10px">${t}</p>`;
+  if(tipo==='privacidade'){
+    return h + `<h1 style="font-size:24px;margin:0 0 4px">Política de Privacidade</h1>`
+      + P('<span style="color:var(--gray)">Como o Fluxa trata seus dados, em conformidade com a LGPD (Lei nº 13.709/2018).</span>')
+      + S('1. Quem trata seus dados')
+      + P(`O controlador é <b>${_LEGAL_EMPRESA}</b>, CNPJ ${_LEGAL_CNPJ}, ${_LEGAL_CIDADE} ("Fluxa"). Dúvidas ou pedidos sobre dados: <b>${_LEGAL_CONTATO}</b>.`)
+      + S('2. Dados que coletamos')
+      + P('• <b>Dados de conta:</b> nome, e-mail e senha (armazenada de forma criptografada, nunca em texto puro).<br>• <b>Dados operacionais que a empresa insere:</b> clientes, orçamentos, ordens de serviço, vistorias, produtos, despesas e afins — inclusive dados de terceiros (ex.: clientes finais da empresa), pelos quais a empresa usuária é responsável.<br>• <b>Dados técnicos:</b> registros de acesso (auditoria) e informações do dispositivo/navegador para funcionamento e segurança.')
+      + S('3. Para que usamos')
+      + P('Para fornecer e operar o sistema, autenticar usuários, isolar os dados de cada empresa, gerar documentos (orçamentos/OS/relatórios), enviar comunicações operacionais (ex.: e-mail de vistoria, recuperação de senha) e cumprir obrigações legais.')
+      + S('4. Base legal')
+      + P('Execução de contrato (art. 7º, V da LGPD) para prestar o serviço; cumprimento de obrigação legal; e legítimo interesse para segurança e melhoria, sempre respeitando seus direitos.')
+      + S('5. Com quem compartilhamos')
+      + P('Não vendemos seus dados. Usamos fornecedores que atuam como <b>operadores</b> apenas para viabilizar o serviço — em especial a <b>Supabase</b> (banco de dados e autenticação, hospedagem em nuvem) e provedores de e-mail. Podemos divulgar dados se exigido por lei ou ordem judicial.')
+      + S('6. Armazenamento e segurança')
+      + P('Os dados ficam em servidores da Supabase. Aplicamos isolamento por empresa (Row Level Security), controle de acesso por perfil e senhas criptografadas. Nenhum sistema é 100% infalível, mas adotamos medidas técnicas e organizacionais razoáveis.')
+      + S('7. Seus direitos (LGPD)')
+      + P('Você pode solicitar: confirmação e acesso aos seus dados, correção, anonimização/eliminação, portabilidade, informação sobre compartilhamento e revogação de consentimento. Basta escrever para ' + _LEGAL_CONTATO + '.')
+      + S('8. Retenção')
+      + P('Guardamos os dados enquanto a conta estiver ativa e pelo prazo necessário para obrigações legais. Encerrada a conta, os dados podem ser eliminados ou anonimizados, salvo obrigação de guarda.')
+      + S('9. Cookies e armazenamento local')
+      + P('Usamos armazenamento local do navegador (localStorage) para manter sua sessão, preferências e um cache que permite o app funcionar offline. Não usamos cookies de rastreamento de terceiros.')
+      + S('10. Alterações')
+      + P('Podemos atualizar esta política. Mudanças relevantes serão comunicadas no app. O uso contínuo após a atualização significa concordância.')
+      + rodape;
+  }
+  return h + `<h1 style="font-size:24px;margin:0 0 4px">Termos de Uso</h1>`
+    + P('<span style="color:var(--gray)">Condições para uso do sistema Fluxa.</span>')
+    + S('1. Aceitação')
+    + P(`Ao criar uma conta ou usar o Fluxa, você concorda com estes Termos e com a Política de Privacidade. Se não concordar, não use o serviço.`)
+    + S('2. O que é o Fluxa')
+    + P('O Fluxa é um sistema de gestão para empresas de serviços (orçamentos, ordens de serviço, agenda, estoque, vistorias, clientes e afins), oferecido pela internet, no modelo de assinatura.')
+    + S('3. Conta e acesso')
+    + P('Você é responsável pela veracidade dos dados e por manter a confidencialidade da sua senha e dos PINs dos funcionários. Perfis (gestor/vendas/técnico) definem o que cada pessoa acessa. Avise-nos sobre qualquer uso não autorizado.')
+    + S('4. Uso permitido')
+    + P('Você se compromete a usar o Fluxa de forma lícita, sem violar direitos de terceiros, sem tentar burlar a segurança, sobrecarregar o sistema, ou inserir conteúdo ilegal. A empresa usuária é responsável pelos dados que cadastra, inclusive dados de seus próprios clientes.')
+    + S('5. Disponibilidade')
+    + P('Buscamos alta disponibilidade, mas o serviço é fornecido "no estado em que se encontra", sem garantia de funcionamento ininterrupto. Podemos fazer manutenções e atualizações. Recomendamos que você mantenha seus próprios registros de dados críticos.')
+    + S('6. Limitação de responsabilidade')
+    + P('Na máxima extensão permitida pela lei, o Fluxa não se responsabiliza por lucros cessantes, perdas indiretas, ou por decisões tomadas com base nos dados. Você é responsável pela correção dos dados que insere e pelo uso que faz do sistema.')
+    + S('7. Assinatura e cancelamento')
+    + P('Planos e valores, quando aplicáveis, são informados no momento da contratação. Você pode encerrar o uso a qualquer momento; obrigações vencidas permanecem devidas. Podemos suspender contas que violem estes Termos.')
+    + S('8. Alterações')
+    + P('Podemos alterar estes Termos e o funcionamento do sistema. Mudanças relevantes serão comunicadas no app. O uso contínuo significa concordância.')
+    + S('9. Lei e foro')
+    + P(`Estes Termos são regidos pelas leis do Brasil. Fica eleito o foro da comarca de ${_LEGAL_CIDADE}, salvo disposição legal em contrário (ex.: foro do consumidor).`)
+    + rodape;
+}
+function abrirLegal(tipo){
+  const body=document.getElementById('legal-body'); if(body) body.innerHTML=_legalDoc(tipo);
+  const ov=document.getElementById('legal-overlay'); if(ov) ov.style.display='block';
+  window.scrollTo(0,0); try{ document.getElementById('legal-overlay').scrollTop=0; }catch(e){}
+  if(location.hash!=='#'+tipo){ try{ history.pushState(null,'','#'+tipo); }catch(e){} }
+}
+function fecharLegal(){
+  const ov=document.getElementById('legal-overlay'); if(ov) ov.style.display='none';
+  if(/^#(termos|privacidade)$/.test(location.hash)){ try{ history.replaceState(null,'',location.pathname+location.search); }catch(e){ location.hash=''; } }
+}
+window.addEventListener('hashchange', ()=>{
+  const hp=(location.hash||'').replace('#','');
+  if(hp==='termos'||hp==='privacidade') abrirLegal(hp);
+  else { const ov=document.getElementById('legal-overlay'); if(ov&&ov.style.display!=='none') fecharLegal(); }
+});
+
 function checkQRHash(){
   const hash=window.location.hash;
+  if(hash==='#termos'||hash==='#privacidade'){ abrirLegal(hash.replace('#','')); return; }
   if(hash.startsWith('#eq/')){
     const id=hash.replace('#eq/','');
     window.location.hash='';
