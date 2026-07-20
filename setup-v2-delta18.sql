@@ -1,0 +1,15 @@
+-- FLUXA V2 — DELTA 18: adiciona ordens_servico ao realtime (aperfeiçoamento, não bug de segurança)
+-- Rode UMA vez. Idempotente.
+--
+-- Achado: orçamentos/equipamentos/despesas já sincronizam ao vivo entre
+-- dispositivos (Supabase Realtime, respeitando RLS — a mesma proteção que já
+-- existe pras outras tabelas). ordens_servico nunca foi incluída na
+-- publicação `supabase_realtime`, então o app nunca recebia esses eventos —
+-- confirmado que o app.js também nunca tinha um `.on('postgres_changes', ...)`
+-- pra essa tabela. O histórico de OS já era robusto offline/reconciliação
+-- (ver correção de 2026-07-19), só faltava a atualização AO VIVO entre
+-- dispositivos (ex.: gestor no computador vendo uma OS que o técnico acabou
+-- de concluir no celular, sem precisar recarregar a tela). Handlers
+-- adicionados em iniciarRealtimeSync() (app.js), espelhando exatamente o
+-- padrão já usado pra orçamentos.
+ALTER PUBLICATION supabase_realtime ADD TABLE ordens_servico;

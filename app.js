@@ -384,7 +384,8 @@ function authToggleModo(){
   document.getElementById('auth-btn').textContent   = criar ? 'Criar empresa →' : 'Entrar →';
   document.getElementById('auth-toggle-txt').textContent  = criar ? 'Já tem conta?' : 'Ainda não tem conta?';
   document.getElementById('auth-toggle-link').textContent = criar ? 'Fazer login' : 'Criar minha empresa';
-  document.getElementById('auth-err').textContent = '';
+  const esq=document.getElementById('auth-esqueci-wrap'); if(esq) esq.style.display = criar ? 'none' : ''; // só no login
+  const ae=document.getElementById('auth-err'); if(ae){ ae.textContent=''; ae.style.color=''; }
 }
 
 function _msgAuthErro(e){
@@ -451,6 +452,48 @@ async function authSubmit(){
     console.warn('[authSubmit]', e?.message||e);
     err.textContent=_msgAuthErro(e);
   }finally{ btn.disabled=false; btn.textContent=_t; }
+}
+
+// ── Recuperação de senha da CONTA (dono/gestor) ──
+// "Esqueci minha senha" → e-mail com link → #recuperar (type=recovery) → nova senha.
+// Funciona com o e-mail padrão do Supabase (raro no piloto); SMTP próprio só escala volume.
+async function authEsqueciSenha(){
+  const email=(gV('auth-email')||'').trim();
+  const err=document.getElementById('auth-err'); if(err){ err.style.color=''; }
+  if(!email){ if(err) err.textContent='Digite seu e-mail acima primeiro.'; document.getElementById('auth-email')?.focus(); return; }
+  if(!db){ if(err) err.textContent='Banco não configurado.'; return; }
+  if(err) err.textContent='';
+  const link=document.getElementById('auth-esqueci-link'); const _t=link?link.textContent:'';
+  if(link) link.textContent='Enviando…';
+  try{
+    const redirectTo = location.origin+location.pathname+'#recuperar';
+    const { error } = await db.auth.resetPasswordForEmail(email, { redirectTo });
+    if(error) throw error;
+    if(err){ err.style.color='#16a34a'; err.textContent='📧 Link de recuperação enviado para '+email+'. Veja seu e-mail (e o spam).'; }
+  }catch(e){ console.warn('[esqueciSenha]',e?.message||e); if(err){ err.style.color=''; err.textContent='Não foi possível enviar agora. Tente de novo.'; } }
+  finally{ if(link) link.textContent=_t; }
+}
+function mostrarTelaRecuperar(){
+  const ov=document.getElementById('login-overlay'); if(ov) ov.style.display='flex';
+  ['login-step-auth','login-step-users','login-step-loja'].forEach(id=>{ const el=document.getElementById(id); if(el){ el.style.display='none'; el.classList&&el.classList.remove('show'); } });
+  const r=document.getElementById('login-step-recuperar'); if(r) r.style.display='';
+  try{ resetMarcaSaaS(); }catch(e){}
+}
+async function authNovaSenha(){
+  const s1=gV('rec-senha')||'', s2=gV('rec-senha2')||'';
+  const err=document.getElementById('rec-err'); if(err) err.textContent='';
+  if(s1.length<6){ if(err) err.textContent='A senha precisa de ao menos 6 caracteres.'; return; }
+  if(s1!==s2){ if(err) err.textContent='As senhas não conferem.'; return; }
+  const btn=document.getElementById('rec-btn'); const _t=btn?btn.textContent:''; if(btn){ btn.disabled=true; btn.textContent='Salvando…'; }
+  try{
+    const { error } = await db.auth.updateUser({ password: s1 });
+    if(error) throw error;
+    toast('✅ Senha alterada! Entre com a nova senha.');
+    try{ await db.auth.signOut(); }catch(e){}
+    try{ history.replaceState(null,'',location.pathname+location.search); }catch(e){ location.hash=''; }
+    setTimeout(()=>location.reload(), 400);
+  }catch(e){ console.warn('[novaSenha]',e?.message||e); if(err) err.textContent='Não foi possível salvar — o link pode ter expirado. Peça outro.'; }
+  finally{ if(btn){ btn.disabled=false; btn.textContent=_t; } }
 }
 
 // Logout de CONTA (encerra a sessão Auth) + limpa estado. Diferente de fazerLogout
@@ -1245,8 +1288,15 @@ function lsOrcProxNum(){ return lsOrcLer().reduce((a,o)=>Math.max(a,o.numero||0)
     try{ const { data } = await db.auth.getSession(); authSession = data?.session || null; }
     catch(e){ console.warn('[getSession]', e?.message||e); }
     authUser = authSession?.user || null;
-    // Reage a login/logout (inclusive em outra aba)
-    try{ db.auth.onAuthStateChange((_ev, s)=>{ authUser = s?.user || null; }); }catch(e){ console.warn('[onAuthStateChange]', e?.message||e); }
+    // Reage a login/logout (inclusive em outra aba) + recuperação de senha
+    try{ db.auth.onAuthStateChange((_ev, s)=>{ authUser = s?.user || null; if(_ev==='PASSWORD_RECOVERY') mostrarTelaRecuperar(); }); }catch(e){ console.warn('[onAuthStateChange]', e?.message||e); }
+  }
+
+  // Recuperação de senha: o link do e-mail traz o token de recovery no hash. Mostra o
+  // form de NOVA SENHA antes de qualquer auto-login (a sessão de recovery é temporária).
+  if(temCreds && /type=recovery|recuperar/i.test(location.hash||'')){
+    mostrarTelaRecuperar();
+    return;
   }
 
   let modoAdminPlataforma = false;
@@ -5092,6 +5142,33 @@ function iniciarRealtimeSync(){
     .on('postgres_changes',_rtCfg('DELETE','despesas'), p=>{
       todasDesp=todasDesp.filter(x=>x.id!==p.old.id); lsDespSalvar(todasDesp);
       if(document.getElementById('page-despesas').classList.contains('on')) renderDespesas();
+    })
+    // ordens_servico — achado de auditoria 2026-07-20: só orçamentos/equipamentos/
+    // despesas tinham realtime; OS dependia só de reload manual entre dispositivos
+    // (o histórico offline/reconciliação já era robusto, só faltava o "ao vivo").
+    .on('postgres_changes',_rtCfg('INSERT','ordens_servico'), p=>{
+      const novo=p.new;
+      if(todosOS.find(x=>x.id===novo.id)) return;
+      todosOS.unshift(novo);
+      const lista=JSON.parse(ls('fluxa_os_hist')||'[]').filter(x=>x.id!==novo.id);
+      lista.unshift(novo); lsSet('fluxa_os_hist', JSON.stringify(lista.slice(0,600)));
+      if(document.getElementById('page-os-history').classList.contains('on')) renderOSTabela();
+      toast('🔔 Nova OS #'+String(novo.numero||'').padStart(3,'0')+' (outro dispositivo)');
+    })
+    .on('postgres_changes',_rtCfg('UPDATE','ordens_servico'), p=>{
+      const novo=p.new;
+      const idx=todosOS.findIndex(x=>x.id===novo.id);
+      if(idx>=0) todosOS[idx]={...todosOS[idx],...novo}; else todosOS.unshift(novo);
+      const lista=JSON.parse(ls('fluxa_os_hist')||'[]').filter(x=>x.id!==novo.id);
+      lista.unshift(novo); lsSet('fluxa_os_hist', JSON.stringify(lista.slice(0,600)));
+      if(document.getElementById('page-os-history').classList.contains('on')) renderOSTabela();
+    })
+    .on('postgres_changes',_rtCfg('DELETE','ordens_servico'), p=>{
+      const id=p.old.id;
+      todosOS=todosOS.filter(x=>x.id!==id);
+      const lista=JSON.parse(ls('fluxa_os_hist')||'[]').filter(x=>x.id!==id);
+      lsSet('fluxa_os_hist', JSON.stringify(lista));
+      if(document.getElementById('page-os-history').classList.contains('on')) renderOSTabela();
     })
     .subscribe(status=>{
       if(status==='SUBSCRIBED') console.log('Realtime sync ativo');

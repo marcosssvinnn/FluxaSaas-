@@ -2157,6 +2157,40 @@ NÃO mexe em `entrada`/`saida`/`reserva`/`liberacao_reserva`, que têm fluxos
 legítimos de técnico (conclusão de OS baixa estoque) e vendas (entrega de
 orçamento aprovado) — restringir esses quebraria comportamento real.
 
+### Outras frentes conferidas nesta rodada — sem achado novo (ou já conhecido)
+- **Índices:** todas as tabelas têm índice em `empresa_id` (crítico — toda
+  policy RLS filtra por isso). `membros` (a tabela mais consultada de todas,
+  via `meu_perfil()`/`minhas_empresas()` em quase toda policy do sistema) tem
+  chave primária composta `(user_id, empresa_id)` — cobre com índice as duas
+  buscas que essas funções fazem, sem scan sequencial. Nada a corrigir.
+- **XSS:** checagem pontual no portal do cliente (a superfície mais exposta,
+  vista por clientes externos) — texto de usuário passa por `esc()` antes de
+  entrar via `innerHTML`; os poucos lugares sem `esc()` usam `.textContent`
+  (seguro por natureza). Sem achado.
+- **Realtime:** confirmado que a filtragem por empresa é reforçada pela
+  própria RLS do Supabase (publicação `supabase_realtime` + policies de
+  SELECT), não só pelo filtro que o cliente manda — não dá pra falsificar
+  pedindo dados de outra empresa.
+- **Paginação de listas grandes** (`orcamentos`/`ordens_servico`/`clientes`/
+  `despesas`/`agendamentos`/`equipamentos` carregam a lista inteira, sem
+  `.limit()`) — **já era pendência conhecida, não é achado novo desta
+  rodada.** Resolver direito exige desenho de UX (paginação/"carregar mais"),
+  não é patch pontual — fica registrado aqui só pra não se perder, sem
+  implementar sem alinhar o design com o Marcos antes.
+
+### Corrigido — ordens_servico não tinha sincronização em tempo real
+Achado ao comparar com as demais tabelas: orçamentos/equipamentos/despesas já
+avisam outros dispositivos na hora (Supabase Realtime) quando mudam; OS nunca
+tinha esse recurso — a tabela nem estava na publicação `supabase_realtime`,
+nem o `app.js` tinha os handlers. O histórico de OS já era robusto offline/
+reconciliação (correção de 2026-07-19), só faltava a atualização AO VIVO
+entre aparelhos (ex.: gestor no computador vê a OS que o técnico acabou de
+concluir no celular, sem precisar recarregar). Corrigido: `ordens_servico`
+adicionada à publicação (`setup-v2-delta18.sql`) + 3 handlers novos
+(INSERT/UPDATE/DELETE) em `iniciarRealtimeSync()`, espelhando exatamente o
+padrão já usado pra orçamentos. Testado no navegador com canal simulado —
+insert/update/delete atualizam `todosOS` e o localStorage corretamente.
+
 ---
 
 ## Perguntas em aberto (aguardando Marcos responder)
