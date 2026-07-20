@@ -45,6 +45,20 @@
 
 Se a resposta de qualquer uma for "não sei", **verifique antes de entregar** — não deixe brecha silenciosa.
 
+### ⚠️ Testando local (`python3 -m http.server`) — a conexão pode ir pro Supabase REAL
+`app.js` tem `SUPABASE_URL`/`SUPABASE_ANON_KEY` do projeto de produção hardcoded — não
+tem "modo teste" separado. Rodando localmente, o boot tenta conectar de verdade e às
+vezes CONSEGUE (rede do ambiente permitindo). Não é tão perigoso quanto parece — sem
+login real (Supabase Auth de verdade, não só `setSessao()` local), a sessão roda como
+`anon`, e a RLS (`TO authenticated`) bloqueia leitura/escrita nas tabelas de negócio;
+só as RPCs explicitamente `GRANT ... TO anon` (`portal_dados`,
+`portal_responder_orcamento`, `usuarios_para_login`) respondem, e são todas
+com verificação de token/PIN por dentro. Mesmo assim: **antes de testar qualquer
+fluxo localmente, force `dbOk=false; db=null;`** no console — não confie que vai
+falhar sozinho. Rodei um teste com `EMPRESA_ID` fake e `dbOk` foi `true` numa dessas
+sessões (achado em 2026-07-19); nada foi escrito (RLS bloqueou), mas o certo é não
+depender disso.
+
 ---
 
 ## 🏢 FLUXA V2 — SaaS MULTI-TENANT (pool: 1 banco, N empresas)
