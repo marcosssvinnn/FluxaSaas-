@@ -1214,6 +1214,16 @@ let svcs = [], editId = null;
 let osSvcs = [], modalOrcId = null, osOrcId = null; // osOrcId = ID do orçamento vinculado à OS
 let todosOrc = [], filtroSt = localStorage.getItem('fluxa_filtroSt')||'todos', busca = '';
 let todosOS = [], filtroOSSt = localStorage.getItem('fluxa_filtroOSSt')||'todos', buscaOS = '', filtroOSTec = '';
+// Paginação do histórico (achado de auditoria 2026-07-20): loadHist()/loadOSHist()
+// baixavam a tabela INTEIRA do banco toda vez que a tela abria — ok pra empresa
+// nova, mas cresce sem limite pra sempre com o tempo. _PAGE define o tamanho do
+// lote inicial/de cada "carregar mais"; _servidorOffset conta só as linhas vindas
+// do SERVIDOR carregadas até agora (registros locais/pendentes não contam, pra
+// não bagunçar o cálculo do próximo lote); _temMais indica se o último lote veio
+// cheio (heurística: lote cheio = pode ter mais; sem fazer um COUNT(*) à parte).
+const _ORC_PAGE = 300, _OS_PAGE = 300;
+let _orcServidorOffset = 0, _orcTemMais = false;
+let _osServidorOffset = 0, _osTemMais = false;
 let osEditId = null; // id da OS sendo editada (null = nova) — evita duplicar ao salvar
 let filtroPeriodo = ''; // legado — não mais usado na tabela principal
 let orcMesRef = ''; // YYYY-MM ou '' = todos os períodos
@@ -3139,8 +3149,9 @@ async function loadHist(){
   // 2. Se BD disponível: sincroniza em background e atualiza a view
   if(dbOk&&db){
     try{
-      const {data,error}=await db.from('orcamentos').select('*').eq('empresa_id',EMPRESA_ID).order('data_criacao',{ascending:false});
+      const {data,error}=await db.from('orcamentos').select('*').eq('empresa_id',EMPRESA_ID).order('data_criacao',{ascending:false}).range(0,_ORC_PAGE-1);
       if(error) throw error;
+      _orcServidorOffset=data.length; _orcTemMais=data.length===_ORC_PAGE;
       // Merge: BD é fonte de verdade + mantém registros local-only ainda não sincronizados
       const dbIds=new Set(data.map(x=>x.id));
       // exclui tempIds cujo insert já está EM VOO (salvarApenas) — senão duplica
@@ -3159,6 +3170,24 @@ async function loadHist(){
       _migrarClientesDeOrcamentos();
     }catch(e){ console.warn('Sync do histórico falhou:', e?.message||e); }
   }
+}
+
+// Busca o próximo lote de orçamentos mais antigos (offline/sem banco: não tem
+// mais o que buscar, tudo que existe local já está carregado). Chamado pelo
+// botão "Carregar mais" — ver renderTabela().
+async function _carregarMaisOrcamentos(){
+  if(!dbOk||!db||!_orcTemMais) return;
+  const btn=document.getElementById('orc-carregar-mais'); if(btn) btn.textContent='Carregando…';
+  try{
+    const {data,error}=await db.from('orcamentos').select('*').eq('empresa_id',EMPRESA_ID).order('data_criacao',{ascending:false}).range(_orcServidorOffset,_orcServidorOffset+_ORC_PAGE-1);
+    if(error) throw error;
+    _orcServidorOffset+=data.length; _orcTemMais=data.length===_ORC_PAGE;
+    const idsJa=new Set(todosOrc.map(x=>x.id));
+    const novos=data.filter(x=>!idsJa.has(x.id));
+    todosOrc=[...todosOrc,...novos];
+    lsOrcSalvar(todosOrc);
+    renderTabela();
+  }catch(e){ console.warn('[carregarMaisOrcamentos]', e?.message||e); toast('⚠️ Falha ao carregar mais orçamentos'); }
 }
 
 // Migração única: aprovados sem data_aprovacao → usa data_criacao como referência contábil
@@ -3619,6 +3648,10 @@ function renderTabela(){
     </tr>`;
   });
   h+='</tbody></table></div>';
+  // "Carregar mais" — só quando o servidor pode ter mais orçamentos além do lote
+  // já baixado (ver _ORC_PAGE em loadHist/_carregarMaisOrcamentos). Sem isso o
+  // histórico baixava a tabela inteira sempre, crescendo sem limite com o tempo.
+  if(_orcTemMais) h+=`<div style="text-align:center;padding:14px 0"><button id="orc-carregar-mais" class="fb" onclick="_carregarMaisOrcamentos()">Carregar mais antigos…</button></div>`;
   document.getElementById('hist-body').innerHTML=h;
   _iniciarScrollHint(document.querySelector('#hist-body .htw'));
 }
@@ -3959,8 +3992,9 @@ async function loadOSHist(){
   // 2. Se BD disponível: sincroniza em background e atualiza a view
   if(dbOk&&db){
     try{
-      const {data,error}=await db.from('ordens_servico').select('*').eq('empresa_id',EMPRESA_ID).order('data_criacao',{ascending:false});
+      const {data,error}=await db.from('ordens_servico').select('*').eq('empresa_id',EMPRESA_ID).order('data_criacao',{ascending:false}).range(0,_OS_PAGE-1);
       if(error) throw error;
+      _osServidorOffset=data.length; _osTemMais=data.length===_OS_PAGE;
       const dbIds=new Set((data||[]).map(x=>x.id));
       const soLocal=todosOS.filter(x=>String(x.id).startsWith('local_')&&!dbIds.has(x.id));
       todosOS=[...(data||[]),...soLocal];
@@ -3973,6 +4007,22 @@ async function loadOSHist(){
       }
     }catch(e){ console.warn('loadOSHist erro:',e.message); }
   }
+}
+
+// Busca o próximo lote de OS mais antigas — mesmo padrão de _carregarMaisOrcamentos().
+async function _carregarMaisOS(){
+  if(!dbOk||!db||!_osTemMais) return;
+  const btn=document.getElementById('os-carregar-mais'); if(btn) btn.textContent='Carregando…';
+  try{
+    const {data,error}=await db.from('ordens_servico').select('*').eq('empresa_id',EMPRESA_ID).order('data_criacao',{ascending:false}).range(_osServidorOffset,_osServidorOffset+_OS_PAGE-1);
+    if(error) throw error;
+    _osServidorOffset+=data.length; _osTemMais=data.length===_OS_PAGE;
+    const idsJa=new Set(todosOS.map(x=>x.id));
+    const novos=data.filter(x=>!idsJa.has(x.id));
+    todosOS=[...todosOS,...novos];
+    lsSet('fluxa_os_hist', JSON.stringify(todosOS.slice(0,600)));
+    renderOSTabela();
+  }catch(e){ console.warn('[carregarMaisOS]', e?.message||e); toast('⚠️ Falha ao carregar mais OS'); }
 }
 
 function filtOS(btn){
@@ -4060,6 +4110,7 @@ function renderOSTabela(){
     </tr>`;
   });
   h+='</tbody></table></div>';
+  if(_osTemMais) h+=`<div style="text-align:center;padding:14px 0"><button id="os-carregar-mais" class="fb" onclick="_carregarMaisOS()">Carregar mais antigas…</button></div>`;
   document.getElementById('osh-body').innerHTML=h;
   _iniciarScrollHint(document.querySelector('#osh-body .htw'));
 }

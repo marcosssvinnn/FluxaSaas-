@@ -2171,12 +2171,44 @@ orçamento aprovado) — restringir esses quebraria comportamento real.
   própria RLS do Supabase (publicação `supabase_realtime` + policies de
   SELECT), não só pelo filtro que o cliente manda — não dá pra falsificar
   pedindo dados de outra empresa.
-- **Paginação de listas grandes** (`orcamentos`/`ordens_servico`/`clientes`/
-  `despesas`/`agendamentos`/`equipamentos` carregam a lista inteira, sem
-  `.limit()`) — **já era pendência conhecida, não é achado novo desta
-  rodada.** Resolver direito exige desenho de UX (paginação/"carregar mais"),
-  não é patch pontual — fica registrado aqui só pra não se perder, sem
-  implementar sem alinhar o design com o Marcos antes.
+- ~~**Paginação de listas grandes**~~ → **resolvido pra `orcamentos`/
+  `ordens_servico` (as duas de maior volume/criticidade), ver seção própria
+  logo abaixo.** `clientes`/`despesas`/`agendamentos`/`equipamentos` ficaram
+  de fora desta rodada de propósito — `clientes` tem um comentário explícito
+  no código avisando que buscar tudo é necessário (filtrar no banco já causou
+  bug de sumiço de cliente entre lojas/grupos antes); as outras 3 crescem bem
+  mais devagar (não são 1-registro-por-serviço-por-dia como orçamento/OS) e
+  têm dashboards de totais mensais (`renderDespesas` etc.) que dependem de ter
+  o mês corrente completo carregado — arriscado paginar sem repensar essa
+  dependência junto. Ficam registradas aqui como possível próximo passo, não
+  esquecidas.
+
+### Corrigido — paginação em orçamentos e ordens de serviço
+`loadHist()`/`loadOSHist()` baixavam a tabela INTEIRA do banco toda vez que a
+tela abria — funcional pra empresa nova, mas cresce sem limite pra sempre (são
+as duas tabelas mais criadas no dia a dia: potencialmente um registro por
+serviço, todo dia, por anos). Descartei a ideia óbvia de "filtrar por mês
+direto no servidor" — não dá pra fazer com segurança, porque orçamento
+aprovado é listado pelo mês de `data_aprovacao`, não `data_criacao` (a
+"referência" de qual mês um registro pertence depende do status, não é uma
+coluna fixa) — um filtro de data cru no servidor excluiria erroneamente
+orçamentos criados num mês e aprovados no seguinte.
+
+**Fix mais simples e seguro:** limita o lote inicial a 300 registros mais
+recentes (`_ORC_PAGE`/`_OS_PAGE`) via `.range()` do Supabase, com um botão
+**"Carregar mais antigos…"** que aparece só quando o lote voltou cheio
+(heurística: lote cheio = pode ter mais, sem precisar de um `COUNT(*)`
+separado) e busca o próximo lote sob demanda. Os registros locais/pendentes
+de sincronizar continuam sempre presentes independente da paginação (são
+sempre recentes por definição — acabaram de ser criados). Migrações
+históricas (`_migrarDataAprovacao`, importação de clientes de orçamentos
+antigos) agora só cobrem o que já foi carregado — vão completando aos poucos
+conforme o usuário clica "carregar mais", em vez de tudo de uma vez; troca
+aceitável (é migração de conveniência, não crítica).
+
+Testado no navegador com um "banco" simulado de 650 registros: 1º lote = 300
+(botão aparece), 2º = 600 (botão continua), 3º = 650 (acabou, botão some
+sozinho) — nos dois módulos (orçamento e OS), sem duplicar nenhum id.
 
 ### Corrigido — ordens_servico não tinha sincronização em tempo real
 Achado ao comparar com as demais tabelas: orçamentos/equipamentos/despesas já
