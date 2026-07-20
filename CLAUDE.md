@@ -1907,15 +1907,13 @@ sabia que OS existia — não tinha esse tipo no radar.
   (`go('os')`) se `loja.tecs` viesse vazio/undefined — `tecs.map()` em cima de
   `undefined`. Baixo risco em produção (a coluna tem `DEFAULT '[]'` no banco), mas o
   custo de blindar é uma linha; corrigido.
-- **Achado, NÃO corrigido — UX real de mobile:** a tela de Histórico de Orçamentos
+- ~~**Achado, NÃO corrigido — UX real de mobile:** a tela de Histórico de Orçamentos
   usa uma `<table>` mais larga que a viewport (583px de conteúdo em 319px visíveis).
-  A coluna "Ações" (aprovar, PDF, WhatsApp, excluir…) fica **fora da tela**, só
-  alcançável rolando a tabela pro lado — sem nenhuma pista visual (seta, sombra,
-  texto "arraste") de que há mais conteúdo. Pra um gestor tentando aprovar/mandar um
-  orçamento rápido pelo celular, isso é fricção real: precisa descobrir sozinho que
-  dá pra arrastar a tabela. Não mexi porque é uma decisão de redesenho de tela (layout
-  em cards ao invés de tabela, ou coluna de ações fixa/sticky), não um bug pontual —
-  fica pra decisão do Marcos se quer investir nisso.
+  A coluna "Ações" (aprovar, PDF, WhatsApp, excluir…) fica fora da tela, só
+  alcançável rolando a tabela pro lado, sem nenhuma pista visual de que há mais
+  conteúdo.~~ → **corrigido com pista visual de scroll (não precisou do
+  redesenho maior) — ver "Mobile: coluna 'Ações' fora da tela" mais abaixo
+  nesta mesma seção.**
 - **Confirmado bom, sem achado:** o restante do fluxo é sólido — rascunho automático
   salvo durante a digitação, prévia de WhatsApp ao vivo, modal de aprovação já
   sugerindo agendar a OS com data/hora/técnico pré-preenchidos, pipeline visual
@@ -2016,6 +2014,11 @@ aparece com a tabela no início e some ao rolar até "Ações" ficar visível.
 
 1. **CNPJs reais** das 3 empresas — para preencher tabela `lojas` e emissão de NF
 2. **Tokens Focus NFe** — um por CNPJ (homologação e produção)
-3. **Template EmailJS** — adicionar novas variáveis `{{duracao}}`, `{{status_geral}}`, `{{link_pdf}}` ao template
-4. **Tabela `auditoria` no banco de produção** — rodar o SQL acima se ainda não foi rodado (o app funciona sem ela, só não sincroniza o log).
-- [ ] **PIN legado:** com contas individuais criadas, o fallback de PIN legado em `pinValido()` pode ser removido. Confirmar com Marcos se há algum usuário legado antes de remover.
+3. **Template EmailJS** — adicionar as variáveis `{{duracao}}`, `{{status_geral}}`, `{{link_pdf}}` ao template (o app.js já monta e manda essas 3 no payload da notificação de vistoria — só falta o template em si, no painel do EmailJS, usar/exibir elas)
+
+~~4. Tabela `auditoria` no banco de produção~~ → **resolvido, tabela já existe**
+(confirmado via Management API em 2026-07-20).
+~~PIN legado em `pinValido()`~~ → **resolvido, função inteira foi removida**
+(achado de segurança de outra sessão: verificação de PIN agora roda 100% no
+servidor via `rpc('verificar_pin_interno')`, nunca mais compara hash no
+navegador — não sobrou fallback legado nenhum pra decidir sobre).
