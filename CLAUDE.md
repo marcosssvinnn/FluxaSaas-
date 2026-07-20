@@ -1394,7 +1394,8 @@ restaurante, não se aplica a uma empresa de piscinas).
   acesso do cliente ao portal fazia table scan em `clientes` (cresce com o
   número de clientes); sem `UNIQUE`, nada no banco impedia duas linhas com o
   mesmo token. Corrigido em `setup-v2-delta7.sql` (aplicado a `setup-v2.sql`
-  também) — **falta rodar o delta7 no Supabase**.
+  também) — **confirmado aplicado no Supabase** (verificado via Management
+  API em 2026-07-20: índice `idx_clientes_portal_token` existe).
 
 **Achado, documentado, NÃO corrigido nesta rodada (decisão de produto/risco maior):**
 - ~~Vínculo cliente↔orçamento/OS/vistoria por NOME~~ → **resolvido (2026-07-19,
@@ -1412,7 +1413,9 @@ restaurante, não se aplica a uma empresa de piscinas).
   (evita vínculo errado se o nome mudar) e preservados ao editar/duplicar um
   registro existente. Cobri também `criarOSjunto` e `criarOSdeAprovacao` (OS
   criada junto com/a partir de um orçamento), que tinham ficado de fora na
-  primeira passada. **Falta rodar `setup-v2-delta8.sql` no Supabase.**
+  primeira passada. **Confirmado aplicado no Supabase** (verificado via
+  Management API em 2026-07-20: `cliente_id` existe em `orcamentos`/
+  `ordens_servico`/`vistorias`).
   Gap conhecido, não crítico: `gerarOSdoAgendamento` (OS gerada automaticamente
   de um agendamento recorrente) ainda não manda `cliente_id`, porque a tabela
   `agendamentos` não tem essa coluna e não é lida pelo portal — só cai no
@@ -1421,7 +1424,8 @@ restaurante, não se aplica a uma empresa de piscinas).
   (`setup-v2-delta9.sql`)**: era `uuid`, corrigido pra `text` (compatível com
   `clientes.id`). Só o tipo — ainda não populado por nenhum formulário, é uma
   correção maior separada se um dia quiserem ligar o vínculo em equipamentos.
-  **Falta rodar `setup-v2-delta9.sql` no Supabase.**
+  **Confirmado aplicado no Supabase** (verificado via Management API em
+  2026-07-20: `equipamentos.cliente_id` já é `text`).
   **Nota pra quem for aplicar o SQL de perfil (`setup-v2-optionA-perfil.sql`):**
   `delta8`/`delta9` NÃO tocam em RLS/policies, só colunas/índices/backfill e 2
   RPCs (`portal_dados`, `portal_responder_orcamento`, ambas `SECURITY DEFINER`,
@@ -1444,7 +1448,8 @@ restaurante, não se aplica a uma empresa de piscinas).
   não foi testada** (sem conexão nesta sessão) — só a lógica ao redor.
   `assinatura_base64` (assinatura do cliente no portal, fluxo anon separado) e
   `equipamentos.foto_base64` ficam de fora — não migrados, escopo maior.
-  **Falta rodar `setup-v2-delta10.sql`** se ainda não rodou (cria os buckets).
+  **Confirmado aplicado no Supabase** (verificado via Management API em
+  2026-07-20: buckets `orcamentos-fotos`/`os-fotos` existem).
 - **Duplicação estrutural (não é bug):** os 3 preenchedores de documento
   (`preencherDocOrc`, `preencherDocOS`, `preencherRelatorioVistoria`) repetem
   o mesmo padrão de pintar cor/logo por `getLojaConfig()`. E ~70 loaders
@@ -1589,9 +1594,9 @@ multi-tenant e proteção contra `produto_id` nulo — tudo **confirmado correto
    timing. `app.js` chama a RPC quando online; se offline (ou a RPC falhar), cai no cálculo
    local antigo (`_sincronizarReservaOrcamentoLocal`/`_entregarOrcamentoLocal`, comportamento
    idêntico ao de antes, só renomeado) — sem regressão pro caso offline. Testado localmente
-   (fallback local: reserva, entrega parcial, reversão, idempotência — todos batendo). A parte
-   que roda no servidor (RPC em si) **não foi testada contra Supabase real** nesta sessão — só
-   revisada por leitura cuidadosa. **Falta rodar `setup-v2-delta11.sql` no Supabase.**
+   (fallback local: reserva, entrega parcial, reversão, idempotência — todos batendo). **Confirmado
+   aplicado no Supabase** (verificado via Management API em 2026-07-20: as duas RPCs existem —
+   e já foram substituídas pela versão do delta15, ver item 2 abaixo).
 2. ~~Editar um orçamento aprovado para AUMENTAR a quantidade de um produto já entregue não
    reservava/sinalizava a diferença~~ → **corrigido (`setup-v2-delta15.sql` + `app.js`, sessão
    2026-07-20)**. `_entregueProdutoOrc` tratava "já teve QUALQUER movimento de baixa/liberação"
