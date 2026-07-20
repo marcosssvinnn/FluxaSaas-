@@ -214,4 +214,68 @@ DROP POLICY IF EXISTS "aud sel" ON auditoria; DROP POLICY IF EXISTS "aud ins" ON
 CREATE POLICY "aud ins" ON auditoria FOR INSERT TO authenticated WITH CHECK (empresa_id IN (SELECT minhas_empresas()));
 CREATE POLICY "aud sel" ON auditoria FOR SELECT TO authenticated USING (meu_perfil(empresa_id) = 'gestor');
 
+-- ───────── 5) GERENCIAMENTO DE FUNCIONÁRIO + login no próprio aparelho ─────────
+-- (itens 1 e 3 do pós-Opção A: bootstrap por link, desativar, reset de PIN)
+
+-- versão do login: reset de PIN incrementa → e-mail sintético novo → conta nova.
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS auth_ver integer DEFAULT 0;
+
+-- empresa por slug (anon) — bootstrap do técnico via link #e/<slug>. Só marca (sem PIN/segredos).
+CREATE OR REPLACE FUNCTION empresa_por_slug(p_slug text)
+RETURNS TABLE(id uuid, nome text, branding jsonb)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT e.id, e.nome,
+    jsonb_build_object('nome',e.config->>'nome','appName',e.config->>'appName','sub',e.config->>'sub',
+      'cor',e.config->>'cor','cor2',e.config->>'cor2','tagline',e.config->>'tagline','logoB64',e.config->>'logoB64')
+  FROM empresas e WHERE e.slug = p_slug AND e.ativo = true;
+$$;
+GRANT EXECUTE ON FUNCTION empresa_por_slug(text) TO anon, authenticated;
+
+-- lista de nomes p/ login (SUPERSEDE a versão anterior: agora inclui auth_ver)
+DROP FUNCTION IF EXISTS usuarios_para_login(uuid);
+CREATE FUNCTION usuarios_para_login(p_empresa uuid)
+RETURNS TABLE(id text, nome text, perfil text, loja_id uuid, auth_ver integer)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT id, nome, perfil, loja_id, COALESCE(auth_ver,0) FROM usuarios WHERE empresa_id = p_empresa AND ativo = true;
+$$;
+GRANT EXECUTE ON FUNCTION usuarios_para_login(uuid) TO anon, authenticated;
+
+-- view de usuários (sem PIN) — agora com auth_ver
+CREATE OR REPLACE VIEW usuarios_lista WITH (security_invoker=true) AS
+SELECT id, empresa_id, nome, perfil, loja_id, loja_nome, ativo, data_criacao,
+       (pin IS NOT NULL AND pin <> '') AS tem_pin, COALESCE(auth_ver,0) AS auth_ver
+FROM usuarios;
+
+-- desativar funcionário: ativo=false + REMOVE o membros (corta a RLS na hora, mesmo com sessão ativa)
+CREATE OR REPLACE FUNCTION desativar_funcionario(p_empresa uuid, p_usuario_id text)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_slug text;
+BEGIN
+  IF auth.uid() IS NULL THEN RAISE EXCEPTION 'nao autenticado'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM membros WHERE user_id=auth.uid() AND empresa_id=p_empresa AND perfil IN ('gestor','master')) THEN
+    RAISE EXCEPTION 'apenas o gestor pode desativar funcionarios'; END IF;
+  UPDATE usuarios SET ativo=false WHERE id=p_usuario_id AND empresa_id=p_empresa;
+  SELECT slug INTO v_slug FROM empresas WHERE id=p_empresa;
+  DELETE FROM membros m USING auth.users u WHERE m.user_id=u.id AND m.empresa_id=p_empresa
+    AND (u.email = p_usuario_id||'@'||v_slug||'.fluxa.local' OR u.email LIKE p_usuario_id||'.v%@'||v_slug||'.fluxa.local');
+END $$;
+GRANT EXECUTE ON FUNCTION desativar_funcionario(uuid, text) TO authenticated;
+
+-- reset de PIN: remove membros da conta atual + bumpa auth_ver + grava PIN novo
+-- (próximo login = conta nova com o PIN novo; a antiga perde acesso).
+CREATE OR REPLACE FUNCTION resetar_pin_funcionario(p_empresa uuid, p_usuario_id text, p_pin_hash text)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_slug text; v_ver integer;
+BEGIN
+  IF auth.uid() IS NULL THEN RAISE EXCEPTION 'nao autenticado'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM membros WHERE user_id=auth.uid() AND empresa_id=p_empresa AND perfil IN ('gestor','master')) THEN
+    RAISE EXCEPTION 'apenas o gestor pode resetar PIN'; END IF;
+  SELECT slug INTO v_slug FROM empresas WHERE id=p_empresa;
+  SELECT COALESCE(auth_ver,0) INTO v_ver FROM usuarios WHERE id=p_usuario_id AND empresa_id=p_empresa;
+  DELETE FROM membros m USING auth.users u WHERE m.user_id=u.id AND m.empresa_id=p_empresa
+    AND u.email = (CASE WHEN v_ver=0 THEN p_usuario_id ELSE p_usuario_id||'.v'||v_ver END)||'@'||v_slug||'.fluxa.local';
+  UPDATE usuarios SET pin=p_pin_hash, auth_ver=v_ver+1 WHERE id=p_usuario_id AND empresa_id=p_empresa;
+END $$;
+GRANT EXECUTE ON FUNCTION resetar_pin_funcionario(uuid, text, text) TO authenticated;
+
 NOTIFY pgrst, 'reload schema';
