@@ -59,6 +59,32 @@ falhar sozinho. Rodei um teste com `EMPRESA_ID` fake e `dbOk` foi `true` numa de
 sessões (achado em 2026-07-19); nada foi escrito (RLS bloqueou), mas o certo é não
 depender disso.
 
+### ⚠️ Migração SQL: rodar direto via Management API, NÃO pedir pro Marcos colar
+Desde 2026-07-20, o Marcos parou de rodar SQL na mão (copiar/colar no SQL Editor
+do Supabase). Há um Personal Access Token salvo em `~/.claude/settings.json`
+(`mcpServers.supabase.headers.Authorization`) com acesso direto ao projeto v2
+(`auoklaiffalbdgazrbdu`) via **Supabase Management API**. Endpoint:
+```
+POST https://api.supabase.com/v1/projects/auoklaiffalbdgazrbdu/database/query
+Authorization: Bearer <token de ~/.claude/settings.json>
+Content-Type: application/json
+{"query": "<sql>"}
+```
+Use `curl` com o payload JSON gerado por um arquivo/`python3 -c` (nunca monte a
+string de query inline no shell — aspas simples do SQL colidem com as do bash).
+**`python3 -c` com `urllib` toma 403 (bloqueio de Cloudflare pelo User-Agent) —
+use `curl` (via `--data @arquivo.json`), não `urllib`.**
+
+Antes de rodar qualquer delta novo: (1) cheque se as tabelas/colunas/policies que
+o script espera encontrar/alterar batem com o estado atual do banco (`select`
+em `information_schema`/`pg_policies`/`pg_proc` primeiro — um `DROP POLICY`
+apontando pro nome errado é silencioso ou falha feio); (2) cheque se algo que
+outra sessão/IA já mudou depende do comportamento que o delta está prestes a
+alterar (ex.: o delta12 ficou pendente porque o bootstrap novo de aparelho
+passou a depender do campo que ele removia — ver seção "Revisão independente
+do setup-v2-optionA-perfil.sql"); (3) rode, depois **verifique o resultado**
+com uma query de leitura (não confie só em "não deu erro").
+
 ---
 
 ## 🏢 FLUXA V2 — SaaS MULTI-TENANT (pool: 1 banco, N empresas)
@@ -1293,30 +1319,37 @@ _Contexto histórico da decisão (mantido):_
 
 **Revisão independente do `setup-v2-optionA-perfil.sql`** (Fase 1, feita por outra
 sessão/IA — não editei o arquivo dela, só li e corrigi por deltas separados):
-- ~~`usuarios_para_login(p_empresa)` com `GRANT ... TO anon` retornando `perfil`~~
-  → **corrigido (`setup-v2-delta12.sql`)**. Qualquer pessoa na internet, sem
-  login, que soubesse o `empresa_id` conseguia listar nome + CARGO de todos os
-  funcionários da empresa. Como a função ainda não era chamada em lugar nenhum
-  do `app.js` (Fase 2 só implementou o login com sessão já existente, o
-  bootstrapping de aparelho novo que usaria essa RPC ainda não foi codado),
-  era seguro reduzir o retorno agora: tirei `perfil`, mantive `id`/`nome`/
-  `loja_id` (o necessário pra montar a tela de escolha de nome). **Falta rodar
-  `setup-v2-delta12.sql` no Supabase.**
+- **`usuarios_para_login(p_empresa)` com `GRANT ... TO anon` retornando `perfil` —
+  achado original AINDA VÁLIDO, mas o fix (`setup-v2-delta12.sql`) NÃO foi
+  aplicado (conflito descoberto em 2026-07-20).** Qualquer pessoa na internet,
+  sem login, que soubesse o `empresa_id`/slug da empresa consegue listar nome +
+  CARGO de todos os funcionários. Quando escrevi o delta12, essa RPC ainda não
+  era chamada em lugar nenhum do `app.js` — mas nesse meio tempo a outra
+  sessão/IA implementou o bootstrap de aparelho novo (`_bootstrapTecnico`,
+  commit `8769e4f`) que **usa `perfil` de verdade**: alimenta o ícone de cargo
+  (👑 master / 🛡️ gestor / 💼 vendas / 🔧 técnico) na tela de login por nome,
+  antes de qualquer autenticação — e também uma checagem de lógica (`temIndividual`,
+  `renderLoginUsers` em `app.js`). Rodar o delta12 como está QUEBRARIA essa
+  feature. **Não apliquei — fica pendente de decisão do Marcos**: ou aceitar
+  o trade-off (cargo visível pré-login é intencional pro fluxo de auto-atendimento
+  de aparelho novo) e arquivar o achado, ou pedir uma versão do delta12 que
+  mantenha `perfil` mas reduza a exposição de outra forma (ex.: rate-limit,
+  ou não expor cargo pra `master`/`gestor` especificamente, já que
+  técnico/vendas talvez seja aceitável). Comentei o arquivo `setup-v2-delta12.sql`
+  como NÃO aplicado; não apagar/rodar sem essa conversa.
 - ~~`tecnico = meu_nome(empresa_id)` nas policies de OS/vistoria/despesa~~ →
-  **metade corrigida (`setup-v2-delta13.sql`)**. Mesmo padrão frágil de
-  comparar por nome que resolvi pra cliente↔orçamento. Adicionei
-  `tecnico_user_id uuid` nas 3 tabelas + backfill best-effort (só nomes
-  inambíguos) + `OR tecnico_user_id = auth.uid()` nas policies — aditivo, zero
-  mudança de comportamento até a coluna ser preenchida (sempre NULL por
-  enquanto, então o fallback por nome continua sendo o que vale). **NÃO fiz a
-  outra metade** (app.js popular `tecnico_user_id` ao salvar OS/vistoria/
-  despesa): exige entender a fundo o modelo de sessão da Fase 2 (login real
-  por e-mail sintético) que está em desenvolvimento ativo por outra sessão —
-  popular esse campo errado misturaria a autoria do trabalho entre
-  funcionários. Fica como follow-up coordenado com quem fez a Fase 2. **Falta
-  rodar `setup-v2-delta13.sql` no Supabase** (só funciona se a Fase 1 —
-  `setup-v2-optionA-perfil.sql` — já tiver sido aplicada antes; o delta checa
-  isso e não faz nada se as policies base ainda não existirem).
+  **corrigido por completo (`setup-v2-delta13.sql` + `setup-v2-delta14.sql`,
+  aplicados no Supabase em 2026-07-20 via Management API)**. Mesmo padrão
+  frágil de comparar por nome que resolvi pra cliente↔orçamento. delta13
+  adicionou `tecnico_user_id uuid` nas 3 tabelas + `OR tecnico_user_id =
+  auth.uid()` nas policies (aditivo). delta14 fechou a outra metade — que
+  antes dependia de entender o modelo de sessão da Fase 2 — com um TRIGGER no
+  banco (`_preencher_tecnico_user_id()`) em vez de código no app.js: casa o
+  texto de `tecnico` com `membros.nome` (só quando bate com exatamente 1
+  pessoa da empresa) toda vez que a linha é gravada, sem precisar saber quem
+  está logado no momento (evita atribuir errado quando um gestor lança
+  serviço em nome de outro técnico). **Aplicados e verificados no banco real**
+  (colunas existem, 6 triggers ativos nas 3 tabelas × INSERT/UPDATE).
 - Sugestão operacional menor, não fiz: rodar o script da Fase 1 inteiro dentro
   de `BEGIN;`/`COMMIT;` — se falhar no meio, algumas tabelas ficam com a
   policy nova e outras com a antiga "isolamento por empresa" até re-rodar.
@@ -1585,8 +1618,10 @@ multi-tenant e proteção contra `produto_id` nulo — tudo **confirmado correto
    só a diferença → entrega a diferença → baixa física acumulada correta, sem duplicar; (b) item
    dispensado (`qtyMap:{pid:0}`) → reconciliar de novo NÃO reabre (a regressão que a 1ª tentativa
    causava, confirmada ausente) → aumentar a qty depois reabre só a diferença nova, sem tocar nas
-   unidades já dispensadas. **A RPC em si não foi testada contra Supabase real. Falta rodar
-   `setup-v2-delta15.sql` no Supabase** (requer o delta11 já aplicado).
+   unidades já dispensadas. **Aplicado no Supabase em 2026-07-20 via Management API** (as duas
+   RPCs foram confirmadas atualizadas com a lógica nova, `pg_get_functiondef` batendo). Ainda não
+   testado com um caso real de entrega parcial ponta a ponta no banco de produção — só a lógica
+   em si foi verificada (fallback local no navegador + leitura do código das RPCs após aplicar).
 
 ### Funções-chave:
 ```js
