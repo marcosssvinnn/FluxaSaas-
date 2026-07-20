@@ -2102,13 +2102,37 @@ preenchido de verdade no banco, então nunca cai nesse fallback).
 
 ## Perguntas em aberto (aguardando Marcos responder)
 
-1. **CNPJs reais** das 3 empresas — para preencher tabela `lojas` e emissão de NF
-2. **Tokens Focus NFe** — um por CNPJ (homologação e produção)
-3. **Template EmailJS** — adicionar as variáveis `{{duracao}}`, `{{status_geral}}`, `{{link_pdf}}` ao template (o app.js já monta e manda essas 3 no payload da notificação de vistoria — só falta o template em si, no painel do EmailJS, usar/exibir elas)
+1. **CNPJs da Fortemp e da Aquamotor** (Fluxa piscinas já preenchido, ver abaixo)
+   — pra emissão de NF quando o módulo fiscal for religado.
+2. **Tokens Focus NFe** — um por CNPJ (homologação e produção).
+3. **Telefone da Fluxa piscinas** — não consta em nenhum registro público (CNPJ
+   não inclui telefone). Só o Marcos tem esse dado. Sem ele, a faixa de
+   contato do PDF mostra só a cidade (não é mais redundante como antes, mas
+   ainda fica sem telefone pro cliente ligar).
+4. **Template EmailJS** — adicionar as variáveis `{{duracao}}`, `{{status_geral}}`, `{{link_pdf}}` ao template (o app.js já monta e manda essas 3 no payload da notificação de vistoria — só falta o template em si, no painel do EmailJS, usar/exibir elas)
 
-~~4. Tabela `auditoria` no banco de produção~~ → **resolvido, tabela já existe**
+~~5. Tabela `auditoria` no banco de produção~~ → **resolvido, tabela já existe**
 (confirmado via Management API em 2026-07-20).
 ~~PIN legado em `pinValido()`~~ → **resolvido, função inteira foi removida**
 (achado de segurança de outra sessão: verificação de PIN agora roda 100% no
 servidor via `rpc('verificar_pin_interno')`, nunca mais compara hash no
 navegador — não sobrou fallback legado nenhum pra decidir sobre).
+
+### Cadastro da Fluxa piscinas — completado em 2026-07-20 (dados reais, banco de produção)
+- **CNPJ**: `61.941.275/0001-14` (passado pelo Marcos).
+- **Razão social / cidade**: preenchidos com dado PÚBLICO real, consultado via
+  BrasilAPI (espelho gratuito e oficial do CNPJ da Receita Federal) — NÃO
+  inventado. Razão social: `61.941.275 MARCOS VINICIUS ALVES DA SILVA` (MEI em
+  nome do Marcos); cidade: `Itapema - SC`. Telefone não consta em registro
+  público nenhum (CNPJ não inclui telefone) — deixado em branco de propósito,
+  não adivinhado; fica na lista acima como pergunta em aberto.
+- **Lista de serviços** (`empresas.config.svcs`): trocada dos placeholders
+  "Serviço 1/2/3" pra 3 sugestões genéricas de manutenção de piscina
+  ("Manutenção mensal", "Limpeza pesada / choque de cloro", "Troca de areia
+  do filtro") — são só uma sugestão de partida (pedido explícito do Marcos
+  antes de sair: "certifique se que sempre vai sair personalizado"), ele pode
+  renomear/adicionar/remover à vontade em Configurações → Empresa.
+- Confirmado ao vivo (Browser pane) que a faixa de contato do orçamento/OS
+  agora mostra "Itapema - SC" em vez de repetir o nome da empresa, e que o
+  primeiro serviço do orçamento sai como "Manutenção mensal" em vez de
+  "Serviço 1".
