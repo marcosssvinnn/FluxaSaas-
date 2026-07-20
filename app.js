@@ -241,9 +241,13 @@ function criarClienteSupabase(){
 //    login REAL por pessoa — cada funcionário na conta própria, RLS por perfil vale ──
 // Cada funcionário tem conta própria (e-mail sintético + PIN), então a RLS por
 // perfil vale de verdade. Ver docs/opcao-a-fase2.md. Com a flag OFF, nada disso roda.
-function _emailSintetico(usuarioId){
+// authVer: versão do login (reset de PIN incrementa → e-mail novo → conta nova com
+// o PIN novo). v0 = sem sufixo (compat com contas já criadas). Ver resetar_pin_funcionario.
+function _emailSintetico(usuarioId, authVer){
   const slug = (EMPRESA && EMPRESA.slug) || ls('fluxa_empresa_slug') || String(EMPRESA_ID||'').slice(0,8) || 'x';
-  return String(usuarioId)+'@'+slug+'.fluxa.local';
+  const v = parseInt(authVer)||0;
+  const uid = v>0 ? (String(usuarioId)+'.v'+v) : String(usuarioId);
+  return uid+'@'+slug+'.fluxa.local';
 }
 // Supabase Auth exige senha >= 6; o PIN tem 4 → deriva determinística (o PIN segue
 // sendo a única entropia). O PIN CRU vai só para a RPC vincular_funcionario.
@@ -259,9 +263,9 @@ function _authPerfilAtivo(){
 
 // Entra como o funcionário: signIn (ou signUp no 1º acesso) + vincula pelo PIN, e
 // re-inicializa o contexto sob a NOVA sessão. Retorna true se autenticou.
-async function _loginRealFuncionario(usuarioId, pin){
+async function _loginRealFuncionario(usuarioId, pin, authVer){
   if(!db || !EMPRESA_ID) return false;
-  const email = _emailSintetico(usuarioId);
+  const email = _emailSintetico(usuarioId, authVer);
   const senha = _senhaDePin(pin);
   try{
     let { error } = await db.auth.signInWithPassword({ email, password: senha });
@@ -324,7 +328,7 @@ async function _bootstrapTecnico(){
 
     const { data:us, error:eu } = await db.rpc('usuarios_para_login', { p_empresa:empId });
     if(eu){ console.warn('[bootstrap:usuarios]',eu.message); return false; }
-    todosUsuarios=(us||[]).map(u=>({ id:u.id, nome:u.nome, perfil:u.perfil, loja_id:u.loja_id, loja_nome:'', ativo:true }));
+    todosUsuarios=(us||[]).map(u=>({ id:u.id, nome:u.nome, perfil:u.perfil, loja_id:u.loja_id, loja_nome:'', ativo:true, auth_ver:u.auth_ver }));
 
     // mostra a etapa nome+PIN (não a tela de conta) + escape "sou o dono"
     const a=document.getElementById('login-step-auth'); if(a) a.style.display='none';
@@ -809,9 +813,9 @@ async function carregarUsuarios(){
         );
         for(const u of locaisNaoSincronizados){
           try{
-            const payload={nome:u.nome,perfil:u.perfil,loja_id:u.loja_id||null,loja_nome:u.loja_nome||null,pin:u.pin||null,ativo:true};
-            // select explícito sem 'pin' — o insert grava o hash, mas o retorno não
-            // precisa trazê-lo de volta pro navegador (achado de segurança).
+            const payload={id:u.id,nome:u.nome,perfil:u.perfil,loja_id:u.loja_id||null,loja_nome:u.loja_nome||null,pin:u.pin||null,ativo:true};
+            // id EXPLÍCITO (usuarios.id é text sem default) + select sem 'pin' (o insert
+            // grava o hash, mas não traz de volta pro navegador — achado de segurança).
             const {data:ins}=await dbInsert('usuarios', payload, 'id,empresa_id,nome,perfil,loja_id,loja_nome,ativo,data_criacao');
             if(ins) data.push(ins);   // sincronizado → usa registro do banco
             else    data.push(u);     // insert sem retorno → mantém local
@@ -872,7 +876,7 @@ function loginNomeInput(val){
 
 function loginEscolherSugestao(id){
   const u = _loginUsersCache.find(x=>x.id===id); if(!u) return;
-  loginUserSelecionado = {id:u.id, perfil:u.perfil, nome:u.nome, loja_id:u.loja_id};
+  loginUserSelecionado = {id:u.id, perfil:u.perfil, nome:u.nome, loja_id:u.loja_id, auth_ver:u.auth_ver};
   const inp = document.getElementById('login-nome-input');
   if(inp) inp.value = u.nome;
   const box = document.getElementById('login-nome-sugestoes');
@@ -944,7 +948,7 @@ async function fazerLogin(){
     if(!encontrados.length){ err.textContent='Nome não encontrado. Verifique ou selecione da lista.'; return; }
     if(encontrados.length > 1){ err.textContent='Nome ambíguo — selecione da lista.'; return; }
     const u = encontrados[0];
-    loginUserSelecionado = {id:u.id, perfil:u.perfil, nome:u.nome, loja_id:u.loja_id};
+    loginUserSelecionado = {id:u.id, perfil:u.perfil, nome:u.nome, loja_id:u.loja_id, auth_ver:u.auth_ver};
   }
 
   const pin = document.getElementById('pin-input').value;
@@ -962,7 +966,7 @@ async function fazerLogin(){
   try{
     if(_authPerfilAtivo() && loginUserSelecionado.id !== '__gestor__'){
       // Opção A: autentica o funcionário na conta PRÓPRIA (RLS por perfil vale de verdade)
-      pinCorreto = await _loginRealFuncionario(loginUserSelecionado.id, pin);
+      pinCorreto = await _loginRealFuncionario(loginUserSelecionado.id, pin, loginUserSelecionado.auth_ver);
     } else {
       // Fluxo atual: valida o PIN no servidor sob a sessão do dono (persona só na UI)
       const usuarioIdParaCheck = loginUserSelecionado.id==='__gestor__' ? null : loginUserSelecionado.id;
@@ -6753,10 +6757,21 @@ async function salvarUsuario(){
     if(pinHash) upd.pin=pinHash; // só troca o PIN se foi informado
     todosUsuarios[i]={...antigo,...upd};
     lsSet('fluxa_usuarios',JSON.stringify(todosUsuarios));
-    if(dbOk&&db&&!String(_usrEditId).startsWith('usr_')&&!String(_usrEditId).startsWith('tec_')){
-      try{ await dbUpdate('usuarios', upd, 'id', _usrEditId); }catch(e){ console.warn('[editUsr]',e?.message||e); }
-    } else if(dbOk&&db){ // id local → tenta upsert pelo registro inteiro
-      try{ await dbUpsert('usuarios', todosUsuarios[i]); }catch(e){ console.warn('[editUsr upsert]',e?.message||e); }
+    if(dbOk&&db){
+      // dados (nome/perfil/loja) — sem o PIN, que tem fluxo próprio de reset
+      const updSemPin={ nome, perfil, loja_id:lojaId, loja_nome:loja?.nome||null };
+      try{ await dbUpdate('usuarios', updSemPin, 'id', _usrEditId); }catch(e){ console.warn('[editUsr]',e?.message||e); }
+      if(pinHash){
+        // Reset de PIN seguro: como o PIN é a senha da conta sintética, a RPC bumpa
+        // auth_ver (próximo login = conta NOVA com o PIN novo) e remove o membros da
+        // conta antiga (perde acesso). Sem isto, trocar o PIN não mudava a senha de auth.
+        try{
+          const { error } = await db.rpc('resetar_pin_funcionario', { p_empresa: EMPRESA_ID, p_usuario_id: _usrEditId, p_pin_hash: pinHash });
+          if(error) throw error;
+          todosUsuarios[i].auth_ver = (parseInt(antigo.auth_ver)||0) + 1;
+          lsSet('fluxa_usuarios', JSON.stringify(todosUsuarios));
+        }catch(e){ console.warn('[resetPin]', e?.message||e); toast('⚠️ PIN salvo local, mas o reset no servidor falhou — tente de novo'); }
+      }
     }
     logAcao('usuario_editado', `${nome} → ${perfil}${antigo.perfil!==perfil?' (era '+antigo.perfil+')':''}`);
     fecharFormUsuario(); renderUsuarios(); renderLoginUsers();
