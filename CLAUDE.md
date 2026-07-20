@@ -2098,6 +2098,65 @@ do v2 (`seedTecnicosIniciais()`: "sem técnicos padrão chumbados, cada empresa
 cria os seus"). Trocado pra `[]`. Não afeta a Fluxa (que já tem `tecnicos`
 preenchido de verdade no banco, então nunca cai nesse fallback).
 
+### Auditoria de brechas — varredura de RLS completa via Management API (2026-07-20)
+Pedido do Marcos: "buscar outras frentes, brechas ou aperfeiçoamentos". Com
+acesso direto ao banco, dá pra conferir TODAS as policies de TODAS as tabelas
+de uma vez (antes só dava por amostragem). Todas as tabelas do `public` têm
+RLS ligado — nenhuma esquecida. Duas brechas reais encontradas e corrigidas;
+o resto das policies foi revisado e está correto (`meu_perfil()`/
+`minhas_empresas()` são `SECURITY DEFINER` e sempre escopadas por
+`auth.uid()`, sem vazamento cross-tenant; policies de Storage corretamente
+restringem upload/update à pasta da própria empresa).
+
+**1. CRÍTICO — sequestro de conta no bootstrap de aparelho novo, corrigido
+(`setup-v2-delta17.sql` + `app.js`).** `_loginRealFuncionario()` (Fase 2,
+commit `8769e4f` de outra sessão) tentava `signInWithPassword` e, se
+falhasse por QUALQUER motivo, caía direto em `signUp` com a mesma senha
+(derivada do PIN digitado) — só DEPOIS chamava `vincular_funcionario` pra
+checar se o PIN batia de verdade. Como `usuarios_para_login` é anon (dá
+nome+id de todo funcionário pra qualquer um, sem login), e a chave anon já é
+pública no `app.js`: **qualquer pessoa na internet, sem nenhuma credencial,
+que soubesse o link/slug da empresa, podia chamar `signUp` com o e-mail
+sintético de QUALQUER funcionário e uma senha de sua escolha** — se aquele
+funcionário ainda não tivesse feito o 1º login real, o Supabase Auth criava
+a conta ali mesmo, sem checar PIN nenhum. Quando o funcionário DE VERDADE
+tentasse depois com o PIN certo, a senha não batia (a conta já tinha a senha
+do atacante) → `signUp` de novo → "already registered" → tratado como "PIN
+errado" **pra sempre**. Ou seja: dava pra trancar qualquer funcionário fora
+da própria conta, permanentemente, de graça, sem precisar acertar PIN nenhum
+— só ser mais rápido que ele no 1º acesso.
+
+**Fix:** nova função `verificar_pin_bootstrap(empresa, usuario_id, pin)` —
+anon-callable (por isso não dá pra reusar `verificar_pin_interno`/
+`vincular_funcionario`, que exigem `auth.uid()` já existente), só LÊ e
+confirma se o PIN bate, sem escrever nada. `_loginRealFuncionario` passa a
+chamar isso PRIMEIRO — se o PIN estiver errado, retorna na hora e NUNCA
+chega a chamar `signIn`/`signUp`, então a conta do funcionário nunca é
+criada/reivindicada com senha errada. Testado: (a) direto pelo endpoint REST
+público com a anon key, PIN errado/usuário inexistente/empresa inexistente —
+todos retornam `false` sem vazar erro; (b) no navegador, mockando
+`db`/`db.auth`, PIN errado → só o RPC de checagem roda, nunca tenta
+signIn/signUp; PIN certo → fluxo completo roda normal, sem regressão.
+
+**2. `estoque_movimentos` sem restrição de perfil no INSERT, corrigido
+(`setup-v2-delta16.sql`).** Único achado que não segue todo o padrão das
+demais tabelas (CRUD com sel/ins/upd/del, cada um restrito a papéis
+apropriados): o INSERT só checava `empresa_id IN minhas_empresas()`, sem
+checar perfil — qualquer papel autenticado (inclusive técnico) podia inserir
+QUALQUER tipo de movimento (entrada/saída/ajuste/transferência) com
+quantidade e custo arbitrários, direto pela API REST, sem passar pela UI nem
+pela lógica de reserva/entrega. Na UI, a tela de Estoque inteira já é
+restrita a gestor (`snb-estoque: gestor`) — exatamente o padrão que este
+arquivo já alerta ("`go()`/`eGestor()` são guardrails de UI, não de
+servidor"). **Fix escopado com cuidado:** só trava os tipos SEM nenhum
+disparo legítimo de técnico/vendas em lugar nenhum do código —`ajuste`
+(correção manual/balanço de inventário) e `transf_entrada`/`transf_saida`
+(transferência entre lojas), confirmados por busca no `app.js` como
+únicos-2-pontos-de-disparo-cada, ambos só dentro da tela de Estoque.
+NÃO mexe em `entrada`/`saida`/`reserva`/`liberacao_reserva`, que têm fluxos
+legítimos de técnico (conclusão de OS baixa estoque) e vendas (entrega de
+orçamento aprovado) — restringir esses quebraria comportamento real.
+
 ---
 
 ## Perguntas em aberto (aguardando Marcos responder)

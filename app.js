@@ -265,6 +265,21 @@ function _authPerfilAtivo(){
 // re-inicializa o contexto sob a NOVA sessão. Retorna true se autenticou.
 async function _loginRealFuncionario(usuarioId, pin, authVer){
   if(!db || !EMPRESA_ID) return false;
+  // Checa o PIN ANTES de tentar signIn/signUp — achado de auditoria 2026-07-20:
+  // sem isso, um terceiro que soubesse o usuario_id (usuarios_para_login é anon)
+  // podia chamar signUp direto com a senha que quisesse pro e-mail sintético de
+  // QUALQUER funcionário que ainda não tivesse feito o 1º login — o Supabase Auth
+  // cria a conta ali mesmo, sem checar PIN. O funcionário de verdade, tentando
+  // depois com o PIN certo, nunca mais conseguia entrar (senha já é outra,
+  // signUp bate "already registered", tratado como PIN errado pra sempre).
+  // verificar_pin_bootstrap roda ANTES, sem exigir sessão (por isso não dá pra
+  // reusar verificar_pin_interno/vincular_funcionario, que exigem auth.uid()) —
+  // se o PIN estiver errado, retorna aqui e NUNCA chega a chamar signUp.
+  try{
+    const { data: pinOk, error: ePin } = await db.rpc('verificar_pin_bootstrap',
+      { p_empresa: EMPRESA_ID, p_usuario_id: usuarioId, p_pin: pin });
+    if(ePin || !pinOk) return false;
+  }catch(e){ console.warn('[verificar_pin_bootstrap]', e?.message||e); return false; }
   const email = _emailSintetico(usuarioId, authVer);
   const senha = _senhaDePin(pin);
   try{
