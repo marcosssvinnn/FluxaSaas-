@@ -1209,7 +1209,27 @@ reais encontrados e corrigidos.**
 - **Portal (RPCs anon)** — `portal_dados`/`portal_responder_orcamento` só retornam
   dados do cliente daquele token específico; não há como enumerar outros clientes.
 
-**Proteção por perfil no banco — DECIDIDO (2026-07-19, decisão de produto + arquitetura):**
+**Proteção por perfil no banco — ✅ IMPLEMENTADA E PADRÃO (2026-07-19).**
+
+> **STATUS FINAL:** a Opção A foi implementada e ligada como PADRÃO em toda empresa.
+> - **Fase 1 (RLS por perfil):** aplicada no banco (`setup-v2-optionA-perfil.sql`) e
+>   validada — as 16 tabelas trocaram a policy blanket por policies por perfil
+>   (gestor/vendas/técnico). `setup-v2.sql` blindado (não recria mais a blanket).
+> - **Fase 2 (login real por pessoa):** funcionário autentica na conta PRÓPRIA
+>   (e-mail sintético `<usr_id>@<slug>.fluxa.local` + PIN como senha derivada
+>   `'fluxa_'+pin`; `_loginRealFuncionario`/`vincular_funcionario`). É PADRÃO
+>   (`_authPerfilAtivo()` = ligado; desligável por empresa via
+>   `config.flags.auth_perfil=false`, sem deploy). `fazerLogout` faz signOut real.
+> - **Validado por API no ambiente real** (Fluxa piscinas + técnico de verdade):
+>   técnico autentica, vira membro com perfil `tecnico`, e a RLS BLOQUEIA leitura de
+>   `orcamentos`/financeiro (0 linhas). Teste 9/9 anterior confirma a matriz inteira.
+> - **Falta só (não bloqueia):** clique-teste humano na UI (o único passo que Claude
+>   não faz — não digita senha em campo) e follow-ups menores (bootstrapping de
+>   aparelho novo, reset de PIN por versionamento — ver `docs/opcao-a-fase2.md`).
+> - **Acesso a banco:** Claude agora roda SQL direto (MCP Supabase v2 +
+>   Management API). Fim do copia-e-cola.
+
+_Contexto histórico da decisão (mantido):_
 
 > **Modelo de confiança adotado:** funcionário (vendas/técnico) é pessoa de confiança
 > da empresa cliente. A fronteira de segurança REAL do SaaS é **entre empresas** — e
@@ -1285,7 +1305,7 @@ sessão/IA antes de aplicar — NÃO apliquei nem editei o arquivo, só li):**
   `delta8`, `delta9`) — são independentes.
 
 ### ⚠️ Pendências (atualizado — 4 resolvidas nesta sessão, nenhuma nova crítica)
-- ~~**Proteção por perfil no banco** (era "Pendência maior")~~ → **DECIDIDO (2026-07-19)**: adotado o modelo de confiança (perfil = UI, não barreira de banco; risco interno aceito conscientemente). Opção A (contas reais por pessoa via e-mail sintético, preservando login por PIN) desenhada e com rascunho de SQL pronto em `setup-v2-optionA-perfil.sql` — ativar só quando necessário, com teste e aval. Ver seção "Proteção por perfil no banco — DECIDIDO" acima.
+- ~~**Proteção por perfil no banco** (era "Pendência maior")~~ → **✅ IMPLEMENTADA E PADRÃO (2026-07-19)**: Opção A ligada em toda empresa (RLS por perfil no banco + login real por pessoa via e-mail sintético). Validada por API no ambiente real. Falta só o clique-teste humano na UI. Ver seção "Proteção por perfil no banco — ✅ IMPLEMENTADA E PADRÃO" acima e `docs/opcao-a-fase2.md`.
 - ~~Dados de teste no banco~~ → **resolvido** (limpeza rodada e confirmada).
 - ~~`criar_empresa` não semeia `config.nome`~~ → **resolvido** (delta2 + delta4: semeia nome da empresa E nome da pessoa).
 - ~~`clientes` insert não envia `portal_token`~~ → **resolvido** (6 call sites corrigidos).
