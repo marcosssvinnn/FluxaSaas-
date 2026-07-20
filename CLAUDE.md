@@ -1319,24 +1319,20 @@ _Contexto histórico da decisão (mantido):_
 
 **Revisão independente do `setup-v2-optionA-perfil.sql`** (Fase 1, feita por outra
 sessão/IA — não editei o arquivo dela, só li e corrigi por deltas separados):
-- **`usuarios_para_login(p_empresa)` com `GRANT ... TO anon` retornando `perfil` —
-  achado original AINDA VÁLIDO, mas o fix (`setup-v2-delta12.sql`) NÃO foi
-  aplicado (conflito descoberto em 2026-07-20).** Qualquer pessoa na internet,
-  sem login, que soubesse o `empresa_id`/slug da empresa consegue listar nome +
-  CARGO de todos os funcionários. Quando escrevi o delta12, essa RPC ainda não
-  era chamada em lugar nenhum do `app.js` — mas nesse meio tempo a outra
-  sessão/IA implementou o bootstrap de aparelho novo (`_bootstrapTecnico`,
-  commit `8769e4f`) que **usa `perfil` de verdade**: alimenta o ícone de cargo
+- ~~`usuarios_para_login(p_empresa)` com `GRANT ... TO anon` retornando `perfil`~~
+  → **DECISÃO DO MARCOS (2026-07-20): aceitar o trade-off, achado arquivado,
+  `setup-v2-delta12.sql` NÃO deve ser aplicado.** Qualquer pessoa com o link/slug
+  da empresa (não é segredo — é o link de acesso) consegue ver nome + CARGO de
+  todo funcionário sem logar. Quando escrevi o delta12, essa RPC ainda não era
+  chamada em lugar nenhum do `app.js` — depois disso, a outra sessão/IA
+  implementou o bootstrap de aparelho novo (`_bootstrapTecnico`, commit
+  `8769e4f`) que **usa `perfil` de verdade**: alimenta o ícone de cargo
   (👑 master / 🛡️ gestor / 💼 vendas / 🔧 técnico) na tela de login por nome,
-  antes de qualquer autenticação — e também uma checagem de lógica (`temIndividual`,
-  `renderLoginUsers` em `app.js`). Rodar o delta12 como está QUEBRARIA essa
-  feature. **Não apliquei — fica pendente de decisão do Marcos**: ou aceitar
-  o trade-off (cargo visível pré-login é intencional pro fluxo de auto-atendimento
-  de aparelho novo) e arquivar o achado, ou pedir uma versão do delta12 que
-  mantenha `perfil` mas reduza a exposição de outra forma (ex.: rate-limit,
-  ou não expor cargo pra `master`/`gestor` especificamente, já que
-  técnico/vendas talvez seja aceitável). Comentei o arquivo `setup-v2-delta12.sql`
-  como NÃO aplicado; não apagar/rodar sem essa conversa.
+  antes de qualquer autenticação. Rodar o delta12 quebraria essa feature.
+  Marcos decidiu manter o `perfil` exposto pré-login (o PIN nunca é exposto —
+  a informação em risco é só nome+cargo, e o nome já precisa aparecer pra
+  feature funcionar de qualquer forma). **`setup-v2-delta12.sql` fica no repo
+  só como referência histórica do achado — não rodar.**
 - ~~`tecnico = meu_nome(empresa_id)` nas policies de OS/vistoria/despesa~~ →
   **corrigido por completo (`setup-v2-delta13.sql` + `setup-v2-delta14.sql`,
   aplicados no Supabase em 2026-07-20 via Management API)**. Mesmo padrão
