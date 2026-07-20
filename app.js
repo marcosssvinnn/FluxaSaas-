@@ -206,7 +206,7 @@ function fazerLogout(){
   clearSessao();
   // Opção A (flag on): a persona é uma SESSÃO real → trocar de usuário encerra a
   // sessão do funcionário. (Voltar a ser o dono/gestor = login pela conta, e-mail+senha.)
-  if(flagAtiva('auth_perfil') && db){ try{ db.auth.signOut(); authUser=null; }catch(e){ console.warn('[fazerLogout:signOut]', e?.message||e); } }
+  if(_authPerfilAtivo() && db){ try{ db.auth.signOut(); authUser=null; }catch(e){ console.warn('[fazerLogout:signOut]', e?.message||e); } }
   loginUserSelecionado=null;
   // Resetar passos
   const su=document.getElementById('login-step-users');
@@ -237,7 +237,8 @@ function criarClienteSupabase(){
   catch(e){ console.warn('[criarClienteSupabase]', e?.message||e); return null; }
 }
 
-// ── Opção A (atrás de flagAtiva('auth_perfil')): login REAL por pessoa ──
+// ── Opção A (PADRÃO em toda empresa; desligável via config.flags.auth_perfil=false):
+//    login REAL por pessoa — cada funcionário na conta própria, RLS por perfil vale ──
 // Cada funcionário tem conta própria (e-mail sintético + PIN), então a RLS por
 // perfil vale de verdade. Ver docs/opcao-a-fase2.md. Com a flag OFF, nada disso roda.
 function _emailSintetico(usuarioId){
@@ -247,6 +248,14 @@ function _emailSintetico(usuarioId){
 // Supabase Auth exige senha >= 6; o PIN tem 4 → deriva determinística (o PIN segue
 // sendo a única entropia). O PIN CRU vai só para a RPC vincular_funcionario.
 function _senhaDePin(pin){ return 'fluxa_'+String(pin||''); }
+
+// Login real por perfil é PADRÃO em toda empresa. Interruptor de emergência por
+// empresa: setar config.flags.auth_perfil = false desliga (volta ao PIN sob a
+// sessão do dono) sem novo deploy. Ausente/true = ligado.
+function _authPerfilAtivo(){
+  try{ return (FLUXA_CONFIG.flags && FLUXA_CONFIG.flags.auth_perfil) !== false; }
+  catch(e){ return true; }
+}
 
 // Entra como o funcionário: signIn (ou signUp no 1º acesso) + vincula pelo PIN, e
 // re-inicializa o contexto sob a NOVA sessão. Retorna true se autenticou.
@@ -892,7 +901,7 @@ async function fazerLogin(){
     return;
   }
   try{
-    if(flagAtiva('auth_perfil') && loginUserSelecionado.id !== '__gestor__'){
+    if(_authPerfilAtivo() && loginUserSelecionado.id !== '__gestor__'){
       // Opção A: autentica o funcionário na conta PRÓPRIA (RLS por perfil vale de verdade)
       pinCorreto = await _loginRealFuncionario(loginUserSelecionado.id, pin);
     } else {
