@@ -2467,8 +2467,18 @@ async function salvarApenas(){
       const idx=todosOrc.findIndex(x=>x.id===editId);
       if(idx>=0) todosOrc[idx]=updated; else todosOrc.unshift(updated);
       // 2. Tenta sincronizar com BD (sem bloquear)
-      if(dbOk&&db&&!String(editId).startsWith('local_'))
-        orcSyncUpdate(editId, camposBase).then(r=>{ if(r.error) console.warn('[salvarApenas] update falhou:', r.error.message); }).catch(e=>console.warn('[salvarApenas] update erro:', e?.message||e));
+      if(dbOk&&db&&!String(editId).startsWith('local_')){
+        (async()=>{
+          try{
+            // Sobe fotos pro Storage antes de gravar — a linha no banco fica leve
+            // (URL, não base64). Se o upload falhar, a foto continua local (base64).
+            const fotosUp = await _fotosParaStorage(camposBase.foto_base64, editId, 'orcamentos-fotos');
+            const payload = {...camposBase, foto_base64: fotosUp&&fotosUp.length?JSON.stringify(fotosUp):null};
+            const r = await orcSyncUpdate(editId, payload);
+            if(r.error) console.warn('[salvarApenas] update falhou:', r.error.message);
+          }catch(e){ console.warn('[salvarApenas] update erro:', e?.message||e); }
+        })();
+      }
       _autoSalvarCliente(dados.cli, dados.tel, dados.loc, dados.cnpj, dados.loja_id);
       toast('✅ Orçamento atualizado!');
     } else {
@@ -2487,7 +2497,9 @@ async function salvarApenas(){
         _orcSyncInFlight.add(tempId); // trava reenvio concorrente (loadHist) até terminar
         (async()=>{
           try{
-            const {data:ins,error:insErr}=await dbInsertNumerado('orcamentos',{...camposBase,status:'pendente',data_criacao:now});
+            const fotosUp = await _fotosParaStorage(camposBase.foto_base64, tempId, 'orcamentos-fotos');
+            const payloadDB = {...camposBase, foto_base64: fotosUp&&fotosUp.length?JSON.stringify(fotosUp):null, status:'pendente', data_criacao:now};
+            const {data:ins,error:insErr}=await dbInsertNumerado('orcamentos',payloadDB);
             if(insErr){ console.warn('Sync BD falhou — orçamento permanece local:', insErr.message); return; }
             if(ins){
               lsOrcRemover(tempId);
@@ -2551,8 +2563,16 @@ async function gerarPDF(){
     lsOrcUpsert(updated);
     const idx=todosOrc.findIndex(x=>x.id===editId);
     if(idx>=0) todosOrc[idx]=updated;
-    if(dbOk&&db&&!String(editId).startsWith('local_'))
-      orcSyncUpdate(editId, camposBase).then(r=>{ if(r.error) console.warn('[gerarPDF] update falhou:', r.error.message); }).catch(e=>console.warn('[gerarPDF] update erro:', e?.message||e));
+    if(dbOk&&db&&!String(editId).startsWith('local_')){
+      (async()=>{
+        try{
+          const fotosUp = await _fotosParaStorage(camposBase.foto_base64, editId, 'orcamentos-fotos');
+          const payload = {...camposBase, foto_base64: fotosUp&&fotosUp.length?JSON.stringify(fotosUp):null};
+          const r = await orcSyncUpdate(editId, payload);
+          if(r.error) console.warn('[gerarPDF] update falhou:', r.error.message);
+        }catch(e){ console.warn('[gerarPDF] update erro:', e?.message||e); }
+      })();
+    }
   } else {
     // Novo: salva local primeiro, depois sincroniza BD
     num=lsOrcProxNum();
@@ -2565,7 +2585,9 @@ async function gerarPDF(){
     if(dbOk&&db){
       (async()=>{
         try{
-          const {data:ins,error:insErr}=await dbInsertNumerado('orcamentos',{...camposBase,status:'pendente',data_criacao:now});
+          const fotosUp = await _fotosParaStorage(camposBase.foto_base64, tempId, 'orcamentos-fotos');
+          const payloadDB = {...camposBase, foto_base64: fotosUp&&fotosUp.length?JSON.stringify(fotosUp):null, status:'pendente', data_criacao:now};
+          const {data:ins,error:insErr}=await dbInsertNumerado('orcamentos',payloadDB);
           if(insErr){ console.warn('gerarPDF: sync BD falhou — orçamento permanece local:', insErr.message); return; }
           if(ins){
             lsOrcRemover(tempId);
@@ -2793,7 +2815,12 @@ async function gerarOSPDF(modo='os'){
     try{
       const orcId=osOrcId||null;
       const lojaIdOS=gV('os-loja')||LOJA_PADRAO_ID;
-      const payload={orcamento_id:orcId,loja_id:lojaIdOS,cliente:dados.cli,cliente_id:gV('os-cli-id')||_autoSalvarCliente(dados.cli,null,dados.loc,dados.cnpj,lojaIdOS)||null,local_servico:dados.loc,cnpj:dados.cnpj||null,data_servico:dados.data,hora:dados.hora,tecnico:dados.tec,servicos:dados.svcs,materiais:dados.mat,obs_tecnica:dados.obs,total:dados.tot,fotos:dados.fotos,video_link:dados.videoLink||null,checklist:dados.checklist.length?JSON.stringify(dados.checklist):null};
+      // Sobe fotos pro Storage antes de gravar — a linha no banco fica leve (URL, não
+      // base64). Se o upload falhar, a foto fica de fora (não perde no PDF gerado agora,
+      // só não fica sincronizada no banco até um próximo salvamento bem-sucedido).
+      const storageId = (osEditId && !String(osEditId).startsWith('local_')) ? osEditId : ('os_'+Date.now());
+      const fotosUp = await _fotosParaStorage(dados.fotos, storageId, 'os-fotos');
+      const payload={orcamento_id:orcId,loja_id:lojaIdOS,cliente:dados.cli,cliente_id:gV('os-cli-id')||_autoSalvarCliente(dados.cli,null,dados.loc,dados.cnpj,lojaIdOS)||null,local_servico:dados.loc,cnpj:dados.cnpj||null,data_servico:dados.data,hora:dados.hora,tecnico:dados.tec,servicos:dados.svcs,materiais:dados.mat,obs_tecnica:dados.obs,total:dados.tot,fotos:fotosUp||[],video_link:dados.videoLink||null,checklist:dados.checklist.length?JSON.stringify(dados.checklist):null};
       if(osEditId && !String(osEditId).startsWith('local_')){
         // EDIÇÃO: atualiza a OS existente (mantém número e status)
         const existente=todosOS.find(x=>x.id===osEditId);
@@ -7742,7 +7769,8 @@ function visRemoverFoto(id, idx){
 
 // Faz upload de uma foto (base64) para o Supabase Storage e retorna a URL pública.
 // Retorna null se falhar (a foto base64 original fica preservada localmente).
-async function _uploadFotoStorage(base64, path){
+async function _uploadFotoStorage(base64, path, bucket){
+  bucket = bucket || 'vistorias-fotos';
   if(!base64 || base64.startsWith('http')) return base64; // já é URL ou vazio
   if(!db || !EMPRESA_ID) return null; // precisa da sessão autenticada + empresa
   try{
@@ -7754,11 +7782,30 @@ async function _uploadFotoStorage(base64, path){
     const blob = new Blob([arr], {type:mime});
     // v2: upload autenticado (SDK) na PASTA DA EMPRESA — a política exige a pasta.
     const fullPath = `${EMPRESA_ID}/${path}`;
-    const { error } = await db.storage.from('vistorias-fotos').upload(fullPath, blob, { contentType:mime, upsert:true });
+    const { error } = await db.storage.from(bucket).upload(fullPath, blob, { contentType:mime, upsert:true });
     if(error){ console.warn('[uploadFoto]', error.message); return null; }
-    const { data:pub } = db.storage.from('vistorias-fotos').getPublicUrl(fullPath);
+    const { data:pub } = db.storage.from(bucket).getPublicUrl(fullPath);
     return pub?.publicUrl || null;
   }catch(e){ console.warn('[uploadFoto]', e?.message||e); return null; }
+}
+// Sobe as fotos de um orçamento/OS (array em JSON, foto_base64/fotos) pro Storage
+// antes de mandar pro banco — troca base64 por URL pública (linha fica leve).
+// Fotos que falharem no upload são OMITIDAS do resultado (não manda base64 gigante
+// pro banco); o app local continua com o base64 original até o próximo envio
+// bem-sucedido — a foto não se perde, só não fica sincronizada por enquanto.
+async function _fotosParaStorage(fotosOrigem, recId, bucket){
+  if(!fotosOrigem) return null;
+  let arr;
+  if(Array.isArray(fotosOrigem)) arr = fotosOrigem;
+  else { try{ arr = fotosOrigem.startsWith('[') ? JSON.parse(fotosOrigem) : [fotosOrigem]; }catch(e){ return null; } }
+  const urls=[];
+  for(let i=0;i<arr.length;i++){
+    const foto=arr[i];
+    if(!foto) continue;
+    const url = foto.startsWith('http') ? foto : await _uploadFotoStorage(foto, recId+'/'+i+'.jpg', bucket);
+    if(url) urls.push(url);
+  }
+  return urls;
 }
 
 // Faz upload de todas as fotos base64 de uma vistoria para o Storage.

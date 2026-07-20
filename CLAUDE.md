@@ -1379,17 +1379,25 @@ restaurante, não se aplica a uma empresa de piscinas).
   `delta8`/`delta9` NÃO tocam em RLS/policies, só colunas/índices/backfill e 2
   RPCs (`portal_dados`, `portal_responder_orcamento`, ambas `SECURITY DEFINER`,
   não policies) — pode aplicar em qualquer ordem, sem conflito.
-- **Selects sem paginação em `orcamentos`, `ordens_servico`, `clientes`,
-  `despesas`** — carregam a tabela inteira da empresa a cada boot/tela, sem
-  `.limit()`. Piora porque `orcamentos.foto_base64`/`assinatura_base64` e
-  `ordens_servico.fotos` guardam imagem em base64 embutida na própria linha
-  (só as fotos de vistoria já foram pra Storage — ver pendência de
-  `orç/OS/equip ainda em base64` já registrada). Hoje é invisível (poucas
-  empresas, histórico ainda pequeno); vai ficar perceptível conforme o
-  histórico cresce. Não implementei paginação agora porque a lista já
-  carregada é reaproveitada ao abrir/editar um orçamento/OS existente (inclui
-  a foto) — cortar o `select` sem adicionar um "buscar completo ao abrir"
-  quebraria essa tela. Registrado para decisão futura, não é urgente hoje.
+- ~~`orcamentos.foto_base64`/`ordens_servico.fotos` em base64 embutido~~ →
+  **resolvido (2026-07-19)**. Fotos de orçamento/OS agora sobem pro Storage
+  (buckets `orcamentos-fotos`/`os-fotos`, `setup-v2-delta10.sql`) antes de
+  gravar a linha — mesmo padrão já usado (e testado em produção) pra fotos de
+  vistoria: `_uploadFotoStorage`/`_fotosParaStorage` genéricos, chamados no
+  bloco de sync em background de `salvarApenas`/`gerarPDF`/`gerarOSPDF`.
+  Fail-safe: se o upload falhar, a foto simplesmente NÃO é mandada pro banco
+  (nunca grava base64 gigante na linha) mas continua intacta no dispositivo
+  local (não perde a foto, só não sincroniza até o próximo salvamento bem-
+  sucedido) — o PDF gerado na hora usa sempre o base64 local, nunca depende do
+  upload ter terminado. Testado localmente: helper `_fotosParaStorage`
+  (array/string, URL já existente, base64, mistura, upload falhando) e o fluxo
+  completo de `salvarApenas`/`gerarOSPDF` com Supabase mockado — tudo batendo
+  (linha vai pro banco com `foto_base64:null`/`fotos:[]` quando o upload
+  falha, nunca com base64). **A parte que sobe de verdade pro Storage real
+  não foi testada** (sem conexão nesta sessão) — só a lógica ao redor.
+  `assinatura_base64` (assinatura do cliente no portal, fluxo anon separado) e
+  `equipamentos.foto_base64` ficam de fora — não migrados, escopo maior.
+  **Falta rodar `setup-v2-delta10.sql`** se ainda não rodou (cria os buckets).
 - **Duplicação estrutural (não é bug):** os 3 preenchedores de documento
   (`preencherDocOrc`, `preencherDocOS`, `preencherRelatorioVistoria`) repetem
   o mesmo padrão de pintar cor/logo por `getLojaConfig()`. E ~70 loaders
