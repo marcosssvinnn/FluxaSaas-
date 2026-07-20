@@ -1277,32 +1277,37 @@ _Contexto histórico da decisão (mantido):_
   por perfil → confirmar que técnico NÃO lê financeiro via API direta). Claude não
   digita senha; validar o resto com mocks + checagem de RLS via PAT.
 
-**Revisão independente do `setup-v2-optionA-perfil.sql` (Fase 1, feita por outra
-sessão/IA antes de aplicar — NÃO apliquei nem editei o arquivo, só li):**
-- ⚠️ `usuarios_para_login(p_empresa)` está com `GRANT ... TO anon` — qualquer
-  pessoa na internet, SEM login nenhum, que souber (ou conseguir) o `empresa_id`
-  consegue listar nome completo + perfil (gestor/vendas/técnico) de todos os
-  funcionários daquela empresa. É mais exposição do que existe hoje (o
-  `usuarios_lista` do delta6 exige `authenticated`, ou seja, pelo menos ser
-  membro de ALGUMA empresa). Entendo a necessidade funcional (tela de nome+PIN
-  roda antes do funcionário ter sessão), mas vale considerar antes de ativar em
-  produção: é aceitável esse nível de exposição, ou dá pra escopar mais (ex.:
-  só nome, sem perfil; ou atrás de um código de convite em vez do
-  `empresa_id` cru)?
-- ⚠️ As policies de `ordens_servico`/`vistorias`/`despesas` usam
-  `tecnico = meu_nome(empresa_id)` — comparação por NOME de novo (mesmo padrão
-  que resolvi para cliente↔orçamento, ver acima). Se dois funcionários da
-  mesma empresa tiverem o mesmo nome, um técnico pode ver as OS/vistorias do
-  outro (ou não ver as próprias, se `membros.nome` não bater exatamente com o
-  texto salvo em `tecnico`, incluindo maiúsculas/acentos). Como a Fase 2 já
-  está criando identidade real por pessoa (`membros.user_id`), pode valer a
-  pena migrar essas 3 tabelas para guardar `tecnico_user_id` (uuid) em vez de
-  confiar só no nome — mesma lógica do que já fiz para `cliente_id`.
-- Sugestão operacional menor: rodar o script inteiro dentro de
-  `BEGIN;`/`COMMIT;` — se falhar no meio, algumas tabelas ficam com a policy
-  nova e outras com a antiga "isolamento por empresa" até re-rodar.
-- Confirmado: nenhum desses achados bloqueia nada do que EU fiz (`delta7`,
-  `delta8`, `delta9`) — são independentes.
+**Revisão independente do `setup-v2-optionA-perfil.sql`** (Fase 1, feita por outra
+sessão/IA — não editei o arquivo dela, só li e corrigi por deltas separados):
+- ~~`usuarios_para_login(p_empresa)` com `GRANT ... TO anon` retornando `perfil`~~
+  → **corrigido (`setup-v2-delta12.sql`)**. Qualquer pessoa na internet, sem
+  login, que soubesse o `empresa_id` conseguia listar nome + CARGO de todos os
+  funcionários da empresa. Como a função ainda não era chamada em lugar nenhum
+  do `app.js` (Fase 2 só implementou o login com sessão já existente, o
+  bootstrapping de aparelho novo que usaria essa RPC ainda não foi codado),
+  era seguro reduzir o retorno agora: tirei `perfil`, mantive `id`/`nome`/
+  `loja_id` (o necessário pra montar a tela de escolha de nome). **Falta rodar
+  `setup-v2-delta12.sql` no Supabase.**
+- ~~`tecnico = meu_nome(empresa_id)` nas policies de OS/vistoria/despesa~~ →
+  **metade corrigida (`setup-v2-delta13.sql`)**. Mesmo padrão frágil de
+  comparar por nome que resolvi pra cliente↔orçamento. Adicionei
+  `tecnico_user_id uuid` nas 3 tabelas + backfill best-effort (só nomes
+  inambíguos) + `OR tecnico_user_id = auth.uid()` nas policies — aditivo, zero
+  mudança de comportamento até a coluna ser preenchida (sempre NULL por
+  enquanto, então o fallback por nome continua sendo o que vale). **NÃO fiz a
+  outra metade** (app.js popular `tecnico_user_id` ao salvar OS/vistoria/
+  despesa): exige entender a fundo o modelo de sessão da Fase 2 (login real
+  por e-mail sintético) que está em desenvolvimento ativo por outra sessão —
+  popular esse campo errado misturaria a autoria do trabalho entre
+  funcionários. Fica como follow-up coordenado com quem fez a Fase 2. **Falta
+  rodar `setup-v2-delta13.sql` no Supabase** (só funciona se a Fase 1 —
+  `setup-v2-optionA-perfil.sql` — já tiver sido aplicada antes; o delta checa
+  isso e não faz nada se as policies base ainda não existirem).
+- Sugestão operacional menor, não fiz: rodar o script da Fase 1 inteiro dentro
+  de `BEGIN;`/`COMMIT;` — se falhar no meio, algumas tabelas ficam com a
+  policy nova e outras com a antiga "isolamento por empresa" até re-rodar.
+- Confirmado: nenhum desses achados bloqueia o que já foi aplicado (`delta7`
+  a `delta11`) — são independentes.
 
 ### ⚠️ Pendências (atualizado — 4 resolvidas nesta sessão, nenhuma nova crítica)
 - ~~**Proteção por perfil no banco** (era "Pendência maior")~~ → **✅ IMPLEMENTADA E PADRÃO (2026-07-19)**: Opção A ligada em toda empresa (RLS por perfil no banco + login real por pessoa via e-mail sintético). Validada por API no ambiente real. Falta só o clique-teste humano na UI. Ver seção "Proteção por perfil no banco — ✅ IMPLEMENTADA E PADRÃO" acima e `docs/opcao-a-fase2.md`.
