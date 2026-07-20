@@ -4072,19 +4072,26 @@ function atualizarPainelItensOS(){
   const lista=document.getElementById('os-itens-lista');
   const btn=document.getElementById('os-itens-btn');
   const okMsg=document.getElementById('os-itens-ok');
-  const tudoTratado = itens.every(s=>_entregueProdutoOrc(orc.id,s.produto_id));
+  const tudoTratado = itens.every(s=>_entregueProdutoOrc(orc.id,s.produto_id,parseInt(s.qty)||1));
   const podeBaixar = orc.status==='aprovado' && !tudoTratado;
   lista.innerHTML=itens.map(s=>{
     const p=produtoById(s.produto_id);
     const qty=parseInt(s.qty)||1;
-    const tratado=_entregueProdutoOrc(orc.id,s.produto_id);
+    const resolvido=_qtdResolvidaProdutoOrc(orc.id,s.produto_id);
+    const pendente=Math.max(0, qty-resolvido);
+    const tratado=pendente<=0;
+    // "pendente" pode ser menor que o total pedido se o item já teve uma
+    // entrega/dispensa parcial antes (ex.: qty aumentada depois de resolvido)
+    const rotulo = tratado ? '✅ já confirmado'
+      : resolvido>0 ? `pendente: ${fmtQtd(pendente)} de ${fmtQtd(qty)} (${fmtQtd(resolvido)} já confirmado)`
+      : `pedido: ${fmtQtd(qty)} ${p?.unidade||''}`;
     return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--gray-light)">
       <input type="checkbox" class="os-item-chk" data-pid="${s.produto_id}" ${tratado?'disabled':'checked'} style="width:18px;height:18px;flex-shrink:0">
       <div style="flex:1;min-width:0">
         <div style="font-size:13px;font-weight:600;color:var(--c2)">${esc(p?p.nome:(s.desc||'produto'))}</div>
-        <div style="font-size:11px;color:var(--gray)">${tratado?'✅ já confirmado':'pedido: '+fmtQtd(qty)+' '+(p?.unidade||'')}</div>
+        <div style="font-size:11px;color:var(--gray)">${rotulo}</div>
       </div>
-      ${tratado?'':`<input type="number" class="os-item-qty" data-pid="${s.produto_id}" value="${qty}" min="0" step="1" title="Qtd levada" style="width:64px;padding:6px;border:1.5px solid var(--gray-mid);border-radius:8px;font-size:13px;text-align:center">`}
+      ${tratado?'':`<input type="number" class="os-item-qty" data-pid="${s.produto_id}" value="${pendente}" min="0" max="${pendente}" step="1" title="Qtd levada agora" style="width:64px;padding:6px;border:1.5px solid var(--gray-mid);border-radius:8px;font-size:13px;text-align:center">`}
     </div>`;
   }).join('');
   if(btn) btn.style.display=podeBaixar?'':'none';
@@ -9259,14 +9266,31 @@ function registrarMovimento({produto_id, tipo, quantidade, custo_unit, motivo, r
   return mov;
 }
 
-// Um produto de um orçamento já foi TRATADO na entrega (baixado ou marcado como não-levado)?
-function _entregueProdutoOrc(orcId, pid){
-  return todosMovEstoque.some(m=> m.ref==='baixa:orc:'+orcId+':'+pid || m.ref==='libres:orc:'+orcId+':'+pid);
+// Quanto de um produto, num orçamento, já foi RESOLVIDO (levado e/ou dispensado)?
+// Cada `libres:` fecha, no momento em que roda, a quantidade então pendente —
+// seja ela levada (com `baixa:` junto) ou explicitamente dispensada (só o
+// `libres:`, sozinho). Somar as quantidades (em vez de só checar se existe
+// ALGUM `libres:`) é o que permite reabrir a DIFERENÇA quando o gestor
+// aumenta a quantidade de um item depois de uma entrega anterior, sem reabrir
+// o que já foi deliberadamente marcado como "não levado" (achado de auditoria
+// 2026-07-19 — a 1ª tentativa comparava só a `baixa:` física, que fica em 0
+// pra item dispensado e reabria a reserva sozinha a cada reconciliação).
+function _qtdResolvidaProdutoOrc(orcId, pid){
+  return todosMovEstoque.filter(m=>m.ref==='libres:orc:'+orcId+':'+pid)
+    .reduce((a,m)=>a+Math.abs(parseFloat(m.quantidade)||0),0);
 }
-// Orçamento aprovado com produtos ainda não entregues?
+// Um produto de um orçamento já foi TOTALMENTE tratado pra quantidade ATUAL do
+// item? (levado + dispensado >= quantidade pedida agora). Editar a quantidade
+// pra cima depois de uma entrega reabre só a diferença — ver _qtdResolvidaProdutoOrc.
+function _entregueProdutoOrc(orcId, pid, qtyAtual){
+  const qty = qtyAtual!=null ? Math.abs(parseFloat(qtyAtual)||0) : 0;
+  return _qtdResolvidaProdutoOrc(orcId,pid) >= qty - 0.0001;
+}
+// Orçamento aprovado com produtos ainda não entregues (ou com quantidade extra
+// pendente após um aumento posterior à entrega)?
 function orcTemEntregaPendente(orc){
   if(!orc||orc.status!=='aprovado') return false;
-  return (orc.servicos||[]).some(s=>s.produto_id && !_entregueProdutoOrc(orc.id,s.produto_id));
+  return (orc.servicos||[]).some(s=>s.produto_id && !_entregueProdutoOrc(orc.id,s.produto_id,parseInt(s.qty)||1));
 }
 
 // ── Reconciliação da RESERVA de um orçamento (aprovar/reverter/editar/excluir) ──
@@ -9295,9 +9319,16 @@ function _sincronizarReservaOrcamentoLocal(orc){
   const aprovado = orc.status==='aprovado';
   const desejado={};
   if(aprovado){
+    // soma a qtd pedida por produto primeiro (pode aparecer em mais de uma
+    // linha de serviço) — só depois desconta o que já foi resolvido, pra não
+    // subtrair o valor resolvido mais de uma vez por engano
+    const pedidoPorPid={};
     (orc.servicos||[]).filter(s=>s.produto_id).forEach(s=>{
-      if(_entregueProdutoOrc(orc.id,s.produto_id)) return; // já entregue → não reserva
-      desejado[s.produto_id]=(desejado[s.produto_id]||0)+(parseInt(s.qty)||1);
+      pedidoPorPid[s.produto_id]=(pedidoPorPid[s.produto_id]||0)+(parseInt(s.qty)||1);
+    });
+    Object.keys(pedidoPorPid).forEach(pid=>{
+      const pendente=Math.max(0, pedidoPorPid[pid]-_qtdResolvidaProdutoOrc(orc.id,pid));
+      if(pendente>0) desejado[pid]=pendente;
     });
   }
   // já reservado por este orçamento (net dos movimentos de reserva/liberação deste orc)
@@ -9350,16 +9381,19 @@ function _entregarOrcamentoLocal(orc, origem, qtyMap){
   let baixou=false;
   (orc.servicos||[]).filter(s=>s.produto_id).forEach(s=>{
     const pid=s.produto_id;
-    if(_entregueProdutoOrc(orc.id,pid)) return; // já tratado
-    const reservado=Math.abs(parseInt(s.qty)||1);
-    const levado = qtyMap && (pid in qtyMap) ? Math.max(0,Math.abs(parseFloat(qtyMap[pid])||0)) : reservado;
+    const qtyAtual=Math.abs(parseInt(s.qty)||1);
+    const pendente=qtyAtual-_qtdResolvidaProdutoOrc(orc.id,pid);
+    if(pendente<=0.0001) return; // já tratado pra quantidade atual
+    // qtyMap se refere ao que está PENDENTE agora (não à qtd original — se o
+    // item já teve uma entrega parcial antes, isto é só a diferença em aberto)
+    const levado = qtyMap && (pid in qtyMap) ? Math.min(pendente,Math.max(0,Math.abs(parseFloat(qtyMap[pid])||0))) : pendente;
     const p=produtoById(pid);
     const numStr=String(orc.numero||'').padStart(3,'0');
     if(levado>0){
       registrarMovimento({produto_id:pid, tipo:'saida', quantidade:-levado, custo_unit:p?p.custo:null, motivo:'Entrega orçamento #'+numStr, ref:'baixa:orc:'+orc.id+':'+pid, lojaId:orc.loja_id});
     }
-    // libera SEMPRE a reserva (item resolvido na entrega, levando tudo, parte ou nada)
-    registrarMovimento({produto_id:pid, tipo:'liberacao_reserva', quantidade:-reservado, custo_unit:null, motivo:(levado>0?'Baixa entrega #':'Item não levado #')+numStr, ref:'libres:orc:'+orc.id+':'+pid, lojaId:orc.loja_id});
+    // libera SEMPRE a reserva do que estava pendente (item resolvido na entrega, levando tudo, parte ou nada)
+    registrarMovimento({produto_id:pid, tipo:'liberacao_reserva', quantidade:-pendente, custo_unit:null, motivo:(levado>0?'Baixa entrega #':'Item não levado #')+numStr, ref:'libres:orc:'+orc.id+':'+pid, lojaId:orc.loja_id});
     baixou=true;
   });
   if(baixou){

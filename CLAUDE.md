@@ -1540,7 +1540,7 @@ Bucket `vistorias-pdf` público + policies (instruções na tela Empresa → E-m
 2. **Concluir OS / botão Entregar** → `entregarOrcamento(orc, origem)` baixa física + libera reserva (refs `baixa:orc:id:pid` / `libres:orc:id:pid`)
 3. **Reverter/excluir** → cancela reserva automaticamente
 
-### ⚠️ Auditoria de estoque (2026-07-19) — 1 gap corrigido, 1 gap real ainda aberto (exige mudança de schema)
+### ⚠️ Auditoria de estoque (2026-07-19) — 2 gaps corrigidos
 Verificados por rastreamento de código (não teste com dado real). Edição/exclusão/reversão de
 orçamento, idempotência em um único cliente, liberação de reserva na entrega, isolamento
 multi-tenant e proteção contra `produto_id` nulo — tudo **confirmado correto**.
@@ -1559,19 +1559,34 @@ multi-tenant e proteção contra `produto_id` nulo — tudo **confirmado correto
    (fallback local: reserva, entrega parcial, reversão, idempotência — todos batendo). A parte
    que roda no servidor (RPC em si) **não foi testada contra Supabase real** nesta sessão — só
    revisada por leitura cuidadosa. **Falta rodar `setup-v2-delta11.sql` no Supabase.**
-2. **Editar um orçamento aprovado para AUMENTAR a quantidade de um produto já entregue ainda
-   NÃO reserva/sinaliza a diferença** (não corrigido). `_entregueProdutoOrc` trata "já teve
-   QUALQUER movimento de baixa/liberação" como "resolvido", sem comparar quantidade. Cenário:
-   orçamento aprovado, entregue com 2 unidades de um produto; gestor edita e sobe pra 5 unidades
-   — as 3 extras não entram na reserva nem aparecem como pendente de entrega. **Tentei corrigir
-   isso na mesma RPC do item 1 e desisti ao perceber um regressão real**: o ledger atual não
-   distingue "entregue parcialmente" de "explicitamente marcado como não levado" (`qtyMap` com
-   0) — os dois casos deixam só um movimento `libres:` de liberação, sem guardar a quantidade
-   realmente entregue. Trocar a checagem de existência por uma de quantidade teria feito a
-   reserva REABRIR sozinha itens que o gestor marcou deliberadamente como "não precisa mais".
-   Corrigir de verdade exige guardar a quantidade entregue de forma explícita no schema (ex.:
-   uma coluna `qtd_entregue` por linha de serviço, ou um novo tipo de movimento que registre
-   "não levado" separado de "entregue parcial") — mudança de schema, não patch pontual.
+2. ~~Editar um orçamento aprovado para AUMENTAR a quantidade de um produto já entregue não
+   reservava/sinalizava a diferença~~ → **corrigido (`setup-v2-delta15.sql` + `app.js`, sessão
+   2026-07-20)**. `_entregueProdutoOrc` tratava "já teve QUALQUER movimento de baixa/liberação"
+   como "resolvido", sem comparar quantidade — a diferença de uma edição pra cima nunca virava
+   pendente. A 1ª tentativa (sessão anterior) foi revertida porque comparar só a quantidade
+   FISICAMENTE baixada (`baixa:`) contra a pedida reabria sozinha, a cada reconciliação, itens
+   que o gestor tinha marcado deliberadamente como "não levado" (esses nunca têm `baixa:`, ficam
+   com "levado=0" pra sempre → "pedido - baixado" nunca chegava a zero).
+
+   **Fix (sem mudar schema, ao final):** o `libres:` (liberação de reserva) já registra, no
+   momento em que roda, a quantidade que estava sendo resolvida ali — levada, dispensada, ou as
+   duas coisas somadas ao longo de entregas parciais sucessivas. `_qtdResolvidaProdutoOrc()` soma
+   todos os `libres:` de um orç+produto em vez de só checar se existe algum; `_entregueProdutoOrc`
+   agora compara essa soma com a quantidade ATUAL do item. Item dispensado fica resolvido pra
+   sempre pra aquela quantidade (não reabre sozinho, mesma garantia que a 1ª tentativa quebrava);
+   só a diferença de uma edição pra cima entra como pendente. `_sincronizarReservaOrcamentoLocal`/
+   `_entregarOrcamentoLocal` (app.js) e as duas RPCs (`rpc_sincronizar_reserva_orcamento`/
+   `rpc_entregar_orcamento`, `setup-v2-delta15.sql`) foram atualizadas em espelho — mesma lógica
+   dos dois lados, online e offline. O painel "validar itens da OS" (`atualizarPainelItensOS`)
+   também passou a mostrar a quantidade PENDENTE (não a total) quando há entrega parcial prévia,
+   com o rótulo "pendente: X de Y (Z já confirmado)".
+
+   Testado no Browser pane (fallback local, offline): (a) entrega total → aumenta qty → reserva
+   só a diferença → entrega a diferença → baixa física acumulada correta, sem duplicar; (b) item
+   dispensado (`qtyMap:{pid:0}`) → reconciliar de novo NÃO reabre (a regressão que a 1ª tentativa
+   causava, confirmada ausente) → aumentar a qty depois reabre só a diferença nova, sem tocar nas
+   unidades já dispensadas. **A RPC em si não foi testada contra Supabase real. Falta rodar
+   `setup-v2-delta15.sql` no Supabase** (requer o delta11 já aplicado).
 
 ### Funções-chave:
 ```js
