@@ -6773,7 +6773,9 @@ async function salvarUsuario(){
     try{
       // select explícito sem 'pin' — grava o hash, mas não traz de volta pro
       // navegador nem pro cache local (achado de segurança).
-      const {data:ins}=await dbInsert('usuarios', dados, 'id,empresa_id,nome,perfil,loja_id,loja_nome,ativo,data_criacao');
+      // id EXPLÍCITO: usuarios.id é text sem default → sem isto o insert falha
+      // (NOT NULL) e o usuário ficava só no localStorage (técnico não conseguia logar).
+      const {data:ins}=await dbInsert('usuarios', {...dados, id:tempId}, 'id,empresa_id,nome,perfil,loja_id,loja_nome,ativo,data_criacao');
       if(ins){
         todosUsuarios=todosUsuarios.filter(x=>x.id!==tempId);
         todosUsuarios.push(ins);
@@ -6795,7 +6797,16 @@ async function _excluirUsuarioConfirmado(id){
   todosUsuarios=todosUsuarios.filter(x=>x.id!==id);
   lsSet('fluxa_usuarios',JSON.stringify(todosUsuarios));
   if(dbOk&&db){
-    try{ await db.from('usuarios').update({ativo:false}).eq('id',id); }catch(e){ console.warn('usr delete sync:',e.message); }
+    // desativar_funcionario: marca ativo=false E remove o membros do funcionário
+    // (corta a RLS na hora — sem isto ele manteria acesso pela sessão dele). Só
+    // gestor. Fallback pro update simples se a RPC não existir (banco antigo).
+    try{
+      const { error } = await db.rpc('desativar_funcionario', { p_empresa: EMPRESA_ID, p_usuario_id: id });
+      if(error) throw error;
+    }catch(e){
+      console.warn('[desativarFuncionario]', e?.message||e);
+      try{ await db.from('usuarios').update({ativo:false}).eq('id',id); }catch(e2){ console.warn('usr delete sync:',e2.message); }
+    }
   }
   logAcao('usuario_removido', alvo?.nome||id);
   renderUsuarios(); renderLoginUsers();
