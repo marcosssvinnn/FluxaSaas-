@@ -676,28 +676,75 @@ lsVisLer() / lsVisSalvar(lista)          // vistorias no localStorage
 - 200 e-mails/mês grátis
 - Configuração em **Empresa → E-mail Automático de Vistoria**
 
-### Campos de configuração (salvos em `CFG`):
+### Campos de configuração (v2: por EMPRESA, aninhados em `CFG.emailjs` —
+### NÃO os campos soltos `CFG.emailjs_pubkey/service/template` do v1, que
+### continuam existindo só como fallback de leitura e são apagados após migrar,
+### ver `_ejsCfg()`/linha ~1748 do app.js):
 ```js
-CFG.emailjs_pubkey   // Public Key (User ID) do EmailJS
-CFG.emailjs_service  // Service ID (ex: 'service_xxxxxxx')
-CFG.emailjs_template // Template ID (ex: 'template_xxxxxxx')
+CFG.emailjs = {
+  pubkey:   '',  // Public Key (User ID) do EmailJS
+  service:  '',  // Service ID (ex: 'service_xxxxxxx')
+  template: '',  // Template ID (ex: 'template_xxxxxxx')
+  reply_to: ''   // opcional — e-mail de resposta
+}
+```
+Cada empresa configura o seu (tela **Empresa → E-mail Automático de Vistoria**)
+— **cada empresa precisa da SUA PRÓPRIA conta/template no EmailJS**, não há
+um template central compartilhado.
+
+### Variáveis disponíveis no template EmailJS (lista completa, `enviarEmailVistoria`):
+```
+{{to_email}}      — e-mail do responsável (destinatário)
+{{to_name}}       — nome do cliente
+{{empresa}}       — nome da empresa
+{{tecnico}}       — técnico responsável
+{{mes_ref}}       — mês de referência (ex: "maio de 2026")
+{{data_visita}}   — data da vistoria (ex: "06/05/2026")
+{{hora_checkin}}  — horário de entrada
+{{hora_checkout}} — horário de saída
+{{duracao}}       — duração da visita (ex: "45 min") — NOVO, ainda não usado no template
+{{resumo}}        — lista de equipamentos com status e observação (texto multi-linha)
+{{obs_geral}}     — observações gerais
+{{status_geral}}  — "✅ Tudo em ordem" | "⚠️ Verificar pontos" | "🔴 Ação necessária" — NOVO, ainda não usado no template
+{{tel_empresa}}   — telefone da empresa
+{{reply_to}}      — e-mail de resposta configurado pela empresa
+{{link_relatorio}}— URL crua do PDF (útil se quiser montar um botão/link estilizado)
+{{link_pdf}}      — igual ao de cima, mas já como frase pronta: "📄 Baixar o relatório completo em PDF: <url>" — NOVO, ainda não usado no template
 ```
 
-### Variáveis disponíveis no template EmailJS:
+### Template pronto pra colar no EmailJS (Content, aba "Design" → modo texto/HTML)
+Cole isto no editor do template no painel do EmailJS (emailjs.com → Email
+Templates → o template configurado em `CFG.emailjs.template`) — usa todas as
+variáveis, inclusive as 3 novas:
 ```
-{{to_email}}     — e-mail do responsável
-{{to_name}}      — nome do cliente
-{{empresa}}      — nome da empresa
-{{tecnico}}      — técnico responsável
-{{mes_ref}}      — mês de referência (ex: "maio de 2026")
-{{data_visita}}  — data da vistoria (ex: "06/05/2026")
-{{hora_checkin}} — horário de entrada
-{{hora_checkout}} — horário de saída
-{{resumo}}       — lista de equipamentos com status e observação
-{{obs_geral}}    — observações gerais
-{{status_geral}} — "✅ Tudo em ordem" | "⚠️ Verificar pontos" | "🔴 Ação necessária"
-{{tel_empresa}}  — telefone da empresa
+Assunto: {{status_geral}} — Vistoria {{empresa}} · {{mes_ref}}
+
+Olá, {{to_name}}!
+
+Segue o relatório da vistoria realizada em {{data_visita}}.
+
+Técnico responsável: {{tecnico}}
+Horário: {{hora_checkin}} às {{hora_checkout}} (duração: {{duracao}})
+Status geral: {{status_geral}}
+
+Itens verificados:
+{{resumo}}
+
+Observações gerais:
+{{obs_geral}}
+
+{{link_pdf}}
+
+Qualquer dúvida, entre em contato: {{tel_empresa}}
+
+Atenciosamente,
+{{empresa}}
 ```
+Ajuste o visual (cores, logo, HTML) à vontade no editor do EmailJS — o texto
+acima é só a estrutura mínima que usa as 16 variáveis corretamente. **Isso
+precisa ser colado manualmente no painel do EmailJS de cada empresa que usa
+essa feature** — não dá pra automatizar (é uma conta externa de terceiros,
+sem token salvo aqui).
 
 ### Fluxo automático:
 1. Técnico salva a vistoria com e-mail preenchido
