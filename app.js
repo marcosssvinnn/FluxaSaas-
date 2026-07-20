@@ -706,7 +706,7 @@ function atualizarHeaderLoja(){
 function atualizarTecsPorLoja(lojaId, selectId){
   const sel=document.getElementById(selectId); if(!sel) return;
   const loja=getLoja(lojaId);
-  const tecs=loja?loja.tecs:(CFG.tecnicos||LOJAS.flatMap(l=>l.tecs).filter((v,i,a)=>a.indexOf(v)===i));
+  const tecs=(loja?loja.tecs:(CFG.tecnicos||LOJAS.flatMap(l=>l.tecs||[]).filter((v,i,a)=>a.indexOf(v)===i)))||[];
   const atual=sel.value;
   const opts=tecs.map(t=>`<option value="${t}"${t===atual?' selected':''}>${t}</option>`).join('');
   // mantém opção vazia se não houver seleção
