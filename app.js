@@ -1124,7 +1124,11 @@ const CFG_DEF = {
   nome:'Minha Empresa', sub:'Serviços', tel:'', whatsapp:'', cidades:'',
   tagline:'', cor:'#C45E0A', cor2:'#2B3244', logoB64:'', segmento:'geral',
   svcs:['Serviço 1','Serviço 2','Serviço 3'], pin:'1234',
-  tecnicos:['Marcos','Josimar','Eldecir','Bruno'],
+  // v2 multi-tenant: SEM técnicos padrão chumbados (ver seedTecnicosIniciais) —
+  // cada empresa cadastra os seus na tela Usuários. Esses 4 nomes eram da
+  // Fluxa (piloto) e vazavam pra QUALQUER empresa nova criada no sistema até
+  // o gestor perceber e trocar — achado de auditoria 2026-07-20.
+  tecnicos:[],
   notif_visita: 'Olá, {nome}! 👋\n\nLembramos que amanhã teremos nossa visita técnica agendada.\n\n⏰ Horário: {hora}\n👤 Técnico: {tecnico}\n🔧 Serviço: {servico}\n\nQualquer dúvida estamos à disposição!\n\n*{empresa}*\n📞 {tel_empresa}',
   notif_concluida: 'Olá, {nome}! ✅\n\nO serviço foi concluído com sucesso!\n\n🔧 Serviço: {servico}\n👤 Técnico: {tecnico}\n\nAcesse seu portal para ver o histórico completo:\n{link_portal}\n\n*{empresa}*\n📞 {tel_empresa}',
   notif_orcamento: 'Olá, {nome}! 📋\n\nPreparamos um orçamento especial para você:\n\n🔧 Serviços: {servico}\n💰 Valor Total: {valor}\n\nAcesse seu portal para aprovar ou recusar:\n{link_portal}\n\nO orçamento é válido por 5 dias. Qualquer dúvida é só falar!\n\n*{empresa}*\n📞 {tel_empresa}',
@@ -4704,6 +4708,32 @@ function rmChip(n){ let l=JSON.parse(ls('fluxa_clientes')||'[]'); l=l.filter(c=>
 //  PRINT — seleciona qual documento mostrar
 // ──────────────────────────────────────────────────
 let _printTitleBackup='';
+// Calcula o nome sugerido do PDF (NomeCliente_ORC001 / _OS001 / Vistoria_Nome_dd-mm-aaaa)
+// a partir do que j\u00E1 est\u00E1 preenchido no documento na tela. Extra\u00EDdo do listener de
+// beforeprint pra poder ser chamado tamb\u00E9m de dentro de imprimirDoc() \u2014 no Android
+// Chrome o evento beforeprint N\u00C3O dispara (mesmo motivo pelo qual imprimirDoc() j\u00E1
+// aplica .print-active manualmente, ver coment\u00E1rio logo abaixo), ent\u00E3o depender s\u00F3
+// do listener deixava o PDF salvo com nome gen\u00E9rico no celular.
+function _nomeArquivoImpressao(modo){
+  try{
+    if(modo==='vis'){
+      const cliEl = document.getElementById('pd-cli-nm-vis');
+      const numEl = document.getElementById('pd-num-vis');
+      const cli = (cliEl?.textContent||'').replace(/[^a-zA-Z0-9\u00C0-\u024F\s]/g,'').trim().replace(/\s+/g,'_');
+      const dt  = (numEl?.textContent||'').replace(/\//g,'-');
+      return cli ? `Vistoria_${cli}_${dt}` : `Vistoria_${dt||'relatorio'}`;
+    }
+    const refMode = modo==='os' ? 'os' : 'orc';
+    const numEl = document.getElementById('pd-num-'+refMode);
+    const cliEl = document.getElementById('pd-cli-nm-'+refMode);
+    const num = (numEl?.textContent||'').replace(/[^0-9]/g,'').padStart(3,'0');
+    const cli = (cliEl?.textContent||'').replace(/[^a-zA-Z0-9\u00C0-\u024F\s]/g,'').trim().replace(/\s+/g,'_');
+    const prefix = modo==='os'?'OS':modo==='both'?'ORC+OS':'ORC';
+    if(cli && num) return `${cli}_${prefix}${num}`;
+    if(num) return `${prefix}${num}`;
+    return null;
+  }catch(e){ return null; }
+}
 window.addEventListener('beforeprint',()=>{
   const showOrc = printMode==='orc' || printMode==='both';
   const showOs  = printMode==='os'  || printMode==='both';
@@ -4713,27 +4743,13 @@ window.addEventListener('beforeprint',()=>{
   // pdoc-visita: se n\u00E3o for modo vis, garante que n\u00E3o aparece
   const pdocVis = document.getElementById('pdoc-visita');
   if(pdocVis && !showVis) pdocVis.classList.remove('print-active');
-  // Auto-name the PDF file
-  _printTitleBackup = document.title;
-  try{
-    if(showVis){
-      // Nome: VISTORIA_NomeCliente_dd-mm-aaaa
-      const cliEl = document.getElementById('pd-cli-nm-vis');
-      const numEl = document.getElementById('pd-num-vis');
-      const cli = (cliEl?.textContent||'').replace(/[^a-zA-Z0-9\u00C0-\u024F\s]/g,'').trim().replace(/\s+/g,'_');
-      const dt  = (numEl?.textContent||'').replace(/\//g,'-');
-      document.title = cli ? `Vistoria_${cli}_${dt}` : `Vistoria_${dt||'relatorio'}`;
-    } else {
-      const refMode = printMode==='os' ? 'os' : 'orc';
-      const numEl = document.getElementById('pd-num-'+refMode);
-      const cliEl = document.getElementById('pd-cli-nm-'+refMode);
-      const num = (numEl?.textContent||'').replace(/[^0-9]/g,'').padStart(3,'0');
-      const cli = (cliEl?.textContent||'').replace(/[^a-zA-Z0-9\u00C0-\u024F\s]/g,'').trim().replace(/\s+/g,'_');
-      const prefix = printMode==='os'?'OS':printMode==='both'?'ORC+OS':'ORC';
-      if(cli && num) document.title = `${cli}_${prefix}${num}`;
-      else if(num) document.title = `${prefix}${num}`;
-    }
-  }catch(e){}
+  // O nome do arquivo (document.title) j\u00E1 foi setado por imprimirDoc() antes de
+  // window.print() \u2014 n\u00E3o repete o backup aqui (sen\u00E3o capturaria o t\u00EDtulo J\u00C1
+  // renomeado como "original" e o afterprint restauraria o nome errado). S\u00F3
+  // refor\u00E7a a troca, idempotente, pra quem eventualmente chamar window.print()
+  // direto (fora de imprimirDoc()).
+  const nome = _nomeArquivoImpressao(printMode);
+  if(nome) document.title = nome;
 });
 window.addEventListener('afterprint',()=>{
   document.getElementById('pdoc-orc').classList.remove('print-active');
@@ -4755,6 +4771,15 @@ function imprimirDoc(modo){
   document.getElementById('pdoc-orc')?.classList.toggle('print-active', showOrc);
   document.getElementById('pdoc-os')?.classList.toggle('print-active',  showOs);
   document.getElementById('pdoc-visita')?.classList.toggle('print-active', showVis);
+  // Nome do arquivo sugerido no "Salvar como PDF": mesma lógica do print-active
+  // acima — setado aqui, síncrono, ANTES de window.print(), e não dentro do
+  // listener de beforeprint, porque esse evento não dispara no Android Chrome
+  // (é exatamente o motivo do .print-active já estar manual acima). Sem isto,
+  // no celular o PDF salvava com o título genérico da página em vez de
+  // "NomeCliente_ORC001" — difícil de achar depois entre vários baixados.
+  _printTitleBackup = document.title;
+  const nome = _nomeArquivoImpressao(modo);
+  if(nome) document.title = nome;
   window.print();
 }
 

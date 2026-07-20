@@ -2055,6 +2055,49 @@ o usuário já rolou até o fim. Aplicado nas duas tabelas que usam esse padrão
 (`#hist-body` e `#osh-body`). Testado no mobile (375px): confirmado que a seta
 aparece com a tabela no início e some ao rolar até "Ações" ficar visível.
 
+### Validação do cadastro/personalização (sessão 2026-07-20) — 2 achados reais, corrigidos
+Pedido do Marcos: conferir se orçamento/OS/vistoria saem personalizados de
+verdade (logo, cor, nome) pra QUALQUER empresa cadastrada no sistema — não só
+a Fluxa — e se o nome do PDF salvo facilita achar depois.
+
+**Testado ao vivo no navegador com os dados reais da Fluxa piscinas** (logo,
+cores `#C45E0A`/`#2B3244`, nome) gerando orçamento, OS e relatório de vistoria
+de verdade: os 3 saem com logo, cor e nome corretos. Dois gaps ficaram — mas
+são CADASTRO incompleto, não bug: telefone/cidade vazios (a faixa de contato
+do PDF cai no fallback e repete o nome da empresa em vez de mostrar contato
+de verdade) e a lista de serviços ainda é o padrão genérico "Serviço 1/2/3"
+(nunca customizada). Ambos resolvem preenchendo em Configurações → Empresa.
+
+**Corrigido — nome do PDF salvo não incluía cliente+número no celular.**
+O mecanismo pra nomear o arquivo (`NomeCliente_ORC001`/`_OS001`) já existia,
+mas rodava só dentro do listener de `beforeprint` — e o próprio código já
+documentava (comentário de `imprimirDoc()`) que **o Android Chrome não
+dispara esse evento**, o mesmo motivo pelo qual `imprimirDoc()` já tinha que
+aplicar a classe `.print-active` manualmente antes do `window.print()`. Ou
+seja, no celular — o uso principal de técnico em campo — o PDF salvava com o
+título genérico da página, não com o nome do cliente. Extraí a lógica pra
+`_nomeArquivoImpressao(modo)` e passei a chamá-la de dentro do próprio
+`imprimirDoc()`, síncrono, antes do `window.print()` — mesmo padrão já usado
+pro `.print-active`. Testado sem disparar `beforeprint` (simulando Android):
+título fica `João_da_Silva_Teste_ORC001` / `Maria_Testando_OS_OS001`
+corretamente antes do print, nos dois casos. A restauração do título original
+DEPOIS de imprimir ainda depende do `afterprint` (pode não disparar no
+Android também) — efeito colateral mínimo (só o título da aba do navegador
+fica com o nome do documento depois; não afeta o arquivo salvo, que é o que
+importa). Vistoria não tinha esse problema — usa uma janela própria com
+`<title>` fixado desde a criação, nunca dependeu de `beforeprint`.
+
+**Corrigido — técnicos padrão da Fluxa vazavam pra QUALQUER empresa nova.**
+`CFG_DEF.tecnicos` (fallback client-side, usado quando a empresa ainda não
+configurou os próprios) tinha `['Marcos','Josimar','Eldecir','Bruno']`
+chumbado — nomes reais da Fluxa (piloto), não um placeholder óbvio. Toda
+empresa NOVA criada no sistema (`criar_empresa` semeia `config` só com
+`nome`/`appName`, sem `tecnicos`) caía nesse fallback e via esses 4 nomes
+como se fossem funcionários reais, contradizendo o próprio design documentado
+do v2 (`seedTecnicosIniciais()`: "sem técnicos padrão chumbados, cada empresa
+cria os seus"). Trocado pra `[]`. Não afeta a Fluxa (que já tem `tecnicos`
+preenchido de verdade no banco, então nunca cai nesse fallback).
+
 ---
 
 ## Perguntas em aberto (aguardando Marcos responder)
