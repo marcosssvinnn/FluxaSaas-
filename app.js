@@ -366,6 +366,7 @@ function mostrarTelaAuth(){
   const a=document.getElementById('login-step-auth'); if(a) a.style.display='';
   const u=document.getElementById('login-step-users'); if(u) u.style.display='none';
   const sl=document.getElementById('login-step-loja'); if(sl) sl.classList.remove('show');
+  const r=document.getElementById('login-step-recuperar'); if(r) r.style.display='none';
   document.getElementById('login-overlay').style.display='flex';
 }
 // Esconde a tela de conta e revela a etapa interna (usuário + PIN).

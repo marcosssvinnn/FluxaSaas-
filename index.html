@@ -72,10 +72,34 @@
           </div>
           <div class="login-err" id="auth-err" style="margin-top:-4px"></div>
           <button class="login-btn" id="auth-btn" onclick="authSubmit()" style="margin-top:2px">Entrar →</button>
+          <div id="auth-esqueci-wrap" style="text-align:center;font-size:13px;margin-top:-4px">
+            <a href="#" id="auth-esqueci-link" onclick="authEsqueciSenha();return false" style="color:var(--gray);text-decoration:none">Esqueci minha senha</a>
+          </div>
           <div style="text-align:center;font-size:13px;color:var(--gray)">
             <span id="auth-toggle-txt">Ainda não tem conta?</span>
             <a href="#" id="auth-toggle-link" onclick="authToggleModo();return false" style="color:var(--c1);font-weight:600;text-decoration:none">Criar minha empresa</a>
           </div>
+        </div>
+      </div>
+
+      <!-- Recuperação de senha: usuário chega aqui pelo link do e-mail (#recuperar) -->
+      <div id="login-step-recuperar" style="display:none">
+        <div class="login-card-title">Nova senha</div>
+        <div class="login-card-sub">Defina uma nova senha para sua conta</div>
+        <div style="margin-top:18px;display:flex;flex-direction:column;gap:12px">
+          <div>
+            <label style="font-size:12px;font-weight:600;color:var(--gray);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:5px">Nova senha (mín. 6)</label>
+            <input id="rec-senha" type="password" autocomplete="new-password" placeholder="••••••••"
+              style="width:100%;box-sizing:border-box;padding:11px 14px;border:1.5px solid var(--gray-mid);border-radius:10px;font-size:15px;font-family:'Inter',sans-serif;outline:none">
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:600;color:var(--gray);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:5px">Confirmar senha</label>
+            <input id="rec-senha2" type="password" autocomplete="new-password" placeholder="••••••••"
+              style="width:100%;box-sizing:border-box;padding:11px 14px;border:1.5px solid var(--gray-mid);border-radius:10px;font-size:15px;font-family:'Inter',sans-serif;outline:none"
+              onkeydown="if(event.key==='Enter')authNovaSenha()">
+          </div>
+          <div class="login-err" id="rec-err" style="margin-top:-4px"></div>
+          <button class="login-btn" id="rec-btn" onclick="authNovaSenha()" style="margin-top:2px">Salvar nova senha</button>
         </div>
       </div>
 
