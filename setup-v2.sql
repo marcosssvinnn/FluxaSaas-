@@ -331,6 +331,11 @@ CREATE POLICY "ve proprios vinculos" ON membros
 
 ALTER TABLE contadores ENABLE ROW LEVEL SECURITY;
 
+-- RLS: habilita nas tabelas de dados. As POLICIES (por PERFIL: gestor/vendas/
+-- técnico) vêm de setup-v2-optionA-perfil.sql → RODAR AQUELE ARQUIVO logo após este.
+-- ⚠️ NÃO recriar aqui a policy blanket "isolamento por empresa" (FOR ALL): sendo
+-- permissiva, ela é OR'd com as por perfil e ANULA o enforcement por perfil. Este
+-- bloco só HABILITA a RLS e apaga a blanket antiga (idempotência p/ bancos legados).
 DO $$
 DECLARE t text;
 BEGIN
@@ -341,10 +346,6 @@ BEGIN
   ] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY;', t);
     EXECUTE format('DROP POLICY IF EXISTS "isolamento por empresa" ON %I;', t);
-    EXECUTE format(
-      'CREATE POLICY "isolamento por empresa" ON %I FOR ALL TO authenticated
-         USING (empresa_id IN (SELECT minhas_empresas()))
-         WITH CHECK (empresa_id IN (SELECT minhas_empresas()));', t);
   END LOOP;
 END $$;
 
