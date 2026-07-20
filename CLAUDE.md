@@ -1856,6 +1856,31 @@ sabia que OS existia — não tinha esse tipo no radar.
   sugerindo agendar a OS com data/hora/técnico pré-preenchidos, pipeline visual
   (Criado → Aprovado → OS → Concluído) no card do orçamento.
 
+### Vistoria de campo (check-in → conclusão) — testado como técnico, sem achado
+Testei como técnico (mobile, offline): check-in automático ao abrir o local (não
+precisa lembrar de apertar nada), status de equipamento por toque (Bom/Atenção/
+Crítico), chips de observação que preenchem o texto sozinhos, fotos, "Observações
+gerais", finalizar. Conferi a persistência campo a campo (check-in/checkout, status
+e observação de cada equipamento, observação geral) — tudo bate certinho. Esse fluxo
+já estava sólido, sem achados.
+
+### Estoque de produtos químicos — testado, 1 achado de CSS corrigido
+Cadastrei um produto químico real (cloro granulado, com lote e validade perto de
+vencer) pra ver se o app trata isso com o cuidado que o insumo exige — e trata bem:
+campos de lote/validade/prazo de entrega/reserva de segurança no cadastro, alerta
+"VALIDADE — vencendo/vencido" no dashboard, alerta de reposição por mínimo, curva
+ABC por consumo. Nada disso precisou de correção.
+
+**Corrigido:** quando um produto tem DOIS alertas ao mesmo tempo (estoque baixo E
+validade vencendo — cenário bem realista: fica sem cloro bem na hora que o lote
+atual vence), o badge de validade (que inclui o código do lote, texto longo) vazava
+pra fora do card e sobrepunha visualmente a quantidade em estoque no mobile
+(`.est-badge` tinha `white-space:nowrap` sem limite de largura). Corrigido pra
+quebrar linha dentro do próprio badge em vez de vazar — mantém toda a informação
+legível (não trunca "vencendo em Xd", que é informação de segurança). Conferido que
+os outros badges dessa mesma classe (Baixo/Repor/Parado/OK, todos texto curto fixo)
+não foram afetados.
+
 ---
 
 ## Perguntas em aberto (aguardando Marcos responder)

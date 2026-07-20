@@ -867,7 +867,7 @@
     .est-main{flex:1;min-width:0}
     .est-nome{font-size:13px;font-weight:600;color:var(--c2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .est-meta{display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-top:2px;font-size:10.5px;color:var(--gray)}
-    .est-badge{padding:1px 7px;border-radius:50px;font-size:10px;font-weight:700;white-space:nowrap}
+    .est-badge{padding:1px 7px;border-radius:50px;font-size:10px;font-weight:700;white-space:normal;word-break:break-word;max-width:100%}
     .est-prices{font-size:10.5px;color:var(--gray);margin-top:3px}
     .est-qty-col{text-align:right;flex-shrink:0;line-height:1.2}
     .est-qty-n{font-size:15px;font-weight:700}
