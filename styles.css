@@ -209,7 +209,10 @@
     .hsrch{padding:7px 13px;border:1.5px solid var(--gray-mid);border-radius:50px;font-size:13px;font-family:'Inter',sans-serif;outline:none;width:240px;margin-left:auto}
     .hsrch:focus{border-color:var(--c1)}
 
-    .htw{overflow-x:auto}
+    .htw{overflow-x:auto;position:relative}
+    /* pista visual de que dá pra arrastar a tabela pro lado (mobile: a coluna
+       "Ações" fica fora da tela sem isso — some sozinha quando rola até o fim) */
+    .htw.tem-scroll-h::after{content:'›';position:absolute;top:0;right:0;bottom:0;width:26px;display:flex;align-items:center;justify-content:flex-end;padding-right:4px;font-size:16px;font-weight:700;color:var(--c1);background:linear-gradient(to right,transparent,var(--white) 65%);pointer-events:none}
     .ht{width:100%;border-collapse:collapse}
     .ht th{text-align:left;font-size:10px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.5px;padding:9px 12px;border-bottom:2px solid var(--gray-mid);white-space:nowrap}
     .ht td{padding:11px 12px;font-size:13px;color:var(--c2);border-bottom:1px solid var(--gray-light);vertical-align:middle}

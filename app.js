@@ -242,7 +242,7 @@ function criarClienteSupabase(){
 // Cada funcionário tem conta própria (e-mail sintético + PIN), então a RLS por
 // perfil vale de verdade. Ver docs/opcao-a-fase2.md. Com a flag OFF, nada disso roda.
 function _emailSintetico(usuarioId){
-  const slug = (EMPRESA && EMPRESA.slug) || String(EMPRESA_ID||'').slice(0,8) || 'x';
+  const slug = (EMPRESA && EMPRESA.slug) || ls('fluxa_empresa_slug') || String(EMPRESA_ID||'').slice(0,8) || 'x';
   return String(usuarioId)+'@'+slug+'.fluxa.local';
 }
 // Supabase Auth exige senha >= 6; o PIN tem 4 → deriva determinística (o PIN segue
@@ -433,6 +433,7 @@ async function _ativarEmpresa(emp){
   if(!emp) return;
   EMPRESA = emp; EMPRESA_ID = emp.id;
   lsSet('fluxa_empresa_id', EMPRESA_ID);
+  if(emp.slug) lsSet('fluxa_empresa_slug', emp.slug); // p/ e-mail sintético no bootstrap sem sessão
   await _aplicarContextoEmpresa();
 }
 
@@ -3485,6 +3486,23 @@ function renderTabela(){
   });
   h+='</tbody></table></div>';
   document.getElementById('hist-body').innerHTML=h;
+  _iniciarScrollHint(document.querySelector('#hist-body .htw'));
+}
+
+// Mostra uma pista visual (seta com sombra na borda direita) enquanto a
+// tabela de histórico (orçamentos/OS) tiver conteúdo fora da tela pra rolar —
+// some sozinha quando o usuário já rolou até o fim. Sem isso, no mobile a
+// coluna "Ações" fica invisível sem nenhuma indicação de que dá pra arrastar.
+function _iniciarScrollHint(el){
+  if(!el) return;
+  const atualizar=()=>{
+    const podeRolar = el.scrollWidth > el.clientWidth + 2;
+    const noFim = el.scrollLeft + el.clientWidth >= el.scrollWidth - 2;
+    el.classList.toggle('tem-scroll-h', podeRolar && !noFim);
+  };
+  el.addEventListener('scroll', atualizar, {passive:true});
+  window.addEventListener('resize', atualizar);
+  requestAnimationFrame(atualizar);
 }
 
 function corrigirDataAprovacao(id){
@@ -3909,6 +3927,7 @@ function renderOSTabela(){
   });
   h+='</tbody></table></div>';
   document.getElementById('osh-body').innerHTML=h;
+  _iniciarScrollHint(document.querySelector('#osh-body .htw'));
 }
 
 // Tipo da OS: vistoria mensal (agendamento), do orçamento, ou serviço avulso

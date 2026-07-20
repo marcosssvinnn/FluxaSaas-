@@ -1929,6 +1929,36 @@ Varredura final pedida pelo Marcos ("vamos testar as demais funções do saas" /
 Nenhum bug real encontrado nesta leva — só um erro de metodologia de teste
 (autodiagnosticado antes de virar "achado").
 
+### Fechando as pendências da rodada anterior
+
+**`tecnico_user_id` — populado sozinho agora, via trigger no banco (`setup-v2-delta14.sql`, AINDA NÃO RODADO — pedir pro Marcos rodar).**
+Na rodada anterior isso ficou pela metade (delta13 só criou a coluna) porque
+popular pelo app.js exigia entender a fundo o modelo de sessão da Fase 2 — que
+nesse meio tempo já foi implementado e virou padrão (login real por pessoa,
+e-mail sintético, `authUser.id` = `auth.uid()` de quem está logado). Mas
+carimbar `auth.uid()` de quem está logado no momento de salvar continua sendo
+a solução ERRADA: quem preenche o formulário de OS/vistoria/despesa pode ser o
+gestor despachando serviço em nome de um técnico, não o técnico em si — isso
+atribuiria o registro à pessoa errada. A solução certa é a mesma lógica do
+backfill do delta13 (casar o texto de `tecnico` com `membros.nome`, só quando
+bate com EXATAMENTE 1 pessoa da empresa), só que rodando toda vez que o
+registro é salvo — por isso virou um trigger no banco (`_preencher_tecnico_user_id()`,
+`BEFORE INSERT OR UPDATE` nas 3 tabelas) em vez de código no app.js. Recalcula
+sozinho quando o campo `tecnico` muda (inclusive reatribuição). Zero mudança
+de comportamento pro usuário — só fecha a fragilidade de RLS por nome que
+ficou documentada no delta13.
+
+**Mobile: coluna "Ações" fora da tela no Histórico de Orçamentos/OS — corrigido (pista visual de scroll).**
+Não dava pra resolver com redesenho de tabela sem decisão do Marcos (cards vs.
+coluna fixa), mas o problema real reportado era "não tem nenhuma pista de que
+dá pra arrastar" — isso dá pra resolver sem redesenho. Adicionado `.htw.tem-scroll-h::after`
+(seta + sombra de gradiente na borda direita, `styles.css`) ligada por
+`_iniciarScrollHint()` (`app.js`), que liga/desliga sozinha com base em
+`scrollWidth`/`scrollLeft` — aparece quando há conteúdo pra rolar, some quando
+o usuário já rolou até o fim. Aplicado nas duas tabelas que usam esse padrão
+(`#hist-body` e `#osh-body`). Testado no mobile (375px): confirmado que a seta
+aparece com a tabela no início e some ao rolar até "Ações" ficar visível.
+
 ---
 
 ## Perguntas em aberto (aguardando Marcos responder)
