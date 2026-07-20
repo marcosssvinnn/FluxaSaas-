@@ -280,8 +280,66 @@ async function _loginRealFuncionario(usuarioId, pin){
     // re-init do contexto sob o JWT do funcionário
     try{ authUser = (await db.auth.getUser()).data?.user || authUser; }catch(e){}
     try{ await definirEmpresaAtiva(); }catch(e){ console.warn('[loginReal:definirEmpresa]', e?.message||e); }
+    // Bootstrap (técnico no próprio aparelho): o boot tinha retornado cedo (sem
+    // conectar). Agora que há sessão real, recarrega p/ o boot autenticado completo
+    // (_autoLoginMembroDaConta reaplica a persona + carrega os dados). dbOk=true = já
+    // conectado (troca de usuário em aparelho compartilhado) → segue sem recarregar.
+    if(!dbOk){ setTimeout(()=>location.reload(), 60); return true; }
     return true;
   }catch(e){ console.warn('[_loginRealFuncionario]', e?.message||e); return false; }
+}
+
+// Bootstrapping do técnico no PRÓPRIO aparelho (sem sessão de conta): identifica a
+// empresa por link (#e/<slug>) ou por cache de um login anterior, e mostra a etapa
+// nome+PIN direto (em vez da tela de conta e-mail/senha). Retorna true se conseguiu.
+// Só nomes vêm do servidor (usuarios_para_login, sem PIN). Ver docs/opcao-a-fase2.md.
+async function _bootstrapTecnico(){
+  if(!_authPerfilAtivo() || !db) return false;
+  try{
+    let empId=null, empSlug=null, empNome=null, branding=null;
+    const m = (location.hash||'').match(/^#e\/([a-z0-9-]+)/i);
+    if(m){
+      const { data, error } = await db.rpc('empresa_por_slug', { p_slug: m[1] });
+      if(error || !data || !data.length) return false;
+      empId=data[0].id; empSlug=m[1]; empNome=data[0].nome; branding=data[0].branding||{};
+      try{ history.replaceState(null,'',location.pathname+location.search); }catch(e){ location.hash=''; }
+    } else if(ls('fluxa_empresa_id') && ls('fluxa_empresa_slug')){
+      empId=ls('fluxa_empresa_id'); empSlug=ls('fluxa_empresa_slug');
+      try{ const c=JSON.parse(ls('empresa_cfg')||'{}'); empNome=c.nome; branding={nome:c.nome,appName:c.appName,cor:c.cor,cor2:c.cor2,tagline:c.tagline,logoB64:c.logoB64,sub:c.sub}; }catch(e){}
+    } else return false;
+
+    // contexto mínimo p/ o login por perfil (EMPRESA.slug → e-mail sintético correto)
+    EMPRESA_ID=empId;
+    EMPRESA={ id:empId, slug:empSlug, nome:empNome, config:(branding||{}) };
+    lsSet('fluxa_empresa_id',empId); lsSet('fluxa_empresa_slug',empSlug);
+    try{
+      CFG={ ...CFG_DEF, ...(branding||{}) }; if(!CFG.nome) CFG.nome=empNome; FLUXA_CONFIG.flags={}; aplicarCFG();
+      // marca da EMPRESA na tela de login (o link #e/<slug> já confirma a empresa certa,
+      // então aqui é ok mostrar nome/logo — diferente da tela de conta genérica)
+      const ln=document.getElementById('login-brand-name'); if(ln) ln.textContent=empNome||'Fluxa';
+      const lt=document.getElementById('login-brand-tagline'); if(lt&&branding&&branding.tagline) lt.textContent=branding.tagline;
+      if(branding&&branding.logoB64){ const li=document.getElementById('login-brand-initials'); const lg=document.getElementById('login-logo-img'); if(lg){ lg.src=branding.logoB64; lg.style.display=''; } if(li) li.style.display='none'; }
+      if(branding&&branding.cor){ document.documentElement.style.setProperty('--c1', branding.cor); }
+    }catch(e){ console.warn('[bootstrap:cfg]',e?.message||e); }
+
+    const { data:us, error:eu } = await db.rpc('usuarios_para_login', { p_empresa:empId });
+    if(eu){ console.warn('[bootstrap:usuarios]',eu.message); return false; }
+    todosUsuarios=(us||[]).map(u=>({ id:u.id, nome:u.nome, perfil:u.perfil, loja_id:u.loja_id, loja_nome:'', ativo:true }));
+
+    // mostra a etapa nome+PIN (não a tela de conta) + escape "sou o dono"
+    const a=document.getElementById('login-step-auth'); if(a) a.style.display='none';
+    const su=document.getElementById('login-step-users'); if(su) su.style.display='';
+    const sl=document.getElementById('login-step-loja'); if(sl) sl.classList.remove('show');
+    if(su && !document.getElementById('bootstrap-dono-link')){
+      const lk=document.createElement('div');
+      lk.id='bootstrap-dono-link'; lk.style.cssText='text-align:center;margin-top:14px;font-size:13px';
+      lk.innerHTML='<a href="#" onclick="event.preventDefault();mostrarTelaAuth();" style="color:var(--gray)">Sou o dono / entrar com e-mail</a>';
+      su.appendChild(lk);
+    }
+    document.getElementById('login-overlay').style.display='flex';
+    renderLoginUsers();
+    return true;
+  }catch(e){ console.warn('[_bootstrapTecnico]',e?.message||e); return false; }
 }
 
 function mostrarTelaAuth(){
@@ -1175,7 +1233,9 @@ function lsOrcProxNum(){ return lsOrcLer().reduce((a,o)=>Math.max(a,o.numero||0)
     // de tenant deve rodar aqui (sem empresa, sem conectar/sincronizar banco) —
     // era isso que gerava "acesso restrito" e avisos de UUID nulo na tela de login.
     semSessaoDeConta = true;
-    mostrarTelaAuth();
+    // Técnico no próprio aparelho (link #e/<slug> ou cache): mostra nome+PIN direto.
+    // Senão, tela de conta (e-mail/senha) normal.
+    if(!(await _bootstrapTecnico())) mostrarTelaAuth();
   } else {
     esconderTelaAuth();
     if(authUser){
@@ -5006,7 +5066,7 @@ function safeKey(s){ return btoa(unescape(encodeURIComponent(s))).replace(/[^a-z
 // _lsKey é function declaration (hoisted) — pode ser chamada no boot antes daqui.
 function _lsKey(k){
   if(!EMPRESA_ID) return k;
-  if(k==='fluxa_empresa_id'||k==='sb_url'||k==='sb_key'||k==='fluxa_sbar_col'
+  if(k==='fluxa_empresa_id'||k==='fluxa_empresa_slug'||k==='sb_url'||k==='sb_key'||k==='fluxa_sbar_col'
      ||k==='fluxa_filtroSt'||k==='fluxa_filtroOSSt') return k; // globais de dispositivo
   return 'fluxa:'+EMPRESA_ID+':'+k;
 }
