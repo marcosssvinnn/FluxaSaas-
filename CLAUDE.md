@@ -1895,6 +1895,40 @@ legível (não trunca "vencendo em Xd", que é informação de segurança). Conf
 os outros badges dessa mesma classe (Baixo/Repor/Parado/OK, todos texto curto fixo)
 não foram afetados.
 
+### Demais módulos — testados um a um, sem achados de correção
+Varredura final pedida pelo Marcos ("vamos testar as demais funções do saas" /
+"sim tudo"), cobrindo tudo que ainda não tinha sido testado na mão:
+
+- **Clientes:** cadastro completo, geração de `portal_token` funcionando.
+- **Portal do cliente:** token inválido/inexistente é tratado com mensagem clara,
+  sem vazar erro técnico nem travar a tela.
+- **Usuários:** criação de técnico com PIN — confirmado que o PIN é salvo como
+  hash SHA-256 (64 caracteres), não em texto plano.
+- **Despesas:** registro e fluxo de reembolso testados ponta a ponta.
+- **Fornecedores + Ordens de Compra:** ciclo completo criar OC → receber →
+  entrada de estoque automática (via `registrarMovimento()`) → quantidade do
+  produto atualizada corretamente.
+- **Agendamentos/Locais:** criação de novo plano de visitas testada.
+- **Análises/Dashboard:** degrada bem offline (não trava, não quebra a tela);
+  não dá pra testar a fundo sem dados reais de produção.
+- **Configurações da Empresa:** prévia de cor ao vivo (`previewCfg()`) confirmada
+  funcionando — achado inicial de "não atualiza" era eu checando o elemento
+  errado (existem dois `.hdr-nome` no DOM, um oculto de admin e um visível do
+  tenant; o correto atualiza normal).
+- **Painel da Plataforma:** o controle de acesso (`isPlataformaAdmin`) funciona
+  nos dois sentidos — rejeita e redireciona quem não é admin da plataforma, e
+  libera corretamente quem é. UI trocada de fato (header/sidebar/mobnav do tenant
+  somem, topbar de admin aparece) — o único resultado ambíguo (`admin-topbar`
+  aparentando invisível) era o método de teste: o elemento usa
+  `position:fixed`, que faz `offsetParent` reportar `null` mesmo com o elemento
+  visível (`display:flex`, dimensões e posição corretas) — confirmado por
+  screenshot que está tudo certo. Tabela de empresas cadastradas rola
+  horizontalmente dentro do próprio card no mobile (`overflow-x:auto`), sem
+  vazar layout.
+
+Nenhum bug real encontrado nesta leva — só um erro de metodologia de teste
+(autodiagnosticado antes de virar "achado").
+
 ---
 
 ## Perguntas em aberto (aguardando Marcos responder)
