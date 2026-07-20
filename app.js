@@ -1927,24 +1927,38 @@ async function criarOSdeAprovacao(){
   if(btn){ btn.disabled=true; btn.textContent='Criando…'; }
   try{
     const osSvcs=(orc.servicos||[]).map(s=>({desc:s.desc||s.d||'',produto_id:s.produto_id||null,qty:s.qty||1,precoUnit:parseFloat(s.p||s.preco||0)||0}));
+    const camposBase={
+      orcamento_id:String(orcId).startsWith('local_')?null:orcId,
+      cliente:orc.cliente, cliente_id:orc.cliente_id||null, local_servico:orc.local_servico,
+      data_servico:data, hora, tecnico:tec,
+      servicos:osSvcs, materiais:'', obs_tecnica:'',
+      total:orc.total, status:'agendado', loja_id:orc.loja_id||LOJA_PADRAO_ID
+    };
     let numStr='???';
+    let avisoOffline=false;
     if(dbOk&&db){
-      const {data:insOS,error}=await dbInsertNumerado('ordens_servico',{
-        orcamento_id:String(orcId).startsWith('local_')?null:orcId,
-        cliente:orc.cliente, cliente_id:orc.cliente_id||null, local_servico:orc.local_servico,
-        data_servico:data, hora, tecnico:tec,
-        servicos:osSvcs, materiais:'', obs_tecnica:'',
-        total:orc.total, status:'agendado', loja_id:orc.loja_id||LOJA_PADRAO_ID
-      });
-      if(error) throw error;
-      const num=insOS?.numero||1;
-      numStr=String(num).padStart(3,'0');
+      try{
+        const {data:insOS,error}=await dbInsertNumerado('ordens_servico',camposBase);
+        if(error) throw error;
+        const num=insOS?.numero||1;
+        numStr=String(num).padStart(3,'0');
+        if(insOS) todosOS.unshift(insOS);
+      }catch(e){
+        console.warn('[criarOSdeAprovacao] falha ao salvar no banco:', e?.message||e);
+        const n=(parseInt(ls('fluxa_os_num')||'0'))+1; lsSet('fluxa_os_num',String(n));
+        _salvarOSLocal(camposBase, 'local_'+Date.now(), n);
+        numStr=String(n).padStart(3,'0'); avisoOffline=true;
+      }
     }else{
-      const n=(parseInt(ls('fluxa_os_num')||'0'))+1; lsSet('fluxa_os_num',String(n)); numStr=String(n).padStart(3,'0');
+      const n=(parseInt(ls('fluxa_os_num')||'0'))+1; lsSet('fluxa_os_num',String(n));
+      _salvarOSLocal(camposBase, 'local_'+Date.now(), n);
+      numStr=String(n).padStart(3,'0'); avisoOffline=true;
     }
     fecharAprovOS();
     const dataFmt=new Date(data+'T12:00:00').toLocaleDateString('pt-BR');
-    toast(`✅ OS #${numStr} criada — agendada para ${dataFmt} às ${hora} · Técnico: ${tec}`);
+    toast(avisoOffline
+      ? `📴 OS #${numStr} salva neste aparelho — sincroniza quando reconectar`
+      : `✅ OS #${numStr} criada — agendada para ${dataFmt} às ${hora} · Técnico: ${tec}`);
     logAcao('os_criada',`#${numStr} via aprovação do orçamento #${String(orc.numero||'?').padStart(3,'0')}`);
     await loadOSHist();
   }catch(e){
@@ -2800,6 +2814,23 @@ function renderOSSvcs(){
 function updOSSvc(inp){ const s=osSvcs.find(x=>x.id===parseFloat(inp.dataset.id)); if(s) s.d=inp.value; }
 function rmOSSvc(id){ if(osSvcs.length===1){toast('⚠️ Mín. 1');return;} osSvcs=osSvcs.filter(s=>s.id!==id); renderOSSvcs(); }
 
+// Salva/atualiza uma OS só no aparelho (localStorage + todosOS em memória) — usado
+// como rede de segurança quando não há conexão ou o insert/update no banco falha.
+// Achado de auditoria: antes disso, criar/editar OS sem internet (ou com a conexão
+// caindo no meio do salvamento) gerava um toast de sucesso mas NÃO salvava a OS em
+// lugar nenhum — perda silenciosa de dado. Espelha o padrão já usado (e testado) em
+// salvarApenas/gerarPDF pra orçamento.
+function _salvarOSLocal(camposBase, tempId, numero){
+  const rec={...camposBase, id:tempId, numero, status:camposBase.status||'agendado', data_criacao:new Date().toISOString()};
+  const listaLocal=JSON.parse(ls('fluxa_os_hist')||'[]');
+  const ix=listaLocal.findIndex(x=>x.id===tempId);
+  if(ix>=0) listaLocal[ix]=rec; else listaLocal.unshift(rec);
+  lsSet('fluxa_os_hist', JSON.stringify(listaLocal.slice(0,600)));
+  const ixMem=todosOS.findIndex(x=>x.id===tempId);
+  if(ixMem>=0) todosOS[ixMem]=rec; else todosOS.unshift(rec);
+  return rec;
+}
+
 async function gerarOSPDF(modo='os'){
   const dados={
     cli:gV('os-cli')||'—', loc:gV('os-loc'), cnpj:gV('os-cnpj')||null, data:gV('os-data'), hora:gV('os-hora'),
@@ -2811,28 +2842,60 @@ async function gerarOSPDF(modo='os'){
     loja_id: gV('os-loja')||LOJA_PADRAO_ID
   };
   let numStr='???';
+  const orcId=osOrcId||null;
+  const lojaIdOS=gV('os-loja')||LOJA_PADRAO_ID;
+  const camposBase={orcamento_id:orcId,loja_id:lojaIdOS,cliente:dados.cli,cliente_id:gV('os-cli-id')||_autoSalvarCliente(dados.cli,null,dados.loc,dados.cnpj,lojaIdOS)||null,local_servico:dados.loc,cnpj:dados.cnpj||null,data_servico:dados.data,hora:dados.hora,tecnico:dados.tec,servicos:dados.svcs,materiais:dados.mat,obs_tecnica:dados.obs,total:dados.tot,fotos:dados.fotos,video_link:dados.videoLink||null,checklist:dados.checklist.length?JSON.stringify(dados.checklist):null};
   if(dbOk&&db){
     try{
-      const orcId=osOrcId||null;
-      const lojaIdOS=gV('os-loja')||LOJA_PADRAO_ID;
       // Sobe fotos pro Storage antes de gravar — a linha no banco fica leve (URL, não
       // base64). Se o upload falhar, a foto fica de fora (não perde no PDF gerado agora,
       // só não fica sincronizada no banco até um próximo salvamento bem-sucedido).
       const storageId = (osEditId && !String(osEditId).startsWith('local_')) ? osEditId : ('os_'+Date.now());
       const fotosUp = await _fotosParaStorage(dados.fotos, storageId, 'os-fotos');
-      const payload={orcamento_id:orcId,loja_id:lojaIdOS,cliente:dados.cli,cliente_id:gV('os-cli-id')||_autoSalvarCliente(dados.cli,null,dados.loc,dados.cnpj,lojaIdOS)||null,local_servico:dados.loc,cnpj:dados.cnpj||null,data_servico:dados.data,hora:dados.hora,tecnico:dados.tec,servicos:dados.svcs,materiais:dados.mat,obs_tecnica:dados.obs,total:dados.tot,fotos:fotosUp||[],video_link:dados.videoLink||null,checklist:dados.checklist.length?JSON.stringify(dados.checklist):null};
+      const payload={...camposBase, fotos:fotosUp||[]};
       if(osEditId && !String(osEditId).startsWith('local_')){
         // EDIÇÃO: atualiza a OS existente (mantém número e status)
         const existente=todosOS.find(x=>x.id===osEditId);
-        await db.from('ordens_servico').update(payload).eq('id',osEditId);
+        const {error}=await db.from('ordens_servico').update(payload).eq('id',osEditId);
+        if(error) throw error;
         numStr=String(existente?.numero||'').padStart(3,'0')||'???';
+        _salvarOSLocal({...existente,...payload}, osEditId, existente?.numero);
         toast('✅ OS atualizada');
       } else {
-        const {data:insOS}=await dbInsertNumerado('ordens_servico',{...payload,status:'agendado'});
+        const {data:insOS,error}=await dbInsertNumerado('ordens_servico',{...payload,status:'agendado'});
+        if(error) throw error;
         numStr=String(insOS?.numero||'').padStart(3,'0')||'???';
+        if(insOS){
+          // remove um eventual rascunho local (mesma sessão) e grava a versão definitiva do banco
+          if(osEditId && String(osEditId).startsWith('local_')){
+            const listaLocal=JSON.parse(ls('fluxa_os_hist')||'[]').filter(x=>x.id!==osEditId);
+            lsSet('fluxa_os_hist', JSON.stringify(listaLocal));
+            todosOS=todosOS.filter(x=>x.id!==osEditId);
+          }
+          todosOS.unshift(insOS);
+          osEditId=insOS.id;
+        }
       }
-    }catch(e){ numStr='???'; console.warn('[gerarOSPDF] falha ao salvar OS no banco:', e?.message||e); toast('⚠️ OS não foi salva no banco — verifique a conexão'); }
-  } else { const n=(parseInt(ls('fluxa_os_num')||'0'))+1; lsSet('fluxa_os_num',n); numStr=String(n).padStart(3,'0'); }
+    }catch(e){
+      console.warn('[gerarOSPDF] falha ao salvar OS no banco:', e?.message||e);
+      toast('⚠️ Sem conexão com o banco — OS salva só neste aparelho');
+      const n=osEditId&&String(osEditId).startsWith('local_') ? (todosOS.find(x=>x.id===osEditId)?.numero||((parseInt(ls('fluxa_os_num')||'0'))+1)) : ((parseInt(ls('fluxa_os_num')||'0'))+1);
+      if(!(osEditId&&String(osEditId).startsWith('local_'))) lsSet('fluxa_os_num',String(n));
+      const tempId = (osEditId && String(osEditId).startsWith('local_')) ? osEditId : ('local_'+Date.now());
+      _salvarOSLocal(camposBase, tempId, n);
+      osEditId=tempId;
+      numStr=String(n).padStart(3,'0');
+    }
+  } else {
+    // Offline: mesma rede de segurança — salva local em vez de só gerar um número.
+    const n=osEditId&&String(osEditId).startsWith('local_') ? (todosOS.find(x=>x.id===osEditId)?.numero||((parseInt(ls('fluxa_os_num')||'0'))+1)) : ((parseInt(ls('fluxa_os_num')||'0'))+1);
+    if(!(osEditId&&String(osEditId).startsWith('local_'))) lsSet('fluxa_os_num',String(n));
+    const tempId = (osEditId && String(osEditId).startsWith('local_')) ? osEditId : ('local_'+Date.now());
+    _salvarOSLocal(camposBase, tempId, n);
+    osEditId=tempId;
+    numStr=String(n).padStart(3,'0');
+    toast('📴 Sem conexão — OS salva neste aparelho, sincroniza quando reconectar');
+  }
 
   // Se modo 'both', preenche também o orçamento vinculado
   if(modo==='both' && osOrcId){
@@ -3709,16 +3772,55 @@ async function salvarPagamento(){
 // ──────────────────────────────────────────────────
 //  OS HISTORY
 // ──────────────────────────────────────────────────
+// Reenvia ao banco OS que ficaram presas só no aparelho (id local_*) — mesma lógica
+// de _reenviarOrcamentosLocais (achado de auditoria: OS não tinha esse reenvio,
+// diferente de orçamento/vistoria/agendamento — ficava presa pra sempre no aparelho).
+async function _reenviarOSLocais(soLocal){
+  if(!dbOk||!db||!soLocal||!soLocal.length) return false;
+  let mudou=false;
+  for(const rec of soLocal){
+    try{
+      const payload={...rec}; delete payload.id; // banco gera o id definitivo
+      const {data:ins,error}=await dbInsertNumerado('ordens_servico',payload);
+      if(error){ console.warn('[reenvioOSLocal] falhou #'+(rec.numero||'?')+':', error.message); continue; }
+      if(ins){
+        const lista=JSON.parse(ls('fluxa_os_hist')||'[]').filter(x=>x.id!==rec.id);
+        lista.unshift(ins);
+        lsSet('fluxa_os_hist', JSON.stringify(lista.slice(0,600)));
+        todosOS=todosOS.filter(x=>x.id!==rec.id);
+        todosOS.unshift(ins);
+        mudou=true;
+      }
+    }catch(e){ console.warn('[reenvioOSLocal] erro:', e?.message||e); }
+  }
+  return mudou;
+}
+
 async function loadOSHist(){
   document.getElementById('osh-body').innerHTML='<div class="load"><div class="spin"></div> Carregando…</div>';
+  // 1. SEMPRE mostra dados locais primeiro — sem depender do banco (mesmo padrão de loadHist).
+  // Achado de auditoria: antes disso, offline zerava todosOS incondicionalmente e a
+  // tela de Histórico de OS aparecia vazia mesmo com OS salvas no aparelho.
+  const local=JSON.parse(ls('fluxa_os_hist')||'[]');
+  if(local.length>0) todosOS=local;
+  renderOSTabela();
+  // 2. Se BD disponível: sincroniza em background e atualiza a view
   if(dbOk&&db){
     try{
       const {data,error}=await db.from('ordens_servico').select('*').eq('empresa_id',EMPRESA_ID).order('data_criacao',{ascending:false});
       if(error) throw error;
-      todosOS=data||[];
-    }catch(e){ console.warn('loadOSHist erro:',e.message); todosOS=[]; }
-  } else { todosOS=[]; }
-  renderOSTabela();
+      const dbIds=new Set((data||[]).map(x=>x.id));
+      const soLocal=todosOS.filter(x=>String(x.id).startsWith('local_')&&!dbIds.has(x.id));
+      todosOS=[...(data||[]),...soLocal];
+      lsSet('fluxa_os_hist', JSON.stringify(todosOS.slice(0,600)));
+      renderOSTabela();
+      // Recupera OS presas só no aparelho (não sincronizadas) → reenvia ao banco
+      if(soLocal.length){
+        const mudou=await _reenviarOSLocais(soLocal);
+        if(mudou) renderOSTabela();
+      }
+    }catch(e){ console.warn('loadOSHist erro:',e.message); }
+  }
 }
 
 function filtOS(btn){
@@ -10518,6 +10620,7 @@ function _temPendentes(){
     if((typeof lsOrcLer==='function'?lsOrcLer():[]).some(o=>String(o.id).startsWith('local_'))) return true;
     if((typeof lsVisLer==='function'?lsVisLer():[]).some(v=>v&&v._pendingSync===true)) return true;
     if((typeof lsAgLer==='function'?lsAgLer():[]).some(a=>String(a.id).startsWith('ag_'))) return true;
+    if(JSON.parse(ls('fluxa_os_hist')||'[]').some(o=>String(o.id).startsWith('local_'))) return true;
   }catch(e){ console.warn('[temPendentes]', e?.message||e); }
   return false;
 }
@@ -10528,6 +10631,8 @@ async function _reenviarPendentes(silencioso=true){
   try{
     // Orçamentos presos só no aparelho (id local_*)
     try{ const soLocal=(typeof lsOrcLer==='function'?lsOrcLer():[]).filter(o=>String(o.id).startsWith('local_')); if(soLocal.length) await _reenviarOrcamentosLocais(soLocal); }catch(e){ console.warn('[reenvio orc]',e?.message||e); }
+    // OS presas só no aparelho (id local_*)
+    try{ const soLocalOS=JSON.parse(ls('fluxa_os_hist')||'[]').filter(o=>String(o.id).startsWith('local_')); if(soLocalOS.length) await _reenviarOSLocais(soLocalOS); }catch(e){ console.warn('[reenvio os]',e?.message||e); }
     // Vistorias pendentes (loadVistoriasRemoto reenvia as _pendingSync + sobe fotos)
     try{ await loadVistoriasRemoto?.(); }catch(e){ console.warn('[reenvio vis]',e?.message||e); }
     // Agendamentos presos (loadAgendamentos agora faz merge + reenvio)

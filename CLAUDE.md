@@ -1800,6 +1800,64 @@ Gera a próxima ocorrência do agendamento quando a última OS do lote é conclu
 
 ---
 
+## Sessão 2026-07-19 (continuação) — teste real do fluxo orçamento→aprovação→execução
+
+A pedido do Marcos: testei clicando de verdade (mobile 375×812, offline/local) o fluxo
+de venda ponta a ponta — criar orçamento → aprovar → gerar OS → histórico — em vez de só
+ler código. Achado o pior bug desta sessão inteira.
+
+### 🔴 CRÍTICO, corrigido: criar/editar OS sem internet perdia a OS inteira, em silêncio
+`gerarOSPDF()` (tela "Nova OS") e `criarOSdeAprovacao()` (modal "Orçamento aprovado!
+Deseja agendar uma OS?") só gravavam a OS se `dbOk&&db` desse certo. Offline, ou se a
+conexão caísse no meio do salvamento, o código só incrementava um contador de exibição
+(`fluxa_os_num`) e mostrava **"✅ OS #001 criada"** — a OS não era salva em lugar
+nenhum, nem local nem remoto. O gestor/técnico via a mensagem de sucesso e achava que
+o serviço estava agendado; na prática, sumia. Comparado com orçamento (`salvarApenas`),
+que sempre salva local primeiro e sincroniza depois — OS não tinha essa rede de
+segurança.
+
+Piora: `loadOSHist()` (a tela "Histórico de OS") fazia `todosOS=[]` incondicionalmente
+quando offline — nem tentava ler o que tinha salvo local. Então mesmo se alguma OS
+tivesse sobrevivido por outro caminho, a tela de histórico apareceria vazia mesmo
+assim. E `_reenviarPendentes()`/`_temPendentes()` (o reenvio automático a cada 3 min
++ ao reconectar, que já existe pra orçamento/vistoria/agendamento) simplesmente não
+sabia que OS existia — não tinha esse tipo no radar.
+
+**Corrigido (commit desta sessão):**
+- `_salvarOSLocal()` — helper novo, salva no `fluxa_os_hist` + `todosOS` em memória.
+- `gerarOSPDF`/`criarOSdeAprovacao` agora chamam isso tanto no caminho offline quanto
+  no `catch` de falha de rede (antes só existia o caminho de sucesso online).
+- `loadOSHist()` reescrita pro mesmo padrão "mostra local primeiro" que `loadHist`
+  (orçamento) já usava — não zera mais `todosOS` quando offline.
+- `_reenviarOSLocais()` novo (mesma lógica de `_reenviarOrcamentosLocais`) + ligado em
+  `_reenviarPendentes()`/`_temPendentes()` — OS presa localmente agora sincroniza
+  sozinha quando a conexão volta, igual orçamento/vistoria/agendamento já faziam.
+- Testado localmente ponta a ponta: criar OS offline → aparece salva local e no
+  histórico → simulei reconexão com Supabase mockado → reenvio confirmado (id local
+  trocado pelo id real do banco, registro removido da fila de pendentes). Não testado
+  contra Supabase real.
+
+### Outros achados desta rodada de teste
+- **Corrigido:** `atualizarTecsPorLoja` quebrava a navegação inteira pra tela de OS
+  (`go('os')`) se `loja.tecs` viesse vazio/undefined — `tecs.map()` em cima de
+  `undefined`. Baixo risco em produção (a coluna tem `DEFAULT '[]'` no banco), mas o
+  custo de blindar é uma linha; corrigido.
+- **Achado, NÃO corrigido — UX real de mobile:** a tela de Histórico de Orçamentos
+  usa uma `<table>` mais larga que a viewport (583px de conteúdo em 319px visíveis).
+  A coluna "Ações" (aprovar, PDF, WhatsApp, excluir…) fica **fora da tela**, só
+  alcançável rolando a tabela pro lado — sem nenhuma pista visual (seta, sombra,
+  texto "arraste") de que há mais conteúdo. Pra um gestor tentando aprovar/mandar um
+  orçamento rápido pelo celular, isso é fricção real: precisa descobrir sozinho que
+  dá pra arrastar a tabela. Não mexi porque é uma decisão de redesenho de tela (layout
+  em cards ao invés de tabela, ou coluna de ações fixa/sticky), não um bug pontual —
+  fica pra decisão do Marcos se quer investir nisso.
+- **Confirmado bom, sem achado:** o restante do fluxo é sólido — rascunho automático
+  salvo durante a digitação, prévia de WhatsApp ao vivo, modal de aprovação já
+  sugerindo agendar a OS com data/hora/técnico pré-preenchidos, pipeline visual
+  (Criado → Aprovado → OS → Concluído) no card do orçamento.
+
+---
+
 ## Perguntas em aberto (aguardando Marcos responder)
 
 1. **CNPJs reais** das 3 empresas — para preencher tabela `lojas` e emissão de NF
