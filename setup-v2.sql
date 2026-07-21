@@ -127,6 +127,10 @@ CREATE TABLE IF NOT EXISTS orcamentos (
   proximo_contato date,            -- CRM: data do próximo follow-up
   crm_notas jsonb DEFAULT '[]',    -- CRM: histórico de contatos [{data,texto,usuario}]
   motivo_perda text,               -- CRM: por que perdeu (recusado/vencido)
+  crm_situacao text,               -- CRM v2: 'aguardando_aprovacao'|'concorrencia'|'negociando_valor'|null
+  crm_decisao_prevista date,       -- CRM v2: data prevista de assembleia/reunião de decisão
+  crm_contatos jsonb DEFAULT '[]', -- CRM v2: multi-thread [{nome,papel,tel}] (síndico/conselho/etc.)
+  etapa_desde timestamptz,         -- CRM v2: quando entrou na etapa atual (aging por estágio)
   data_criacao timestamptz DEFAULT now()
 );
 

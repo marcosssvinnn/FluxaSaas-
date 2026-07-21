@@ -1143,3 +1143,10 @@
     .crm-etapa-btn:hover{border-color:var(--c1);color:var(--c1)}
     .crm-motivo-chip{padding:8px 12px;border:1.5px solid var(--gray-mid);border-radius:50px;background:var(--white);font-family:'Inter',sans-serif;font-size:12px;font-weight:600;cursor:pointer;color:var(--c2);min-height:44px}
     .crm-motivo-chip.sel{border-color:var(--c1);background:var(--c1-light);color:var(--c1)}
+
+    /* ── CRM v2: situação, multi-contato, condomínio ── */
+    .crm-chip.sit-aguardando_aprovacao{background:#ede9fe;color:#7c3aed}
+    .crm-chip.sit-concorrencia{background:#fee2e2;color:#dc2626}
+    .crm-chip.sit-negociando_valor{background:#dcfce7;color:#16a34a}
+    .crm-contato-item{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;background:var(--gray-light);border-radius:8px;margin-bottom:5px;font-size:12px}
+    .crm-contato-info{color:var(--c2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

@@ -3718,8 +3718,10 @@ async function mudarSt(id, sel){
 // Núcleo compartilhado de mudança de status (select do histórico + funil CRM).
 // extras = campos adicionais a gravar junto (ex.: motivo_perda no CRM).
 async function _setStatusOrc(id, st, extras){
-  const changes={status:st, ...(extras||{})};
+  const changes={status:st, etapa_desde:new Date().toISOString(), ...(extras||{})};
   if(st==='aprovado') changes.data_aprovacao=new Date().toISOString();
+  // Sair de "pendente" limpa a situação/decisão prevista — não fazem mais sentido fora da negociação
+  if(st!=='pendente' && extras?.crm_situacao===undefined){ changes.crm_situacao=null; changes.crm_decisao_prevista=null; }
   const o=todosOrc.find(x=>x.id===id); if(o) Object.assign(o, changes);
   lsOrcAtualizar(id, changes);
   if(o) sincronizarBaixaOrcamento(o);
@@ -11100,6 +11102,15 @@ const CRM_ETAPAS=[
 ];
 const CRM_MOTIVOS_PERDA=['Preço','Concorrência','Desistiu / adiou','Sem retorno','Outro'];
 const _CRM_JANELA_DIAS=90; // Concluído/Perdido mostram só os últimos 90 dias (o resto fica no Histórico)
+// Situação — por que a negociação está demorando (comum em manutenção/condomínio:
+// decisão passa por síndico → conselho → assembleia, ou o cliente está comparando
+// orçamentos com outros prestadores). Some quando o card sai de "pendente".
+const CRM_SITUACOES=[
+  {id:'aguardando_aprovacao', emoji:'🗳️', label:'Aguardando aprovação (síndico/conselho)'},
+  {id:'concorrencia',         emoji:'⚔️', label:'Concorrência — comparando orçamentos'},
+  {id:'negociando_valor',     emoji:'💰', label:'Negociando valor/condição'}
+];
+const CRM_PAPEIS_CONTATO=['Síndico','Síndico profissional','Conselho/Administradora','Zelador','Financeiro'];
 
 function _crmEtapaDoOrc(o){
   const st=o.status||'pendente';
@@ -11129,6 +11140,43 @@ function _crmFuStatus(o){ // 'atrasado' | 'hoje' | 'futuro' | null
   return 'futuro';
 }
 function _crmDataBr(iso){ if(!iso) return ''; const p=String(iso).slice(0,10).split('-'); return p.length===3?`${p[2]}/${p[1]}`:iso; }
+function _crmSituacaoCfg(id){ return CRM_SITUACOES.find(s=>s.id===id)||null; }
+function _crmDiasNaEtapa(o){
+  const ref=o.etapa_desde||o.data_criacao; if(!ref) return 0;
+  const t=new Date(ref).getTime(); if(isNaN(t)) return 0;
+  return Math.max(0,Math.floor((Date.now()-t)/86400000));
+}
+function _crmContatos(o){
+  try{ const c=typeof o.crm_contatos==='string'?JSON.parse(o.crm_contatos):o.crm_contatos; return Array.isArray(c)?c:[]; }
+  catch(e){ return []; }
+}
+// Cliente do orçamento — usado só pra detectar "tipo:condominio" e enriquecer a UX do funil,
+// nunca pra decisão de negócio (fallback silencioso se o cadastro não tiver o campo).
+function _crmCliente(o){
+  try{
+    const lista=lsCliLer();
+    return (o.cliente_id&&lista.find(x=>x.id===o.cliente_id)) || lista.find(x=>x.nome===o.cliente) || null;
+  }catch(e){ return null; }
+}
+function _crmEhCondominio(o){ return _crmCliente(o)?.tipo==='condominio'; }
+// Mensagem de WhatsApp adaptada à situação real da negociação — cobrança educada,
+// nunca genérica ("posso ajudar?"), reforçando o que falta pra decisão andar.
+function notifOrcamentoPorSituacao(o){
+  const nome=(o.cliente||'').split(' ')[0]||'';
+  const sit=o.crm_situacao;
+  const numero='#'+String(o.numero||'').padStart(3,'0');
+  if(sit==='aguardando_aprovacao'){
+    const prev=o.crm_decisao_prevista?` Fico no aguardo da reunião${o.crm_decisao_prevista?' do dia '+_crmDataBr(o.crm_decisao_prevista):''}.`:'';
+    return `Olá${nome?', '+nome:''}! Passando para saber se já há novidade da aprovação do orçamento ${numero} pelo síndico/conselho.${prev} Qualquer dúvida adicional que ajude a decidir, é só chamar 🙂`;
+  }
+  if(sit==='concorrencia'){
+    return `Olá${nome?', '+nome:''}! Sei que vocês devem estar avaliando outras opções para o serviço — fico à disposição para tirar dúvidas sobre o orçamento ${numero} ou ajustar alguma condição. Nosso diferencial é o acompanhamento e a garantia do serviço, não só o preço. Posso ajudar em algo?`;
+  }
+  if(sit==='negociando_valor'){
+    return `Olá${nome?', '+nome:''}! Sobre o orçamento ${numero}, consigo ver com a gestão se cabe algum ajuste nas condições de pagamento para fechar. Qual seria o formato ideal pra vocês?`;
+  }
+  return typeof notifOrcamento==='function' ? notifOrcamento(o) : `Olá${nome?', '+nome:''}! Passando para saber sobre o orçamento ${numero}.`;
+}
 
 function renderCRM(){
   const board=document.getElementById('crm-board'); if(!board) return;
@@ -11210,6 +11258,11 @@ function _crmCardHTML(o, etapa){
   const cls=fu==='atrasado'?'followup-atrasado':fu==='hoje'?'followup-hoje':frio?'esfriando':'';
   const dias=_crmDiasSemContato(o);
   const chips=[];
+  const sitCfg=etapa==='pendente'?_crmSituacaoCfg(o.crm_situacao):null;
+  if(sitCfg){
+    const prev=sitCfg.id==='aguardando_aprovacao'&&o.crm_decisao_prevista?' · decide '+_crmDataBr(o.crm_decisao_prevista):'';
+    chips.push(`<span class="crm-chip sit-${sitCfg.id}">${sitCfg.emoji}${prev}</span>`);
+  }
   if(fu==='atrasado') chips.push(`<span class="crm-chip fu-atrasado">📞 ${_crmDataBr(o.proximo_contato)}</span>`);
   else if(fu==='hoje') chips.push(`<span class="crm-chip fu-hoje">📞 hoje</span>`);
   else if(fu==='futuro') chips.push(`<span class="crm-chip fu-futuro">📞 ${_crmDataBr(o.proximo_contato)}</span>`);
@@ -11217,11 +11270,14 @@ function _crmCardHTML(o, etapa){
   if(etapa==='perdido'&&o.motivo_perda) chips.push(`<span class="crm-chip frio">${esc(o.motivo_perda)}</span>`);
   const notas=_crmNotas(o);
   if(notas.length) chips.push(`<span class="crm-chip frio">📝 ${notas.length}</span>`);
+  const contatos=_crmContatos(o);
+  if(contatos.length) chips.push(`<span class="crm-chip frio" title="Contatos envolvidos na decisão">🧵 ${contatos.length+1}</span>`);
+  const condo=_crmEhCondominio(o);
   return `<div class="crm-card ${cls}" draggable="true"
     ondragstart="_crmDragStart(event,'${o.id}')" ondragend="_crmDragEnd(event)"
     onclick="abrirCrmCard('${o.id}')" role="button" tabindex="0"
     onkeydown="if(event.key==='Enter')abrirCrmCard('${o.id}')">
-    <div class="crm-card-top"><div class="crm-card-cli">${esc(o.cliente||'—')}</div><div class="crm-card-num">#${String(o.numero||'').padStart(3,'0')}</div></div>
+    <div class="crm-card-top"><div class="crm-card-cli">${condo?'🏢 ':''}${esc(o.cliente||'—')}</div><div class="crm-card-num">#${String(o.numero||'').padStart(3,'0')}</div></div>
     <div class="crm-card-valor">${brl(parseFloat(o.total)||0)}</div>
     <div class="crm-card-meta">${chips.join('')}${getOrigemBadge(o.origem_cliente)||''}</div>
   </div>`;
@@ -11273,24 +11329,57 @@ function abrirCrmCard(id){
   const etapa=_crmEtapaDoOrc(o);
   const etCfg=CRM_ETAPAS.find(e=>e.id===etapa);
   const notas=_crmNotas(o).slice().reverse();
+  const contatos=_crmContatos(o);
   const svs=(o.servicos||[]).map(s=>s.desc).filter(Boolean).join(', ');
+  const diasEtapa=_crmDiasNaEtapa(o);
+  const condo=_crmEhCondominio(o);
+  const sitAtual=o.crm_situacao||'';
   document.getElementById('crm-modal').innerHTML=`
-    <h3>${esc(o.cliente||'—')} <span class="crm-card-num">#${String(o.numero||'').padStart(3,'0')}</span></h3>
+    <h3>${condo?'🏢 ':''}${esc(o.cliente||'—')} <span class="crm-card-num">#${String(o.numero||'').padStart(3,'0')}</span></h3>
     <div class="crm-modal-sub">
       <span class="crm-chip" style="background:${etCfg.cor}22;color:${etCfg.cor}">${etCfg.nome}</span>
       ${brl(parseFloat(o.total)||0)}${svs?' · '+esc(svs):''}
+      ${etapa==='pendente'?` · há ${diasEtapa}d nesta etapa`:''}
       ${etapa==='perdido'&&o.motivo_perda?' · Motivo: '+esc(o.motivo_perda):''}
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
-      ${o.tel_cliente?`<button type="button" class="crm-etapa-btn" style="background:var(--wa);color:white;border-color:var(--wa)" onclick="enviarNotifWA(notifOrcamento(todosOrc.find(x=>x.id==='${id}')), '${esc(o.tel_cliente)}')">💬 WhatsApp</button>`:''}
+      ${o.tel_cliente?`<button type="button" class="crm-etapa-btn" style="background:var(--wa);color:white;border-color:var(--wa)" onclick="enviarNotifWA(notifOrcamentoPorSituacao(todosOrc.find(x=>x.id==='${id}')), '${esc(o.tel_cliente)}')">💬 ${sitAtual?'Mensagem p/ situação':'WhatsApp'}</button>`:''}
       <button type="button" class="crm-etapa-btn" onclick="fecharCrmCard();abrirOrc('${id}')">📄 Abrir orçamento</button>
     </div>
+    ${etapa==='pendente'?`
+    <div class="fl" style="margin-bottom:14px">
+      <label>🎯 Por que ainda não fechou?</label>
+      <select id="crm-situacao-sel" onchange="_crmToggleDecisaoField(this.value)">
+        <option value="">— Aguardando retorno (padrão) —</option>
+        ${CRM_SITUACOES.map(s=>`<option value="${s.id}" ${sitAtual===s.id?'selected':''}>${s.emoji} ${s.label}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fl" id="crm-decisao-wrap" style="margin-bottom:14px;display:${sitAtual==='aguardando_aprovacao'?'':'none'}">
+      <label>🗓️ Previsão da assembleia/reunião de decisão</label>
+      <input type="date" id="crm-decisao-data" value="${o.crm_decisao_prevista||''}">
+    </div>
+    <button type="button" class="crm-etapa-btn" style="width:100%;margin-bottom:16px" onclick="crmSalvarSituacao('${id}')">Salvar situação</button>
+    `:''}
     <div class="fl" style="margin-bottom:14px">
       <label>📞 Próximo contato</label>
       <div style="display:flex;gap:8px">
         <input type="date" id="crm-fu-data" value="${o.proximo_contato||''}" style="flex:1">
         <button type="button" class="crm-etapa-btn" onclick="crmSalvarFollowup('${id}')">Salvar</button>
       </div>
+    </div>
+    <div class="fl" style="margin-bottom:6px">
+      <label>🧵 Quem mais decide? ${condo?'(condomínio — síndico/conselho costumam decidir juntos)':''}</label>
+      ${contatos.length?contatos.map((c,i)=>`<div class="crm-contato-item">
+          <div class="crm-contato-info"><b>${esc(c.nome||'')}</b>${c.papel?' · '+esc(c.papel):''}${c.tel?' · '+esc(c.tel):''}</div>
+          <button type="button" class="tb" title="Remover contato" onclick="crmRemoverContato('${id}',${i})">✕</button>
+        </div>`).join(''):''}
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+        <input type="text" id="crm-ct-nome" placeholder="Nome" style="flex:2;min-width:100px">
+        <input type="text" id="crm-ct-papel" list="crm-papeis-dl" placeholder="Papel (síndico...)" style="flex:2;min-width:120px">
+        <input type="text" id="crm-ct-tel" placeholder="Telefone" style="flex:1;min-width:90px">
+        <button type="button" class="crm-etapa-btn" onclick="crmAddContato('${id}')">+ Adicionar</button>
+      </div>
+      <datalist id="crm-papeis-dl">${CRM_PAPEIS_CONTATO.map(p=>`<option value="${p}">`).join('')}</datalist>
     </div>
     <div class="fl" style="margin-bottom:6px">
       <label>📝 Registrar contato</label>
@@ -11310,6 +11399,10 @@ function abrirCrmCard(id){
     <button type="button" class="crm-etapa-btn" style="width:100%;margin-top:14px" onclick="fecharCrmCard()" aria-label="Fechar">Fechar</button>`;
   document.getElementById('crm-modal-bg').classList.add('on');
 }
+function _crmToggleDecisaoField(sit){
+  const wrap=document.getElementById('crm-decisao-wrap'); if(!wrap) return;
+  wrap.style.display=sit==='aguardando_aprovacao'?'':'none';
+}
 function fecharCrmCard(){ document.getElementById('crm-modal-bg').classList.remove('on'); }
 
 // ── Persistência dos campos CRM (mesmo caminho local-first dos orçamentos) ──
@@ -11319,6 +11412,40 @@ function _crmPatch(id, changes){
   lsOrcAtualizar(id, changes);
   if(dbOk&&db&&!String(id).startsWith('local_'))
     orcSyncUpdate(id, changes).catch(e=>console.warn('[crmPatch]', e?.message||e));
+}
+function crmSalvarSituacao(id){
+  const o=todosOrc.find(x=>x.id===id); if(!o) return;
+  const sit=gV('crm-situacao-sel')||null;
+  const decisao=sit==='aguardando_aprovacao'?(gV('crm-decisao-data')||null):null;
+  const changes={crm_situacao:sit, crm_decisao_prevista:decisao};
+  // Sugere (nunca sobrescreve) o próximo contato: alguns dias após a decisão prevista,
+  // respeitando o calendário real do condomínio em vez de cobrar antes da assembleia acontecer.
+  if(sit==='aguardando_aprovacao' && decisao && !o.proximo_contato){
+    const dt=new Date(decisao+'T00:00:00'); dt.setDate(dt.getDate()+2);
+    changes.proximo_contato=dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');
+  }
+  _crmPatch(id, changes);
+  toast('🎯 Situação atualizada');
+  abrirCrmCard(id); renderCRM();
+}
+function crmAddContato(id){
+  const nome=(gV('crm-ct-nome')||'').trim();
+  if(!nome){ toast('Informe pelo menos o nome do contato.'); return; }
+  const papel=(gV('crm-ct-papel')||'').trim();
+  const tel=(gV('crm-ct-tel')||'').trim();
+  const o=todosOrc.find(x=>x.id===id); if(!o) return;
+  const contatos=_crmContatos(o);
+  contatos.push({nome, papel, tel});
+  _crmPatch(id,{crm_contatos:contatos});
+  toast('🧵 Contato adicionado');
+  abrirCrmCard(id); renderCRM();
+}
+function crmRemoverContato(id, idx){
+  const o=todosOrc.find(x=>x.id===id); if(!o) return;
+  const contatos=_crmContatos(o);
+  contatos.splice(idx,1);
+  _crmPatch(id,{crm_contatos:contatos});
+  abrirCrmCard(id); renderCRM();
 }
 function crmSalvarFollowup(id){
   const v=gV('crm-fu-data')||null;
