@@ -938,7 +938,7 @@
         <div class="fl">
           <label>Foto 1</label>
           <div class="foto-area" onclick="document.getElementById('os-foto-inp-0').click()">
-            <input type="file" id="os-foto-inp-0" accept="image/*" capture="environment" onchange="carregarOSFoto(this,0)" style="display:none">
+            <input type="file" id="os-foto-inp-0" accept="image/*" onchange="carregarOSFoto(this,0)" style="display:none">
             <div class="foto-icon">📷</div>
             <div class="foto-label" id="os-foto-lbl-0">Tirar/selecionar</div>
             <img id="os-foto-prev-0" class="foto-preview" alt="foto 1">
@@ -948,7 +948,7 @@
         <div class="fl">
           <label>Foto 2</label>
           <div class="foto-area" onclick="document.getElementById('os-foto-inp-1').click()">
-            <input type="file" id="os-foto-inp-1" accept="image/*" capture="environment" onchange="carregarOSFoto(this,1)" style="display:none">
+            <input type="file" id="os-foto-inp-1" accept="image/*" onchange="carregarOSFoto(this,1)" style="display:none">
             <div class="foto-icon">📷</div>
             <div class="foto-label" id="os-foto-lbl-1">Tirar/selecionar</div>
             <img id="os-foto-prev-1" class="foto-preview" alt="foto 2">
@@ -958,7 +958,7 @@
         <div class="fl">
           <label>Foto 3</label>
           <div class="foto-area" onclick="document.getElementById('os-foto-inp-2').click()">
-            <input type="file" id="os-foto-inp-2" accept="image/*" capture="environment" onchange="carregarOSFoto(this,2)" style="display:none">
+            <input type="file" id="os-foto-inp-2" accept="image/*" onchange="carregarOSFoto(this,2)" style="display:none">
             <div class="foto-icon">📷</div>
             <div class="foto-label" id="os-foto-lbl-2">Tirar/selecionar</div>
             <img id="os-foto-prev-2" class="foto-preview" alt="foto 3">
@@ -1084,7 +1084,7 @@
       <div class="fl" style="margin-bottom:14px">
         <label>Foto do Equipamento</label>
         <div class="foto-area" onclick="document.getElementById('eq-foto-input').click()">
-          <input type="file" id="eq-foto-input" accept="image/*" capture="environment" onchange="carregarFotoEq(this)" style="display:none">
+          <input type="file" id="eq-foto-input" accept="image/*" onchange="carregarFotoEq(this)" style="display:none">
           <div class="foto-icon">📷</div>
           <div class="foto-label" id="eq-foto-lbl">Tirar foto ou selecionar imagem</div>
           <img id="eq-foto-prev" class="foto-preview" alt="foto">
@@ -1659,7 +1659,7 @@
       <div class="fl" style="margin-bottom:14px">
         <label>Foto do Comprovante (opcional)</label>
         <div class="foto-area" onclick="document.getElementById('desp-foto-input').click()">
-          <input type="file" id="desp-foto-input" accept="image/*" capture="environment" onchange="carregarFotoDesp(this)" style="display:none">
+          <input type="file" id="desp-foto-input" accept="image/*" onchange="carregarFotoDesp(this)" style="display:none">
           <div class="foto-icon">🧾</div>
           <div class="foto-label" id="desp-foto-lbl">Fotografar comprovante</div>
           <img id="desp-foto-prev" class="foto-preview" alt="comprovante">
