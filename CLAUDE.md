@@ -2361,6 +2361,78 @@ se fosse a fonte de verdade de acesso, quando a fonte de verdade real é
 
 ---
 
+## Sessão 2026-07-20 (continuação 2) — CRM / Funil de Vendas (v1)
+
+> Pedido do Marcos: "preciso deixar esse saas acima da média — designer,
+> usabilidade, funcionalidades fora da curva — encontre mais coisas para
+> implementarmos tipo crm dentro dele". Primeiro item entregue: CRM v1.
+
+### O que é (commit `e7f9612`, sw v33→v34)
+Página **`page-crm`** ("🎯 Funil" na sidebar, gestor+vendas) — kanban de
+orçamentos por etapa, construído 100% em cima da tabela `orcamentos` (nenhuma
+entidade nova):
+
+- **Etapas:** Em negociação (`pendente`) / Aprovado / Concluído / Perdido
+  (`recusado`+`vencido`). **Concluído é DERIVADO** (`_crmEtapaDoOrc`: orçamento
+  aprovado cuja OS vinculada está `concluido`) — não dá pra arrastar pra lá; o
+  card vai sozinho quando a OS conclui. Fechados (concluído/perdido) com mais de
+  **90 dias** somem do funil (ficam no Histórico) — janela `_CRM_JANELA_DIAS`.
+- **Drag & drop** no desktop; no mobile o modal do card tem botões "Mover para".
+  Mover para **Perdido pede o motivo** (Preço/Concorrência/Desistiu/Sem
+  retorno/Outro → coluna `motivo_perda`); reabrir um perdido limpa o motivo.
+- **Follow-ups:** campo `proximo_contato` (date) agendável no modal do card.
+  Painel "📞 Follow-ups do dia" no topo lista atrasados+hoje com botão WhatsApp
+  (reusa `notifOrcamento`/`enviarNotifWA`) e "✓ feito" (limpa a data + registra
+  nota automática). Card fica com borda vermelha (atrasado) / amarela (hoje).
+- **"Esfriando":** pendente com 7+ dias sem contato e sem follow-up futuro →
+  chip "🧊 Xd parado" + contagem no dashboard. Último contato =
+  `max(data_criacao, notas)`.
+- **Notas de contato:** `crm_notas` (jsonb `[{data,texto,usuario}]`) — histórico
+  de interações registrado no modal, contador "📝 N" no card.
+- **Stats:** valor em negociação, conversão 90d (ganhos ÷ decididos),
+  follow-ups de hoje, esfriando.
+- **Ordenação por urgência** na coluna: follow-up atrasado > hoje > esfriando >
+  mais recentes.
+
+### Decisões técnicas
+- **`mudarSt` refatorado** em `_setStatusOrc(id, st, extras)` — núcleo
+  compartilhado entre o select do Histórico e o funil. Preserva TUDO do fluxo
+  existente: `data_aprovacao`, reserva de estoque (`sincronizarBaixaOrcamento`),
+  modal "criar OS?" ao aprovar, `logAcao`. `extras` permite gravar
+  `motivo_perda` junto na mesma escrita.
+- **Persistência:** `_crmPatch` segue o padrão local-first dos orçamentos
+  (memória + `lsOrcAtualizar` + `orcSyncUpdate` quando online). Colunas novas
+  em `orcamentos` (**`setup-v2-delta19.sql`, JÁ APLICADO** via Management API,
+  verificado): `proximo_contato date`, `crm_notas jsonb DEFAULT '[]'`,
+  `motivo_perda text`. RLS intacta (herda as policies de orcamentos).
+- **Realtime:** os 3 handlers de `orcamentos` (INSERT/UPDATE/DELETE) agora
+  também re-renderizam o funil se `page-crm` estiver aberta.
+- **Kill-switch:** `_crmAtivo()` — `empresas.config.flags.crm === false`
+  esconde o módulo (padrão LIGADO, padrão opt-out igual `_authPerfilAtivo`).
+- **Permissões:** `crm` adicionado a `pagesVendas`/`pagesVendasOk` +
+  `snb-crm: (gestor||vendas)&&_crmAtivo()`. Técnico bloqueado (testado).
+
+### Testado (Browser pane, offline `dbOk=false`, mock de 7 orçamentos + 1 OS)
+Stats/somas/conversão/janela-90d corretos; modal (notas, follow-up, mover);
+motivo de perda; reabrir perdido; "concluído" bloqueado no drag; follow-up
+feito; drag&drop via handlers; persistência no cache local namespaced; perfil
+técnico bloqueado / vendas liberado; flag desliga; mobile 375px sem overflow de
+página (board rola interno) + desktop 1280px com 4 colunas; boot limpo sem erro
+de console; XSS coberto (`esc()` em cliente/notas/motivo/tel).
+
+### Ideias mapeadas para as próximas rodadas (aprovadas em espírito pelo pedido "fora da curva")
+- **Automação de follow-up:** sugestão automática de `proximo_contato` ao criar
+  orçamento (ex.: +3 dias); notificação/badge no app quando há follow-up do dia.
+- **NPS/satisfação pós-serviço:** ao concluir OS, link de avaliação no portal do
+  cliente; nota por técnico no Produtividade.
+- **Contratos recorrentes/financeiro:** MRR dos agendamentos recorrentes,
+  contas a receber, inadimplência real (dados já existem em `vw_analise_*`).
+- **Rota do dia do técnico:** "Minhas OS" com ordenação por proximidade/mapa.
+- **Onboarding guiado:** checklist de primeiros passos pra empresa nova
+  (cadastrar loja → serviços → primeiro orçamento).
+
+---
+
 ## Perguntas em aberto (aguardando Marcos responder)
 
 1. **CNPJs da Fortemp e da Aquamotor** (Fluxa piscinas já preenchido, ver abaixo)
