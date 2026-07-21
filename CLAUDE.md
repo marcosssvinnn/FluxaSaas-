@@ -1120,10 +1120,17 @@ Checklist completo WCAG: `docs/acessibilidade.md`
 
 ## Próxima fase — ainda pendente
 
-### Focus NFe — Módulo 7 (estrutura pronta, aguardando dados)
-- Modal de emissão já existe no HTML/JS
-- Municípios: Camboriú-SC (IBGE 4203204) e Itapema-SC (IBGE 4208450)
-- **Pendente:** CNPJs reais das 3 empresas + tokens Focus NFe
+### Fiscal — Módulo 7 (~~Focus NFe~~ substituído por NFS-e Nacional, ver "Arquitetura fiscal" acima)
+- Modal de emissão já existe no HTML/JS (ainda não religado — Marco 4 do plano fiscal)
+- Municípios: Camboriú-SC (IBGE `4203204`, confirmado) e Itapema-SC
+  (IBGE **`4208302`** — corrigido em 2026-07-20; o valor antigo aqui,
+  `4208450`, estava ERRADO, é o código de Itapoá, cidade diferente. Verificado
+  na API oficial do IBGE antes de usar em qualquer lugar novo. Já corrigido em
+  `lojas.codigo_ibge` via `setup-v2-delta22.sql`.)
+- **Pendente:** CNPJs reais da Fortemp e da Aquamotor (Fluxa piscinas já
+  preenchido); tokens Focus NFe NÃO são mais necessários (decisão do Marcos:
+  usar a NFS-e Nacional, gratuita, em vez de pagar mensalidade de
+  intermediário) — certificado A1 por empresa é o que falta agora.
 
 ### Melhorias futuras mapeadas (não implementadas)
 - Configuração de equipamentos por cliente (quais equipamentos tem no local, salvo no cadastro do cliente)

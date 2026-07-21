@@ -38,10 +38,12 @@ verdade do Marcos.
 
 ## Gaps conhecidos (documentados, não escondidos)
 
-- **`municipioIbge` precisa ser informado explicitamente** em `/emitir` — não
-  há ainda um cadastro de código IBGE por loja (`lojas.cidade` é só o nome da
-  cidade, "Itapema", não o código numérico que a DPS exige). Resolver isso
-  exige uma tabela de referência município→IBGE ou um campo novo em `lojas`.
+- ~~`municipioIbge` precisa ser informado explicitamente~~ → **resolvido**
+  (`setup-v2-delta22.sql`): coluna `lojas.codigo_ibge`, preenchida pra Fluxa
+  piscinas com o código verificado na API oficial do IBGE
+  (`servicodados.ibge.gov.br`) — **4208302**, não 4208450 como estava no
+  código morto do v1 (esse número é o de Itapoá, uma cidade diferente — achado
+  ao verificar em vez de reaproveitar o valor antigo).
 - **A URL exata do endpoint de homologação/produção da SEFIN Nacional**
   (`src/sefinClient.js`) foi obtida por pesquisa em 2026-07 — confirme contra
   a documentação técnica atual (gov.br/nfse) antes do primeiro teste real,

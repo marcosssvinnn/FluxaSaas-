@@ -470,18 +470,12 @@
 
     <!-- NOTA FISCAL -->
     <div class="card">
-      <div class="ct">📄 Nota Fiscal — Focus NFe</div>
-      <p style="font-size:13px;color:var(--gray);margin-bottom:14px">Configure o token da API Focus NFe para emitir NF-e (produtos) e NFS-e (serviços). Obtenha o token em <strong>focusnfe.com.br</strong> → Conta → API Tokens.</p>
-      <div class="row">
-        <div class="fl">
-          <label>Token Focus NFe (Produção)</label>
-          <input type="text" id="cfg-nfe-token-prod" placeholder="token_producao_…">
-        </div>
-        <div class="fl">
-          <label>Token Focus NFe (Homologação)</label>
-          <input type="text" id="cfg-nfe-token-hom" placeholder="token_homologacao_…">
-        </div>
-      </div>
+      <div class="ct">📄 Nota Fiscal — NFS-e Nacional</div>
+      <p style="font-size:13px;color:var(--gray);margin-bottom:14px">Emissão via certificado digital A1 da empresa, sem mensalidade de intermediário (NFS-e Nacional é uma API gratuita da Receita Federal). Upload do certificado: em breve nesta tela — por enquanto, preencha os dados fiscais abaixo.</p>
+      <!-- Campos de "Token Focus NFe" removidos em 2026-07-20 — nunca foram
+           lidos por nenhum código (nem app.js nem o microsserviço fiscal
+           novo), enganavam achando que configuravam algo. A emissão agora usa
+           certificado A1 por empresa (fiscal-service/), não token de terceiro. -->
       <div class="row f3">
         <div class="fl">
           <label>CNPJ da Empresa (para NF)</label>
@@ -2440,12 +2434,11 @@
       <div class="nfe-info-row"><span class="lbl">Serviços</span><span class="val" id="nfe-svcs" style="word-break:break-word">—</span></div>
     </div>
 
-    <!-- Token Focus NFe (se não configurado na loja) -->
+    <!-- Campo de "Token Focus NFe" removido em 2026-07-20 (nunca lido por
+         nenhum código — emissão agora usa certificado A1, ver fiscal-service/).
+         Mantido o resto do wrapper: ambiente/referência ainda são usados de
+         verdade (abrirModalNFe(), app.js). -->
     <div id="nfe-token-wrap" style="margin-bottom:14px">
-      <div class="fl" style="margin-bottom:10px">
-        <label>Token Focus NFe <span style="font-weight:400;color:var(--gray);text-transform:none;letter-spacing:0">(configure em Empresa → Nota Fiscal)</span></label>
-        <input type="text" id="nfe-token-input" placeholder="token_producao_ou_homologacao" style="font-size:13px">
-      </div>
       <div class="row">
         <div class="fl">
           <label>Ambiente</label>

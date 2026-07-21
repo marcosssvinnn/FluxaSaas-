@@ -73,11 +73,12 @@ export async function buscarOrcamento(orcamentoId, empresaId) {
 export async function buscarDadosFiscaisLoja(lojaId) {
   const { data, error } = await supabaseAdmin
     .from("lojas")
-    .select("cnpj, razao_social, inscricao_municipal, regime_tributario, codigo_servico_municipal, iss_aliquota, cidade")
+    .select("cnpj, razao_social, inscricao_municipal, regime_tributario, codigo_servico_municipal, iss_aliquota, cidade, codigo_ibge")
     .eq("id", lojaId)
     .single();
   if (error) throw new Error(`Dados fiscais da loja não encontrados: ${error.message}`);
   if (!data.cnpj) throw new Error("Loja sem CNPJ cadastrado — preencha em Configurações antes de emitir nota.");
+  if (!data.codigo_ibge) throw new Error("Loja sem código IBGE do município cadastrado — preencha em Configurações antes de emitir nota.");
   return data;
 }
 

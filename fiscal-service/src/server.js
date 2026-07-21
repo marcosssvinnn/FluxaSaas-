@@ -93,18 +93,11 @@ app.post("/emitir", async (req, res) => {
       const { pfxBase64, senha } = await obterCertificado(empresaId);
       const { keyPem, certPem } = extrairChaveECertificado(Buffer.from(pfxBase64, "base64"), senha);
 
-      // TODO (gap conhecido, documentado no plano): `lojas.cidade` é o NOME da
-      // cidade ("Itapema"), não o código IBGE que a DPS exige em cLocEmi/
-      // cLocPrestacao. Não dá pra adivinhar esse código — teria que vir de uma
-      // tabela de referência município→IBGE ou ser cadastrado manualmente por
-      // loja. Por enquanto exige que o chamador informe explicitamente (evita
-      // mandar um código errado/inventado pro governo); resolver isso é um
-      // passo pendente antes de usar esta rota de verdade.
-      if (!req.body.municipioIbge) {
-        return res.status(400).json({
-          erro: "Falta o código IBGE do município — ainda não há um cadastro disso por loja (gap conhecido, ver README).",
-        });
-      }
+      // Código IBGE agora vem de lojas.codigo_ibge (setup-v2-delta22.sql) —
+      // gap fechado. Antes exigia isso explicitamente no corpo da requisição
+      // pra evitar mandar um código adivinhado; agora vem de um cadastro real,
+      // verificado contra a API oficial do IBGE (achado: o código antigo do
+      // código morto do v1 pra Itapema estava ERRADO — era o de Itapoá).
 
       const idDPS = `DPS${randomUUID().replace(/-/g, "")}`;
       const xmlSemAssinar = montarXmlDPS({
@@ -114,7 +107,7 @@ app.post("/emitir", async (req, res) => {
         serie: "00001",
         numeroDPS: String(orcamento.numero),
         competencia: new Date().toISOString().slice(0, 10),
-        municipioIbge: req.body.municipioIbge,
+        municipioIbge: dadosFiscaisLoja.codigo_ibge,
         prestadorCnpj: dadosFiscaisLoja.cnpj.replace(/\D/g, ""),
         prestadorNome: dadosFiscaisLoja.razao_social || dadosFiscaisLoja.cnpj,
         tomadorDoc: orcamento.cnpj
