@@ -1,12 +1,17 @@
 // Altere este número a cada novo deploy para forçar atualização em todos os dispositivos
 // (não é mais obrigatório: o index.html detecta novas versões sozinho via ETag/Last-Modified)
-const CACHE = 'fluxa-v36';
+const CACHE = 'fluxa-v37';
 
 const URLS = [
   'libs/supabase.min.js',
   'libs/emailjs.min.js',
   'libs/html2pdf.bundle.min.js',
   'libs/chart.umd.min.js',
+  'native.js',
+  'manifest.json',
+  'icons/icon-192.png',
+  'icons/icon-512.png',
+  'icons/apple-touch-icon.png',
   'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap'
 ];
 
