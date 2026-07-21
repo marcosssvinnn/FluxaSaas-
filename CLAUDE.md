@@ -2503,6 +2503,63 @@ Fontes da pesquisa: [Deal Velocity — GoConsensus](https://goconsensus.com/blog
 
 ---
 
+## Sessão 2026-07-20 (continuação 3) — Reorganização da interface: Painel como tela inicial (commit `9dcac5f`, sw v35→v36)
+
+Pedido do Marcos: interface "acima da média" — a primeira tela deveria ser
+gerencial (insights do mês: orçamentos, faturamento, CRM, estoque), e a
+lateral deveria priorizar as ferramentas mais usadas (funil, histórico,
+estoque, novo orçamento...).
+
+- **Nova página `page-painel`** — landing do gestor (login PIN, seleção de
+  loja E reload/boot-restore — os 3 caminhos foram atualizados). Conteúdo:
+  saudação + mês atual, 4 botões de ação rápida (Novo Orçamento / Nova OS /
+  Ver Funil / Ver Estoque), os 4 KPIs do mês (total emitido, aprovados, a
+  receber, ticket médio), **resumo do Funil de Vendas** (em negociação,
+  conversão 90d, follow-ups de hoje, esfriando — com alerta vermelho clicável
+  quando há atrasado), gráfico de faturamento, origem de clientes e alertas de
+  estoque (repor/encomendas).
+- **Não duplicou nada** — todo esse conteúdo (KPIs/gráfico/origem/estoque)
+  **morava dentro de "Histórico"** e foi só migrado de lugar; Histórico agora
+  é exclusivamente a lista de orçamentos com navegação por mês e filtros
+  (mais limpo, sem dashboard misturado com a lista de trabalho).
+- **`_crmComputarStats()`** — o cálculo de números do funil (que já existia
+  dentro de `renderCRM`) foi extraído pra uma função própria, reusada tanto
+  pelo board completo quanto pelo novo `renderPainelCRM()` — garante que o
+  resumo do Painel NUNCA mostre um número diferente do Funil completo (mesma
+  fonte de verdade, sem duplicar lógica).
+- **Bug de passagem corrigido:** `go('crm')` não chamava `loadOSHist()` —
+  quem entrasse direto no Funil sem antes visitar "Hist. OS" tinha
+  `todosOS` vazio, e a coluna "Concluído" nunca detectava que a OS de um
+  orçamento aprovado já tinha sido concluída (ficava preso em "Aprovado" pra
+  sempre). Corrigido chamando `loadOSHist()` também no `go('painel')`.
+- **Sidebar reordenada por frequência de uso** (pedido explícito, nesta
+  ordem): Painel → Funil → Histórico → Estoque → Orçamento → OS → Agenda →
+  Vistorias → (Minhas OS, só técnico) — resto (Clientes, Hist. OS,
+  Equipamentos, Despesas, Produtividade) fica em "Mais opções". **Só mudou a
+  ordem do HTML — nenhuma regra de permissão foi alterada**; vendas/técnico
+  continuam vendo exatamente o mesmo subconjunto de sempre, só que na nova
+  ordem onde aplicável.
+- **Permissão do Painel:** gestor-only (`snb-painel: gestor`, mesmo padrão de
+  Estoque/Despesas/Produtividade) — vendas continua caindo em Orçamento,
+  técnico continua em Minhas OS, nenhum dos dois vê ou acessa `page-painel`
+  (bloqueado tanto na UI quanto no `go()`, que já rejeita página fora do
+  allow-list de cada perfil).
+
+**Testado no Browser pane:** KPIs e resumo do funil no Painel batendo
+exatamente com os números do Funil completo (mesma fonte); Histórico
+confirmado sem dashboard duplicado; roteamento testado nos 3 perfis (gestor
+abre Painel; vendas e técnico bloqueados, tanto por click real na sidebar
+quanto por chamada direta de `go('painel')`); mobile 375px sem overflow
+horizontal (ações e KPIs em grid 2×2, cards do funil resumido também);
+clique real no botão "Funil" da sidebar abrindo o board completo e
+mostrando a etapa "Concluído" corretamente (prova do fix do `loadOSHist`).
+Login/reload via Supabase Auth real não foi clicado (mesma limitação de
+sempre — Claude não digita senha); a lógica de roteamento em si (`eGestor()`
+→ `go('painel')`) foi validada diretamente chamando as funções de login
+internas (`confirmarLojaGestor`) com sessão mockada.
+
+---
+
 ## Perguntas em aberto (aguardando Marcos responder)
 
 1. **CNPJs da Fortemp e da Aquamotor** (Fluxa piscinas já preenchido, ver abaixo)
