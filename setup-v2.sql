@@ -124,6 +124,9 @@ CREATE TABLE IF NOT EXISTS orcamentos (
   valor_recebido numeric(10,2) DEFAULT 0,
   status text DEFAULT 'pendente', data_aprovacao timestamptz,
   nota_interna text, cnpj text, loja_id text, origem_cliente text,
+  proximo_contato date,            -- CRM: data do próximo follow-up
+  crm_notas jsonb DEFAULT '[]',    -- CRM: histórico de contatos [{data,texto,usuario}]
+  motivo_perda text,               -- CRM: por que perdeu (recusado/vencido)
   data_criacao timestamptz DEFAULT now()
 );
 

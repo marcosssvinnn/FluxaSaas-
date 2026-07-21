@@ -241,6 +241,7 @@
     <button class="snb on" id="snb-form" onclick="go('form')"><span class="sicon">＋</span><span class="slabel">Orçamento</span></button>
     <button class="snb" id="snb-os" onclick="novaOS();go('os')"><span class="sicon">📋</span><span class="slabel">OS</span></button>
     <button class="snb" id="snb-history" onclick="go('history')"><span class="sicon">📊</span><span class="slabel">Histórico</span></button>
+    <button class="snb" id="snb-crm" onclick="go('crm')"><span class="sicon">🎯</span><span class="slabel">Funil</span></button>
     <button class="snb" id="snb-minhas-os" onclick="go('minhas-os')" style="display:none"><span class="sicon">📋</span><span class="slabel">Minhas OS</span></button>
     <button class="snb" id="snb-visitas" onclick="go('visitas')"><span class="sicon">🔍</span><span class="slabel">Vistorias</span></button>
     <button class="snb" id="snb-agendamentos" onclick="go('agendamentos')"><span class="sicon">📅</span><span class="slabel">Agenda</span></button>
@@ -979,6 +980,30 @@
 </div>
 
 <!-- ══ PAGE: EQUIPAMENTOS ══ -->
+<!-- ═══════════ CRM / FUNIL DE VENDAS ═══════════ -->
+<div class="page" id="page-crm">
+  <div class="wrap">
+    <div class="dash">
+      <div class="dc o"><div class="dl">Em Negociação</div><div class="dv" id="crm-d-neg">—</div><div class="ds" id="crm-d-neg-q">— orçamentos</div></div>
+      <div class="dc g"><div class="dl">Conversão (90d)</div><div class="dv" id="crm-d-conv">—</div><div class="ds">aprovados ÷ decididos</div></div>
+      <div class="dc y"><div class="dl">Follow-ups Hoje</div><div class="dv" id="crm-d-fu">—</div><div class="ds" id="crm-d-fu-q">a contatar</div></div>
+      <div class="dc b"><div class="dl">Esfriando</div><div class="dv" id="crm-d-frio">—</div><div class="ds">7+ dias sem contato</div></div>
+    </div>
+
+    <div class="card" id="crm-fu-card" style="display:none">
+      <div class="ct">📞 Follow-ups do dia</div>
+      <div id="crm-fu-lista"></div>
+    </div>
+
+    <div class="crm-board" id="crm-board"></div>
+  </div>
+</div>
+
+<!-- Modal do card CRM -->
+<div class="crm-modal-bg" id="crm-modal-bg" role="dialog" aria-modal="true" onclick="if(event.target===this)fecharCrmCard()">
+  <div class="crm-modal" id="crm-modal"></div>
+</div>
+
 <div class="page" id="page-equipamentos">
   <div class="wrap">
     <button class="btn-voltar" onclick="voltar()">← Voltar</button>

@@ -1095,3 +1095,51 @@
     .nfe-info-row .val{color:var(--c2)}
     .nfe-hist-item{padding:10px 0;border-bottom:1px solid var(--gray-light);display:flex;align-items:center;gap:10px}
     .nfe-hist-item:last-child{border-bottom:none}
+
+    /* ── CRM / FUNIL DE VENDAS ── */
+    .crm-board{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;align-items:start}
+    @media(max-width:900px){
+      .crm-board{display:flex;overflow-x:auto;gap:12px;padding-bottom:10px;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity}
+      .crm-col{min-width:262px;flex-shrink:0;scroll-snap-align:start}
+    }
+    .crm-col{background:var(--gray-light);border-radius:var(--r);padding:10px;min-height:120px;transition:background .15s}
+    .crm-col.drag-over{background:var(--c1-light);outline:2px dashed var(--c1);outline-offset:-2px}
+    .crm-col-hdr{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:2px 4px 10px}
+    .crm-col-titulo{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;gap:6px}
+    .crm-col-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+    .crm-col-count{font-size:11px;font-weight:700;color:var(--gray);background:var(--white);border-radius:50px;padding:2px 8px}
+    .crm-col-total{font-size:11px;font-weight:700;color:var(--gray);padding:0 4px 8px}
+    .crm-card{background:var(--white);border-radius:10px;padding:10px 12px;margin-bottom:8px;box-shadow:var(--sh);cursor:pointer;border-left:4px solid transparent;transition:transform .1s,box-shadow .1s}
+    .crm-card:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(0,0,0,.1)}
+    .crm-card.followup-atrasado{border-left-color:var(--red)}
+    .crm-card.followup-hoje{border-left-color:var(--yellow)}
+    .crm-card.esfriando{border-left-color:#94a3b8}
+    .crm-card.dragging{opacity:.4}
+    .crm-card-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+    .crm-card-cli{font-size:13px;font-weight:700;color:var(--c2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+    .crm-card-num{font-size:10px;font-weight:700;color:var(--gray);flex-shrink:0}
+    .crm-card-valor{font-size:14px;font-weight:800;color:var(--c1);margin:3px 0 5px}
+    .crm-card-meta{display:flex;gap:5px;flex-wrap:wrap;align-items:center;font-size:10px;color:var(--gray)}
+    .crm-chip{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:50px;font-size:10px;font-weight:700}
+    .crm-chip.fu-atrasado{background:var(--red-bg);color:var(--red)}
+    .crm-chip.fu-hoje{background:var(--yellow-bg);color:var(--yellow)}
+    .crm-chip.fu-futuro{background:var(--blue-bg);color:var(--blue)}
+    .crm-chip.frio{background:#f1f5f9;color:#64748b}
+    .crm-vazio{font-size:11px;color:var(--gray);text-align:center;padding:14px 4px}
+    .crm-fu-item{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--gray-light)}
+    .crm-fu-item:last-child{border-bottom:none}
+    .crm-fu-info{flex:1;min-width:0}
+    .crm-fu-cli{font-size:13px;font-weight:700;color:var(--c2)}
+    .crm-fu-det{font-size:11px;color:var(--gray);margin-top:1px}
+    .crm-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:800;display:none;align-items:center;justify-content:center;padding:16px}
+    .crm-modal-bg.on{display:flex}
+    .crm-modal{background:var(--white);border-radius:16px;padding:24px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+    .crm-modal h3{font-size:17px;font-weight:800;color:var(--c2);margin-bottom:2px}
+    .crm-modal-sub{font-size:12px;color:var(--gray);margin-bottom:14px}
+    .crm-nota-item{padding:8px 10px;background:var(--gray-light);border-radius:8px;margin-bottom:6px;font-size:12px;color:var(--c2)}
+    .crm-nota-meta{font-size:10px;color:var(--gray);margin-top:2px}
+    .crm-etapa-btns{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+    .crm-etapa-btn{padding:8px 12px;border:1.5px solid var(--gray-mid);border-radius:8px;background:var(--white);font-family:'Inter',sans-serif;font-size:12px;font-weight:700;cursor:pointer;color:var(--c2);min-height:44px}
+    .crm-etapa-btn:hover{border-color:var(--c1);color:var(--c1)}
+    .crm-motivo-chip{padding:8px 12px;border:1.5px solid var(--gray-mid);border-radius:50px;background:var(--white);font-family:'Inter',sans-serif;font-size:12px;font-weight:600;cursor:pointer;color:var(--c2);min-height:44px}
+    .crm-motivo-chip.sel{border-color:var(--c1);background:var(--c1-light);color:var(--c1)}

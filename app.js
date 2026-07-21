@@ -96,6 +96,7 @@ function aplicarPermissoesPerfil(){
   const snbRules = {
     'snb-form'         : gestor||vendas,
     'snb-history'      : gestor||vendas,
+    'snb-crm'          : (gestor||vendas)&&_crmAtivo(),
     'snb-clientes'     : gestor||vendas,
     'snb-agendamentos' : gestor||vendas,
     'snb-os'           : gestor||vendas,
@@ -179,7 +180,7 @@ function aplicarPermissoesPerfil(){
   // ── Redirecionamentos ──
   const pAtiva=document.querySelector('.page.on');
   const pid=pAtiva?pAtiva.id.replace('page-',''):'';
-  const pagesVendasOk=['form','history','clientes','agendamentos','os'];
+  const pagesVendasOk=['form','history','crm','clientes','agendamentos','os'];
   const pagesTecnicoOk=['minhas-os','visitas','os']; // 'os' para abrir/preencher a OS atribuída
   if(tecnico && !pagesTecnicoOk.includes(pid)) go('minhas-os');
   if(vendas  && !pagesVendasOk.includes(pid))  go('form');
@@ -1558,6 +1559,7 @@ async function atualizarDados(btn){
     else if(pid==='agendamentos'){ if(typeof loadAgendamentos==='function') await loadAgendamentos(); }
     else if(pid==='estoque'){ if(typeof loadEstoque==='function') await loadEstoque(); }
     else if(pid==='history'){ if(typeof loadHist==='function') await loadHist(); }
+    else if(pid==='crm'){ if(typeof loadHist==='function') await loadHist(); if(typeof renderCRM==='function') renderCRM(); }
     else if(pid==='minhas-os'){ if(typeof loadMinhasOS==='function') await loadMinhasOS(); }
     else if(typeof carregarClientesRemoto==='function'){ await carregarClientesRemoto(); }
     toast('✅ Dados atualizados');
@@ -1909,7 +1911,7 @@ function go(p){
   const _vendas  = eVendas();
   const _tecnico = eTecnico();
   const _gestor  = eGestor();
-  const pagesVendas  = ['form','history','clientes','agendamentos','os'];
+  const pagesVendas  = ['form','history','crm','clientes','agendamentos','os'];
   const pagesTecnico = ['minhas-os','visitas','os']; // 'os' para abrir/preencher a OS atribuída
   if(_vendas  && !pagesVendas.includes(p))  { toast('Você não tem acesso a essa área.'); return; }
   if(_tecnico && !pagesTecnico.includes(p)) { toast('Você não tem acesso a essa área.'); return; }
@@ -1932,6 +1934,7 @@ function go(p){
   closeSidebar();
   if(p==='portal') { /* página gerenciada por checkPortalHash */ }
   if(p==='history'){ initOrcMes(); loadHist(); setTimeout(renderGraficoDash,200); }
+  if(p==='crm'){ if(!_crmAtivo()){ toast('Funil desativado para esta empresa.'); go('history'); return; } renderCRM(); }
   if(p==='form'){
     // Restaura rascunho APENAS quando se navega direto para a tela (nav/menu).
     // Nunca ao editar (abrirOrc), criar novo (novoOrc) ou duplicar — esses fluxos
@@ -3710,7 +3713,12 @@ function _salvarDataAprovacao(id){
 
 async function mudarSt(id, sel){
   const st=sel.value; sel.className='ss '+st;
-  const changes={status:st};
+  await _setStatusOrc(id, st);
+}
+// Núcleo compartilhado de mudança de status (select do histórico + funil CRM).
+// extras = campos adicionais a gravar junto (ex.: motivo_perda no CRM).
+async function _setStatusOrc(id, st, extras){
+  const changes={status:st, ...(extras||{})};
   if(st==='aprovado') changes.data_aprovacao=new Date().toISOString();
   const o=todosOrc.find(x=>x.id===id); if(o) Object.assign(o, changes);
   lsOrcAtualizar(id, changes);
@@ -5150,6 +5158,7 @@ function iniciarRealtimeSync(){
       lsOrcUpsert(novo);
       atualizarDash();
       if(document.getElementById('page-history').classList.contains('on')) renderTabela();
+      if(document.getElementById('page-crm')?.classList.contains('on')) renderCRM();
       toast('🔔 Novo orçamento #'+String(novo.numero||'').padStart(3,'0')+' (outro dispositivo)');
     })
     .on('postgres_changes',_rtCfg('UPDATE','orcamentos'), p=>{
@@ -5159,6 +5168,7 @@ function iniciarRealtimeSync(){
       if(idx>=0) todosOrc[idx]={...todosOrc[idx],...novo}; else todosOrc.unshift(novo);
       atualizarDash();
       if(document.getElementById('page-history').classList.contains('on')) renderTabela();
+      if(document.getElementById('page-crm')?.classList.contains('on')) renderCRM();
       // Reconcilia a reserva de estoque quando o status muda (ex.: cliente aprovou
       // pelo portal → este app, logado como gestor, faz a reserva). É idempotente.
       try{ if(typeof sincronizarReservaOrcamento==='function' && !eVendas()) sincronizarReservaOrcamento(novo); }catch(e){ console.warn('[rt orc reserva]', e?.message||e); }
@@ -5169,6 +5179,7 @@ function iniciarRealtimeSync(){
       lsOrcRemover(id);
       atualizarDash();
       if(document.getElementById('page-history').classList.contains('on')) renderTabela();
+      if(document.getElementById('page-crm')?.classList.contains('on')) renderCRM();
     })
     .on('postgres_changes',_rtCfg('INSERT','equipamentos'), p=>{
       if(todosEq.find(x=>x.id===p.new.id)) return;
@@ -11074,3 +11085,262 @@ setTimeout(_verificarVersaoApp,5*1000);
 setInterval(_verificarVersaoApp,60*1000);
 // Verifica também quando a aba volta ao foco (técnico reabre o app no celular)
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') _verificarVersaoApp(); });
+
+// ═══════════════════════ CRM / FUNIL DE VENDAS ═══════════════════════
+// Kanban de orçamentos por etapa + follow-ups + histórico de contatos.
+// Colunas do banco (delta19): proximo_contato (date), crm_notas (jsonb), motivo_perda (text).
+// Kill-switch por empresa: empresas.config.flags.crm === false esconde o módulo (padrão: ligado).
+function _crmAtivo(){ try{ return !(FLUXA_CONFIG.flags && FLUXA_CONFIG.flags.crm===false); }catch(e){ return true; } }
+
+const CRM_ETAPAS=[
+  {id:'pendente',  nome:'Em negociação', cor:'#f59e0b'},
+  {id:'aprovado',  nome:'Aprovado',      cor:'#16a34a'},
+  {id:'concluido', nome:'Concluído',     cor:'#2563eb'},
+  {id:'perdido',   nome:'Perdido',       cor:'#94a3b8'}
+];
+const CRM_MOTIVOS_PERDA=['Preço','Concorrência','Desistiu / adiou','Sem retorno','Outro'];
+const _CRM_JANELA_DIAS=90; // Concluído/Perdido mostram só os últimos 90 dias (o resto fica no Histórico)
+
+function _crmEtapaDoOrc(o){
+  const st=o.status||'pendente';
+  if(st==='recusado'||st==='vencido') return 'perdido';
+  if(st==='aprovado'){
+    const osV=(todosOS||[]).find(x=>x.orcamento_id===o.id);
+    return (osV&&osV.status==='concluido')?'concluido':'aprovado';
+  }
+  return 'pendente';
+}
+function _crmNotas(o){
+  try{ const n=typeof o.crm_notas==='string'?JSON.parse(o.crm_notas):o.crm_notas; return Array.isArray(n)?n:[]; }
+  catch(e){ return []; }
+}
+function _crmUltimoContatoTs(o){
+  let t=new Date(o.data_criacao||Date.now()).getTime(); if(isNaN(t)) t=Date.now();
+  _crmNotas(o).forEach(n=>{ const nt=new Date(n.data).getTime(); if(!isNaN(nt)&&nt>t) t=nt; });
+  return t;
+}
+function _crmDiasSemContato(o){ return Math.floor((Date.now()-_crmUltimoContatoTs(o))/86400000); }
+function _crmEsfriando(o){ return _crmEtapaDoOrc(o)==='pendente' && _crmDiasSemContato(o)>=7 && _crmFuStatus(o)!=='futuro'; }
+function _crmFuStatus(o){ // 'atrasado' | 'hoje' | 'futuro' | null
+  if(!o.proximo_contato) return null;
+  const hoje=_hojeLocal();
+  if(o.proximo_contato<hoje) return 'atrasado';
+  if(o.proximo_contato===hoje) return 'hoje';
+  return 'futuro';
+}
+function _crmDataBr(iso){ if(!iso) return ''; const p=String(iso).slice(0,10).split('-'); return p.length===3?`${p[2]}/${p[1]}`:iso; }
+
+function renderCRM(){
+  const board=document.getElementById('crm-board'); if(!board) return;
+  if(typeof verificarVencidos==='function') verificarVencidos();
+  const lista=filtrarPorLoja(todosOrc||[]);
+  const limite=Date.now()-_CRM_JANELA_DIAS*86400000;
+  const porEtapa={pendente:[],aprovado:[],concluido:[],perdido:[]};
+  lista.forEach(o=>{
+    const et=_crmEtapaDoOrc(o);
+    if((et==='concluido'||et==='perdido')){
+      const ref=new Date(o.data_aprovacao||o.data_criacao||0).getTime();
+      if(ref&&ref<limite) return; // fechados antigos ficam só no Histórico
+    }
+    porEtapa[et].push(o);
+  });
+  // Urgência primeiro: follow-up atrasado > hoje > esfriando > mais recentes
+  const peso=o=>{ const f=_crmFuStatus(o); if(f==='atrasado') return 0; if(f==='hoje') return 1; if(_crmEsfriando(o)) return 2; return 3; };
+  porEtapa.pendente.sort((a,b)=>peso(a)-peso(b)||new Date(b.data_criacao||0)-new Date(a.data_criacao||0));
+  porEtapa.aprovado.sort((a,b)=>peso(a)-peso(b)||new Date(b.data_aprovacao||b.data_criacao||0)-new Date(a.data_aprovacao||a.data_criacao||0));
+  porEtapa.concluido.sort((a,b)=>new Date(b.data_aprovacao||b.data_criacao||0)-new Date(a.data_aprovacao||a.data_criacao||0));
+  porEtapa.perdido.sort((a,b)=>new Date(b.data_criacao||0)-new Date(a.data_criacao||0));
+
+  // ── Stats ──
+  const soma=arr=>arr.reduce((s,o)=>s+(parseFloat(o.total)||0),0);
+  const neg=porEtapa.pendente;
+  document.getElementById('crm-d-neg').textContent=brl(soma(neg));
+  document.getElementById('crm-d-neg-q').textContent=`${neg.length} orçamento${neg.length===1?'':'s'}`;
+  const decididos=lista.filter(o=>{
+    const et=_crmEtapaDoOrc(o); if(et==='pendente') return false;
+    const ref=new Date(o.data_aprovacao||o.data_criacao||0).getTime();
+    return ref>=limite;
+  });
+  const ganhos=decididos.filter(o=>_crmEtapaDoOrc(o)!=='perdido').length;
+  document.getElementById('crm-d-conv').textContent=decididos.length?Math.round(ganhos/decididos.length*100)+'%':'—';
+  const fuDue=lista.filter(o=>['pendente','aprovado'].includes(_crmEtapaDoOrc(o))&&['atrasado','hoje'].includes(_crmFuStatus(o)));
+  document.getElementById('crm-d-fu').textContent=fuDue.length;
+  document.getElementById('crm-d-fu-q').textContent=fuDue.some(o=>_crmFuStatus(o)==='atrasado')?'⚠️ há atrasados':'a contatar';
+  document.getElementById('crm-d-frio').textContent=neg.filter(_crmEsfriando).length;
+
+  // ── Follow-ups do dia ──
+  const fuCard=document.getElementById('crm-fu-card');
+  const fuLista=document.getElementById('crm-fu-lista');
+  if(fuDue.length){
+    fuCard.style.display='';
+    fuLista.innerHTML=fuDue
+      .sort((a,b)=>(a.proximo_contato||'').localeCompare(b.proximo_contato||''))
+      .map(o=>{
+        const atras=_crmFuStatus(o)==='atrasado';
+        return `<div class="crm-fu-item">
+          <div class="crm-fu-info" onclick="abrirCrmCard('${o.id}')" style="cursor:pointer">
+            <div class="crm-fu-cli">${esc(o.cliente||'—')} <span class="crm-chip ${atras?'fu-atrasado':'fu-hoje'}">${atras?'atrasado · '+_crmDataBr(o.proximo_contato):'hoje'}</span></div>
+            <div class="crm-fu-det">#${String(o.numero||'').padStart(3,'0')} · ${brl(parseFloat(o.total)||0)}</div>
+          </div>
+          ${o.tel_cliente?`<button class="tb" title="Chamar no WhatsApp" style="background:var(--wa);color:white;border-color:var(--wa)" onclick="enviarNotifWA(notifOrcamento(todosOrc.find(x=>x.id==='${o.id}')), '${esc(o.tel_cliente)}')">💬</button>`:''}
+          <button class="tb" title="Marcar contato como feito" onclick="crmFollowupFeito('${o.id}')">✓</button>
+        </div>`;
+      }).join('');
+  } else { fuCard.style.display='none'; fuLista.innerHTML=''; }
+
+  // ── Kanban ──
+  board.innerHTML=CRM_ETAPAS.map(et=>{
+    const cards=porEtapa[et.id];
+    const podeDrop=et.id!=='concluido';
+    return `<div class="crm-col" data-etapa="${et.id}"
+      ${podeDrop?`ondragover="_crmDragOver(event)" ondragleave="_crmDragLeave(event)" ondrop="_crmDrop(event,'${et.id}')"`:''}>
+      <div class="crm-col-hdr">
+        <div class="crm-col-titulo"><span class="crm-col-dot" style="background:${et.cor}"></span>${et.nome}</div>
+        <span class="crm-col-count">${cards.length}</span>
+      </div>
+      <div class="crm-col-total">${brl(soma(cards))}${(et.id==='concluido'||et.id==='perdido')?` · ${_CRM_JANELA_DIAS}d`:''}</div>
+      ${cards.length?cards.map(o=>_crmCardHTML(o,et.id)).join(''):`<div class="crm-vazio">${et.id==='pendente'?'Nenhum orçamento em negociação':'—'}</div>`}
+    </div>`;
+  }).join('');
+}
+
+function _crmCardHTML(o, etapa){
+  const fu=_crmFuStatus(o);
+  const frio=_crmEsfriando(o);
+  const cls=fu==='atrasado'?'followup-atrasado':fu==='hoje'?'followup-hoje':frio?'esfriando':'';
+  const dias=_crmDiasSemContato(o);
+  const chips=[];
+  if(fu==='atrasado') chips.push(`<span class="crm-chip fu-atrasado">📞 ${_crmDataBr(o.proximo_contato)}</span>`);
+  else if(fu==='hoje') chips.push(`<span class="crm-chip fu-hoje">📞 hoje</span>`);
+  else if(fu==='futuro') chips.push(`<span class="crm-chip fu-futuro">📞 ${_crmDataBr(o.proximo_contato)}</span>`);
+  if(frio) chips.push(`<span class="crm-chip frio">🧊 ${dias}d parado</span>`);
+  if(etapa==='perdido'&&o.motivo_perda) chips.push(`<span class="crm-chip frio">${esc(o.motivo_perda)}</span>`);
+  const notas=_crmNotas(o);
+  if(notas.length) chips.push(`<span class="crm-chip frio">📝 ${notas.length}</span>`);
+  return `<div class="crm-card ${cls}" draggable="true"
+    ondragstart="_crmDragStart(event,'${o.id}')" ondragend="_crmDragEnd(event)"
+    onclick="abrirCrmCard('${o.id}')" role="button" tabindex="0"
+    onkeydown="if(event.key==='Enter')abrirCrmCard('${o.id}')">
+    <div class="crm-card-top"><div class="crm-card-cli">${esc(o.cliente||'—')}</div><div class="crm-card-num">#${String(o.numero||'').padStart(3,'0')}</div></div>
+    <div class="crm-card-valor">${brl(parseFloat(o.total)||0)}</div>
+    <div class="crm-card-meta">${chips.join('')}${getOrigemBadge(o.origem_cliente)||''}</div>
+  </div>`;
+}
+
+// ── Drag & drop (desktop) ──
+let _crmDragId=null;
+function _crmDragStart(ev,id){ _crmDragId=id; try{ ev.dataTransfer.effectAllowed='move'; ev.dataTransfer.setData('text/plain',id); }catch(e){} ev.target.classList.add('dragging'); }
+function _crmDragEnd(ev){ ev.target.classList.remove('dragging'); document.querySelectorAll('.crm-col.drag-over').forEach(c=>c.classList.remove('drag-over')); }
+function _crmDragOver(ev){ ev.preventDefault(); ev.currentTarget.classList.add('drag-over'); }
+function _crmDragLeave(ev){ ev.currentTarget.classList.remove('drag-over'); }
+function _crmDrop(ev,etapa){ ev.preventDefault(); ev.currentTarget.classList.remove('drag-over'); const id=_crmDragId; _crmDragId=null; if(id) crmMoverEtapa(id,etapa); }
+
+function crmMoverEtapa(id, etapa){
+  const o=todosOrc.find(x=>x.id===id); if(!o) return;
+  const atual=_crmEtapaDoOrc(o);
+  if(etapa===atual) return;
+  if(etapa==='concluido'){ toast('Conclua a OS vinculada — o card vai pra "Concluído" sozinho.'); return; }
+  if(etapa==='perdido'){ _crmPedirMotivoPerda(id); return; }
+  fecharCrmCard();
+  const extras=etapa==='pendente'?{motivo_perda:null}:undefined;
+  _setStatusOrc(id, etapa, extras).then(()=>renderCRM()).catch(e=>console.warn('[crmMoverEtapa]', e?.message||e));
+}
+
+// ── Motivo de perda ──
+let _crmMotivoSel=null;
+function _crmPedirMotivoPerda(id){
+  const o=todosOrc.find(x=>x.id===id); if(!o) return;
+  _crmMotivoSel=null;
+  document.getElementById('crm-modal').innerHTML=`
+    <h3>Marcar como perdido</h3>
+    <div class="crm-modal-sub">#${String(o.numero||'').padStart(3,'0')} · ${esc(o.cliente||'')} — por que não fechou?</div>
+    <div class="crm-etapa-btns">${CRM_MOTIVOS_PERDA.map(x=>`<button type="button" class="crm-motivo-chip" onclick="_crmSelMotivo(this)">${x}</button>`).join('')}</div>
+    <div style="display:flex;gap:8px;margin-top:18px">
+      <button type="button" class="crm-etapa-btn" style="flex:1" onclick="fecharCrmCard()">Cancelar</button>
+      <button type="button" class="btn-primary" style="flex:1" onclick="_crmConfirmarPerda('${id}')">Confirmar perda</button>
+    </div>`;
+  document.getElementById('crm-modal-bg').classList.add('on');
+}
+function _crmSelMotivo(btn){ document.querySelectorAll('.crm-motivo-chip').forEach(b=>b.classList.remove('sel')); btn.classList.add('sel'); _crmMotivoSel=btn.textContent; }
+function _crmConfirmarPerda(id){
+  fecharCrmCard();
+  _setStatusOrc(id,'recusado',{motivo_perda:_crmMotivoSel||null}).then(()=>renderCRM()).catch(e=>console.warn('[crmPerda]', e?.message||e));
+}
+
+// ── Card / modal de detalhe ──
+function abrirCrmCard(id){
+  const o=todosOrc.find(x=>x.id===id); if(!o) return;
+  const etapa=_crmEtapaDoOrc(o);
+  const etCfg=CRM_ETAPAS.find(e=>e.id===etapa);
+  const notas=_crmNotas(o).slice().reverse();
+  const svs=(o.servicos||[]).map(s=>s.desc).filter(Boolean).join(', ');
+  document.getElementById('crm-modal').innerHTML=`
+    <h3>${esc(o.cliente||'—')} <span class="crm-card-num">#${String(o.numero||'').padStart(3,'0')}</span></h3>
+    <div class="crm-modal-sub">
+      <span class="crm-chip" style="background:${etCfg.cor}22;color:${etCfg.cor}">${etCfg.nome}</span>
+      ${brl(parseFloat(o.total)||0)}${svs?' · '+esc(svs):''}
+      ${etapa==='perdido'&&o.motivo_perda?' · Motivo: '+esc(o.motivo_perda):''}
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      ${o.tel_cliente?`<button type="button" class="crm-etapa-btn" style="background:var(--wa);color:white;border-color:var(--wa)" onclick="enviarNotifWA(notifOrcamento(todosOrc.find(x=>x.id==='${id}')), '${esc(o.tel_cliente)}')">💬 WhatsApp</button>`:''}
+      <button type="button" class="crm-etapa-btn" onclick="fecharCrmCard();abrirOrc('${id}')">📄 Abrir orçamento</button>
+    </div>
+    <div class="fl" style="margin-bottom:14px">
+      <label>📞 Próximo contato</label>
+      <div style="display:flex;gap:8px">
+        <input type="date" id="crm-fu-data" value="${o.proximo_contato||''}" style="flex:1">
+        <button type="button" class="crm-etapa-btn" onclick="crmSalvarFollowup('${id}')">Salvar</button>
+      </div>
+    </div>
+    <div class="fl" style="margin-bottom:6px">
+      <label>📝 Registrar contato</label>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="crm-nota-txt" placeholder="Ex.: liguei, vai decidir semana que vem" style="flex:1">
+        <button type="button" class="crm-etapa-btn" onclick="crmAddNota('${id}')">Adicionar</button>
+      </div>
+    </div>
+    <div style="max-height:180px;overflow-y:auto;margin-bottom:14px">
+      ${notas.length?notas.map(n=>`<div class="crm-nota-item">${esc(n.texto||'')}<div class="crm-nota-meta">${n.data?new Date(n.data).toLocaleDateString('pt-BR'):''}${n.usuario?' · '+esc(n.usuario):''}</div></div>`).join(''):'<div class="crm-vazio">Nenhum contato registrado ainda</div>'}
+    </div>
+    <div class="fl"><label>Mover para</label>
+      <div class="crm-etapa-btns">
+        ${CRM_ETAPAS.filter(e=>e.id!==etapa&&e.id!=='concluido').map(e=>`<button type="button" class="crm-etapa-btn" onclick="crmMoverEtapa('${id}','${e.id}')"><span class="crm-col-dot" style="background:${e.cor};display:inline-block;margin-right:4px"></span>${e.nome}</button>`).join('')}
+      </div>
+    </div>
+    <button type="button" class="crm-etapa-btn" style="width:100%;margin-top:14px" onclick="fecharCrmCard()" aria-label="Fechar">Fechar</button>`;
+  document.getElementById('crm-modal-bg').classList.add('on');
+}
+function fecharCrmCard(){ document.getElementById('crm-modal-bg').classList.remove('on'); }
+
+// ── Persistência dos campos CRM (mesmo caminho local-first dos orçamentos) ──
+function _crmPatch(id, changes){
+  const o=todosOrc.find(x=>x.id===id); if(!o) return;
+  Object.assign(o, changes);
+  lsOrcAtualizar(id, changes);
+  if(dbOk&&db&&!String(id).startsWith('local_'))
+    orcSyncUpdate(id, changes).catch(e=>console.warn('[crmPatch]', e?.message||e));
+}
+function crmSalvarFollowup(id){
+  const v=gV('crm-fu-data')||null;
+  _crmPatch(id,{proximo_contato:v});
+  toast(v?'📞 Follow-up agendado':'Follow-up removido');
+  abrirCrmCard(id); renderCRM();
+}
+function crmAddNota(id){
+  const txt=(gV('crm-nota-txt')||'').trim();
+  if(!txt){ toast('Escreva o que foi conversado.'); return; }
+  const o=todosOrc.find(x=>x.id===id); if(!o) return;
+  const notas=_crmNotas(o);
+  notas.push({data:new Date().toISOString(), texto:txt, usuario:getSessao()?.nome||''});
+  _crmPatch(id,{crm_notas:notas});
+  toast('📝 Contato registrado');
+  abrirCrmCard(id); renderCRM();
+}
+function crmFollowupFeito(id){
+  const o=todosOrc.find(x=>x.id===id); if(!o) return;
+  const notas=_crmNotas(o);
+  notas.push({data:new Date().toISOString(), texto:'Follow-up realizado', usuario:getSessao()?.nome||''});
+  _crmPatch(id,{proximo_contato:null, crm_notas:notas});
+  toast('✅ Follow-up concluído');
+  renderCRM();
+}
