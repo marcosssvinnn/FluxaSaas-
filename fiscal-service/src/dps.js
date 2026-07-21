@@ -83,7 +83,13 @@ export function montarXmlDPS({
   serie,
   numeroDPS,
   competencia, // 'YYYY-MM-DD'
-  municipioIbge,
+  municipioEmissaoIbge, // cLocEmi — cidade da SEDE da empresa (lojas.codigo_ibge)
+  municipioPrestacaoIbge, // cLocPrestacao — cidade onde o SERVIÇO foi executado
+  // (podem ser diferentes! achado confirmado pelo Marcos: manutenção/limpeza
+  // de piscina é subitem 7.10 da LC 116/2003, uma das exceções do art. 3º
+  // VII em que o ISS é devido no município da EXECUÇÃO, não da sede da
+  // empresa — por isso os dois códigos são parâmetros separados, nunca o
+  // mesmo valor assumido por padrão)
   prestadorCnpj,
   prestadorNome,
   tomadorDoc, // { tipo: 'CNPJ'|'CPF', valor }
@@ -109,11 +115,11 @@ export function montarXmlDPS({
     `<nDPS>${numeroDPS}</nDPS>` +
     `<dCompet>${competencia}</dCompet>` +
     `<tpEmit>1</tpEmit>` +
-    `<cLocEmi>${municipioIbge}</cLocEmi>` +
+    `<cLocEmi>${municipioEmissaoIbge}</cLocEmi>` +
     `<prest><CNPJ>${prestadorCnpj}</CNPJ><xNome>${escapeXml(prestadorNome)}</xNome></prest>` +
     `<toma><${tomadorDoc.tipo}>${tomadorDoc.valor}</${tomadorDoc.tipo}><xNome>${escapeXml(tomadorNome)}</xNome></toma>` +
     `<serv>` +
-    `<locPrest><cLocPrestacao>${municipioIbge}</cLocPrestacao></locPrest>` +
+    `<locPrest><cLocPrestacao>${municipioPrestacaoIbge}</cLocPrestacao></locPrest>` +
     `<cServ><cTribNac>${codigoTributacaoNacional}</cTribNac><xDescServ>${escapeXml(xDescServ)}</xDescServ></cServ>` +
     `</serv>` +
     `<valores><vServPrest><vServ>${vServ}</vServ></vServPrest>${descCondIncond}</valores>` +

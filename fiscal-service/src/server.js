@@ -74,6 +74,17 @@ app.post("/emitir", async (req, res) => {
     if (!orcamento.loja_id) {
       return res.status(400).json({ erro: "Orçamento sem loja vinculada — não dá pra saber qual CNPJ emite a nota." });
     }
+    // Achado confirmado pelo Marcos (LC 116/2003, art. 3º VII + subitem 7.10):
+    // manutenção/limpeza de piscina tem o ISS devido no MUNICÍPIO ONDE O
+    // SERVIÇO FOI EXECUTADO, não onde a empresa está sediada. Por isso exige
+    // orcamento.municipio_servico_ibge (setup-v2-delta23.sql) — sem isso,
+    // BLOQUEIA a emissão em vez de assumir a cidade da sede (que sairia
+    // errada sempre que o serviço não for na mesma cidade da loja).
+    if (!orcamento.municipio_servico_ibge) {
+      return res.status(400).json({
+        erro: "Orçamento sem cidade do serviço definida — obrigatório pra manutenção/limpeza de piscina (ISS é devido onde o serviço foi prestado, não na sede da empresa). Selecione a cidade no orçamento antes de emitir.",
+      });
+    }
     const dadosFiscaisLoja = await buscarDadosFiscaisLoja(orcamento.loja_id);
 
     const referencia = `ORC-${orcamento.numero}-${Date.now()}`;
@@ -107,7 +118,8 @@ app.post("/emitir", async (req, res) => {
         serie: "00001",
         numeroDPS: String(orcamento.numero),
         competencia: new Date().toISOString().slice(0, 10),
-        municipioIbge: dadosFiscaisLoja.codigo_ibge,
+        municipioEmissaoIbge: dadosFiscaisLoja.codigo_ibge,
+        municipioPrestacaoIbge: orcamento.municipio_servico_ibge,
         prestadorCnpj: dadosFiscaisLoja.cnpj.replace(/\D/g, ""),
         prestadorNome: dadosFiscaisLoja.razao_social || dadosFiscaisLoja.cnpj,
         tomadorDoc: orcamento.cnpj

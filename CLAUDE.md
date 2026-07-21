@@ -146,6 +146,28 @@ com uma query de leitura (não confie só em "não deu erro").
 >   do Marcos (fato gerador do ISS = serviço realizado, não orçamento aceito).
 >   `notas_fiscais.os_id` já existe no schema pra não precisar migrar de novo
 >   depois, mas o gatilho ainda não mudou.
+> - **Achado crítico confirmado pelo Marcos (2026-07-20, LC 116/2003, art. 3º
+>   VII + subitem 7.10):** manutenção/limpeza de piscina é uma das exceções
+>   em que o **ISS é devido no município onde o SERVIÇO FOI EXECUTADO**, não
+>   onde a empresa está sediada. A Fluxa piscinas atende Itapema, Camboriú,
+>   Balneário Camboriú, Itajaí e Porto Belo (varia por cliente) — então
+>   `lojas.codigo_ibge` (sede) sozinho NÃO basta. `setup-v2-delta23.sql`
+>   adiciona `orcamentos.municipio_servico_ibge` (cidade do serviço, por
+>   orçamento) + tabela `municipios_fiscais` (municípios atendidos por
+>   empresa, com `iss_aliquota` **NULL de propósito** — 2% a 5% conforme o
+>   Marcos, mas nenhum valor foi inventado; só o contador confirma). `dps.js`
+>   agora recebe `municipioEmissaoIbge` (cLocEmi, sede) e
+>   `municipioPrestacaoIbge` (cLocPrestacao, execução) como parâmetros
+>   SEPARADOS — nunca assuma que são o mesmo valor. `/emitir` BLOQUEIA a
+>   emissão se o orçamento não tiver `municipio_servico_ibge` definido. UI:
+>   dropdown "Cidade do serviço (fiscal)" no form de orçamento
+>   (`index.html`/`app.js`, `carregarMunicipiosFiscais()`), opcional por
+>   enquanto (emissão ainda não religada — Marco 4).
+>   **Ainda pendente, fora de engenharia:** alíquota de ISS por município
+>   (contador) e regras de retenção/CPOM por município (pesquisar legislação
+>   específica de cada um antes de religar a emissão de verdade).
+>   Venda de produtos/químicos separada (não dentro do serviço) é **ICMS**,
+>   sistema diferente (NFe), fora do escopo desta fase.
 
 ### Versionamento e rollback (deploy único = bug atinge todas as empresas)
 - **Branches:** trabalhe sempre em `dev`. `main` é produção (sai o deploy); só recebe merge validado. Rollback = reverter o merge na `main`.

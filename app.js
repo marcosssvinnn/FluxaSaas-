@@ -2659,6 +2659,7 @@ async function salvarApenas(){
       pagamento:dados.pagFormatado, pag_cod:dados.pag, pag_parcelas:dados.pagParcelas, pag_entrada:dados.pagEntrada,
       validade_dias:dados.dias, validade_data:dados.vData,
       data_servico:dados.dataSvc, escopo:dados.escopo, obs:dados.obs,
+    municipio_servico_ibge:dados.municipioServico||null,
       foto_base64:fotosB64.filter(Boolean).length?JSON.stringify(fotosB64.filter(Boolean)):null, nota_interna:gV('nota-interna')||null
     };
 
@@ -2755,6 +2756,7 @@ async function gerarPDF(){
     pagamento:dados.pagFormatado, pag_cod:dados.pag, pag_parcelas:dados.pagParcelas, pag_entrada:dados.pagEntrada,
     validade_dias:dados.dias, validade_data:dados.vData,
     data_servico:dados.dataSvc, escopo:dados.escopo, obs:dados.obs,
+    municipio_servico_ibge:dados.municipioServico||null,
     foto_base64:fotosB64.filter(Boolean).length?JSON.stringify(fotosB64.filter(Boolean)):null, nota_interna:gV('nota-interna')||null
   };
   let num=null;
@@ -2856,6 +2858,7 @@ function coletarForm(){
     pagEntrada:parseFloat((gV('pag-entrada')||'').replace(',','.'))||null,
     dias, obs:gV('obs'),
     escopo:gV('escopo'), dataSvc:gV('data-svc'), dataStr, vData, sub:sub(), desc:disc(sub()), tot:tot(),
+    municipioServico:gV('municipio-servico')||null,
     svcs:svcs.filter(s=>s.d.trim()).map(s=>({desc:s.d.trim(),preco:gP(s),precoUnit:parseFloat(s.p)||0,qty:parseInt(s.qty)||1,produto_id:s.produto_id||null})) };
 }
 
