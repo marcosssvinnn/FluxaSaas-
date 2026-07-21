@@ -6,7 +6,12 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Fluxa">
   <meta name="theme-color" content="#C45E0A">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png">
   <title>Fluxa</title>
   <!-- Fluxa v2 (SaaS multi-tenant): sem config.js. A identidade da empresa vem do
        banco (empresas.config) após o login. Credenciais Supabase: constantes no topo de app.js. -->
@@ -716,6 +721,19 @@
         <div class="fl" id="origem-cli-outro-wrap" style="display:none">
           <label>Qual a origem?</label>
           <input type="text" id="origem-cli-outro" placeholder="Digite a origem do cliente" oninput="upd()">
+        </div>
+      </div>
+      <!-- Cidade do serviço (fiscal) — achado 2026-07-20: pra manutenção/limpeza
+           de piscina (LC 116/2003, subitem 7.10), o ISS é devido no município
+           ONDE O SERVIÇO É PRESTADO, não na sede da empresa. Opcional por
+           enquanto (emissão de nota ainda não está ligada — ver "em breve" no
+           botão NF), mas já capturando o dado pra quando estiver. -->
+      <div class="row" id="municipio-servico-wrap">
+        <div class="fl">
+          <label>Cidade do serviço (fiscal)</label>
+          <select id="municipio-servico" onchange="upd()">
+            <option value="">— Selecione (opcional por enquanto) —</option>
+          </select>
         </div>
       </div>
     </div>
@@ -2502,6 +2520,14 @@
 
 </main><!-- /#main-content -->
 
+<!-- ══ Banner: instalar o Fluxa como app ══ -->
+<div class="pwa-install-banner" id="pwa-install-banner" role="complementary" aria-label="Instalar o Fluxa">
+  <span class="pwa-install-icon" aria-hidden="true">📲</span>
+  <div class="pwa-install-txt" id="pwa-install-body"></div>
+  <button class="pwa-install-btn" id="pwa-install-btn" onclick="fluxaInstalarAgora()" style="display:none">Instalar</button>
+  <button class="pwa-install-close" onclick="fluxaDispensarInstalar()" aria-label="Fechar">✕</button>
+</div>
+
 <div class="toast" id="toast" role="alert" aria-live="assertive" aria-atomic="true"></div>
 
 <!-- Error boundary global: captura erros JS e exibe tela amigável -->
@@ -2526,6 +2552,7 @@ window.onerror = function(msg, src, line, col, err){
   <div style="margin-top:12px;font-size:12px;color:#9ca3af">Seus dados estão salvos — nada foi perdido.</div>
 </div>
 
+<script src="native.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

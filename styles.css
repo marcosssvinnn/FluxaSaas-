@@ -19,12 +19,12 @@
       --sidebar-c: 52px;
     }
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:'Inter',sans-serif;background:#f0f2f5;color:var(--c2);min-height:100vh;padding-top:56px;padding-left:var(--sidebar-w);transition:padding-left .2s ease}
+    body{font-family:'Inter',sans-serif;background:#f0f2f5;color:var(--c2);min-height:100vh;padding-top:calc(56px + env(safe-area-inset-top));padding-left:var(--sidebar-w);transition:padding-left .2s ease}
     body.sbar-col{padding-left:var(--sidebar-c)}
     body.no-sbar{padding-left:0}
 
     /* ── HEADER ── */
-    .hdr{background:var(--c2);padding:0 16px;display:flex;align-items:stretch;position:fixed;top:0;left:0;right:0;height:56px;z-index:200;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+    .hdr{background:var(--c2);padding:env(safe-area-inset-top) 16px 0;display:flex;align-items:stretch;position:fixed;top:0;left:0;right:0;height:calc(56px + env(safe-area-inset-top));z-index:200;box-shadow:0 2px 8px rgba(0,0,0,.25)}
     .hdr-logo{display:flex;align-items:center;gap:10px;padding:10px 14px 10px 0;border-right:1px solid rgba(255,255,255,.1);flex-shrink:0}
     .hdr-logo img{height:32px;width:32px;border-radius:6px;object-fit:cover;display:none}
     .hdr-logo img.has-logo{display:block}
@@ -49,7 +49,7 @@
     .gear-menu .gear-status{padding:10px 16px;font-size:12px;color:#6b7280;border-bottom:1px solid #f3f4f6;display:flex;align-items:center;gap:8px}
 
     /* ── SIDEBAR ── */
-    .sidebar{position:fixed;top:56px;left:0;bottom:0;width:var(--sidebar-w);background:var(--c2);z-index:150;transition:width .2s ease;overflow:hidden;border-right:1px solid rgba(255,255,255,.08)}
+    .sidebar{position:fixed;top:calc(56px + env(safe-area-inset-top));left:0;bottom:0;width:var(--sidebar-w);background:var(--c2);z-index:150;transition:width .2s ease;overflow:hidden;border-right:1px solid rgba(255,255,255,.08)}
     .sidebar.collapsed{width:var(--sidebar-c)}
     .sidebar.s-hidden{display:none}
     .snav{display:flex;flex-direction:column;padding:8px 0;height:100%;overflow-y:auto;overflow-x:hidden;scrollbar-width:none}
@@ -1168,3 +1168,16 @@
     .painel-crm-stat .pcs-v{font-size:18px;font-weight:800;color:var(--c2)}
     .painel-crm-stat .pcs-l{font-size:10.5px;color:var(--gray);margin-top:2px;text-transform:uppercase;letter-spacing:.3px}
     .painel-crm-alerta{margin-top:12px;padding:10px 12px;background:var(--red-bg);color:var(--red);border-radius:8px;font-size:12.5px;font-weight:600;cursor:pointer}
+
+    /* ── Banner: instalar o Fluxa como app (PWA) ── */
+    .pwa-install-banner{display:none;position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:850;background:var(--c2);color:white;border-radius:var(--r);padding:12px 12px 12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.3);align-items:center;gap:10px}
+    .pwa-install-banner.on{display:flex}
+    .pwa-install-icon{font-size:22px;flex-shrink:0}
+    .pwa-install-txt{flex:1;font-size:12.5px;line-height:1.4;color:rgba(255,255,255,.92)}
+    .pwa-install-txt b{color:white}
+    .pwa-install-btn{flex-shrink:0;background:var(--c1);color:white;border:none;border-radius:8px;padding:9px 14px;font-size:12.5px;font-weight:700;font-family:'Inter',sans-serif;cursor:pointer;min-height:38px}
+    .pwa-install-btn:hover{filter:brightness(1.08)}
+    .pwa-install-close{flex-shrink:0;background:none;border:none;color:rgba(255,255,255,.5);font-size:15px;cursor:pointer;padding:8px;line-height:1;min-width:32px;min-height:32px}
+    .pwa-install-close:hover{color:white}
+    @media(min-width:681px){ .pwa-install-banner{left:auto;right:20px;bottom:20px;max-width:360px} }
+    @media(max-width:680px){ .pwa-install-banner{bottom:calc(72px + env(safe-area-inset-bottom))} }

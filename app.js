@@ -185,6 +185,11 @@ function aplicarPermissoesPerfil(){
   const pagesTecnicoOk=['minhas-os','visitas','os']; // 'os' para abrir/preencher a OS atribuída
   if(tecnico && !pagesTecnicoOk.includes(pid)) go('minhas-os');
   if(vendas  && !pagesVendasOk.includes(pid))  go('form');
+
+  // ── Banner de instalar como app (PWA) — só faz sentido com sessão ativa ──
+  if(typeof _fluxaAvaliarBannerInstalar==='function'){
+    try{ _fluxaAvaliarBannerInstalar(); }catch(e){ console.warn('[pwa-install]', e?.message||e); }
+  }
 }
 
 // Atualiza badge de usuário no header
@@ -627,6 +632,26 @@ async function carregarLojas(){
   }
 }
 
+// Carrega os municípios atendidos (fins de ISS — setup-v2-delta23.sql) e
+// popula o <select id="municipio-servico"> do formulário de orçamento.
+// Lazy-load (chamado de novoOrc()/abrirOrc(), não no boot) — mesmo padrão de
+// outros selects populados sob demanda neste app (ex.: fornecedor da OC).
+async function carregarMunicipiosFiscais(){
+  if(dbOk && db && EMPRESA_ID){
+    try{
+      const { data, error } = await db.from('municipios_fiscais').select('*')
+        .eq('empresa_id', EMPRESA_ID).eq('ativo', true).order('nome',{ascending:true});
+      if(error) throw error;
+      MUNICIPIOS_FISCAIS = data || [];
+    }catch(e){ console.warn('[carregarMunicipiosFiscais]', e?.message||e); MUNICIPIOS_FISCAIS=[]; }
+  }
+  const sel = document.getElementById('municipio-servico'); if(!sel) return;
+  const atual = sel.value;
+  sel.innerHTML = '<option value="">— Selecione (opcional por enquanto) —</option>' +
+    MUNICIPIOS_FISCAIS.map(m=>`<option value="${m.codigo_ibge}">${esc(m.nome)}</option>`).join('');
+  if(MUNICIPIOS_FISCAIS.some(m=>m.codigo_ibge===atual)) sel.value = atual;
+}
+
 // Persiste o CFG na coluna config da empresa ativa (substitui upsert em empresa_config).
 async function _persistirConfigEmpresa(){
   if(!dbOk || !db || !EMPRESA_ID) return false;
@@ -703,6 +728,7 @@ let FLUXA_CONFIG = {
 let LOJAS = FLUXA_CONFIG.lojas;          // unidades da empresa (preenchido no contexto da empresa)
 let GRUPO_PRINCIPAL = FLUXA_CONFIG.grupoPrincipal; // ids das unidades vistas juntas em "Todas"
 let LOJA_PADRAO_ID = FLUXA_CONFIG.lojaPadrao;      // unidade padrão — fallback em todo o app
+let MUNICIPIOS_FISCAIS = []; // municípios atendidos p/ fins de ISS (setup-v2-delta23.sql) — lazy-load ao abrir o form de orçamento
 try{ document.title = FLUXA_CONFIG.appName || 'Fluxa'; }catch(e){ console.warn('[appName]', e?.message||e); }
 
 // ── FEATURE FLAGS por empresa (rollout gradual / kill switch sem deploy) ──
@@ -2155,6 +2181,7 @@ function novoOrc(){
   limparRascunho('form'); window._skipDraftForm=true; // novo orçamento = começar do zero, sem rascunho antigo
   _limparCamposOrc();
   go('form');
+  carregarMunicipiosFiscais();
 }
 
 // ──────────────────────────────────────────────────
@@ -3851,6 +3878,7 @@ function abrirOrc(id){
   }catch(e){ fotosB64=[]; }
   renderFotosOrcSlots();
   renderSvcs(); upd(); go('form');
+  carregarMunicipiosFiscais().then(()=>setV('municipio-servico', o.municipio_servico_ibge||''));
   const bb=document.getElementById('form-back-bar');
   const bl=document.getElementById('form-back-label');
   if(bb){ bb.style.display='flex'; }
