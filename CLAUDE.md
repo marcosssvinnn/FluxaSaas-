@@ -268,10 +268,32 @@ não, iOS ou Android) — nunca vira um branch de comportamento paralelo.
   v36→v37 (precache de `native.js`/`manifest.json`/ícones).
   **⚠️ Só está na `dev`, ainda NÃO foi promovido pra `main`** — ver nota
   abaixo.
-- ⏳ **Sprint 1 — Notificações push**: chaves VAPID, handler `push`/
-  `notificationclick` no `sw.js`, Edge Function de envio, permissão pedida
-  só depois de instalado (limitação do iOS). Eventos: follow-up do CRM,
-  OS atribuída, orçamento aprovado no portal.
+- ✅ **Sprint 1 — Notificações push** (commit `2097fca`, 2026-07-21):
+  `push_subscriptions` (delta24, RLS por perfil) + primeira Edge Function do
+  repo (`supabase/functions/enviar-push`, Deno + `npm:web-push`, aceita JWT
+  de usuário OU header `x-push-secret` — nunca chamada anônima) + chaves
+  VAPID geradas localmente (privada só como secret da função; segredo
+  interno guardado no Vault). `portal_responder_orcamento` (delta25) dispara
+  push assíncrono (`pg_net`, não trava a resposta ao cliente) pro gestor
+  quando um orçamento é aprovado pelo portal — **primeiro evento com fio
+  ponta a ponta**; OS atribuída e follow-up do CRM ainda não estão
+  cabeados (ver "Perguntas em aberto"/próximos passos, é só repetir o
+  padrão: montar o payload e chamar a Edge Function). `native.js` ganhou
+  `fluxaInscreverPush()`/`fluxaAtivarNotificacoes()` (idempotente — reativa
+  em vez de duplicar por `endpoint`); o banner do Sprint 0 virou uma
+  máquina de 2 estados (instalar → ativar notificação, nunca os dois).
+  `sw.js` ganhou os handlers `push`/`notificationclick`. sw v37→v38.
+  **🔴 Achado no caminho, corrigido junto:** `portal_responder_orcamento`
+  (a versão de 4 parâmetros, com assinatura) tinha um bug pré-existente,
+  não relacionado ao push — o `UPDATE` referenciava 3 colunas
+  (`assinatura_data`/`hash`/`meta`) que **nunca existiram** em `orcamentos`
+  (só `assinatura_base64` existe). Isso quebrava **qualquer** resposta do
+  cliente no portal, aprovar ou recusar, com erro de coluna inexistente —
+  há quanto tempo, não dá pra saber sem log de erro do Supabase. Corrigido
+  no mesmo delta25. Achado incidental (não corrigido, registrado como
+  pendência): existe uma sobrecarga antiga de 3 parâmetros da mesma função
+  ainda viva no banco (`oid 17937`) — provavelmente inofensiva (o app só
+  chama a de 4 parâmetros), mas vale um `DROP FUNCTION` de limpeza um dia.
 - ⏳ **Sprint 2 — Desbloqueio biométrico**: WebAuthn (Face ID/Touch ID/
   digital) pra liberar a sessão do PIN, que hoje vive em `sessionStorage`
   e some ao fechar a aba.
@@ -286,10 +308,12 @@ não, iOS ou Android) — nunca vira um branch de comportamento paralelo.
 ### ⚠️ Nota de coordenação (main travada de propósito)
 A `main` está intencionalmente **atrás** da `dev` neste momento — tem
 trabalho fiscal de outra sessão (`Marco 2/3 — microsserviço de emissão de
-NFS-e`, explicitamente marcado "não testado em Node real") entre o Sprint
-0 do mobile e a `main`. Antes de promover `dev`→`main`, confirme com o
-Marcos que o fiscal já foi validado — não é só sobre o mobile, é sobre não
-subir código fiscal não testado pra produção.
+NFS-e`, explicitamente marcado "não testado em Node real") entre os
+Sprints 0/1 do mobile e a `main`. Antes de promover `dev`→`main`, confirme
+com o Marcos que o fiscal já foi validado — não é só sobre o mobile, é
+sobre não subir código fiscal não testado pra produção. Enquanto isso não
+resolve, push real num dispositivo físico não dá pra testar (só funciona
+em produção, servida por HTTPS de verdade).
 
 ---
 

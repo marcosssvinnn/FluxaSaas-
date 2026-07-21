@@ -204,16 +204,20 @@ testados em 375px). As que precisam de **redesenho de fluxo**, não só CSS:
 Priorizado pro time majoritariamente iPhone. Android via Capacitor vira
 item opcional no fim, não bloqueia nada antes dele.
 
-| Sprint | Duração estimada | Entrega | Resultado no fim |
+| Sprint | Status | Entrega | Resultado no fim |
 |---|---|---|---|
-| **0 — Fundação PWA** | 3–5 dias | `manifest.json`, ícones/`apple-touch-icon`, área segura (notch), banner de "Adicionar à Tela de Início" | App instala no iPhone e no Android, tela cheia, com tudo que o Fluxa já faz hoje — de graça |
-| **1 — Notificações push** | ~1 semana | Chaves VAPID, handler de push no `sw.js`, Edge Function de envio, permissão pedida só após instalado | App avisa o usuário (follow-up, OS atribuída, orçamento aprovado) mesmo fechado, em ambos os sistemas |
-| **2 — Desbloqueio biométrico** | ~3–5 dias | Registro WebAuthn após o 1º PIN, tela de desbloqueio por Face ID/Touch ID/digital, fallback pro PIN | Reabrir o app é tão rápido quanto olhar pro celular |
-| **3 — Câmera unificada + compartilhamento** | ~3–5 dias | Menu "Câmera ou Galeria" replicado nos 4 pontos que faltam, PDF via `navigator.share()` | Fluxo de campo (vistoria/OS/despesa/orçamento) consistente ponta a ponta |
-| **4 — Central de Notificações + polish** | ~3–5 dias | Tela de histórico de notificações, revisão final de toque/acessibilidade em dispositivo real | Experiência redonda pro uso diário do time |
-| **5 — Android via Capacitor (opcional)** | ~1–1,5 semana | `.apk` assinado localmente, sideload direto, recursos nativos equivalentes reaproveitando o que os Sprints 0–4 já resolveram | Quem usa Android ganha um app "de verdade" instalável fora de loja — só se fizer sentido nessa hora |
+| **0 — Fundação PWA** | ✅ feito (`bdbf523`/`2f302f7`) | `manifest.json`, ícones/`apple-touch-icon`, área segura (notch), banner de "Adicionar à Tela de Início" | App instala no iPhone e no Android, tela cheia, com tudo que o Fluxa já faz hoje — de graça |
+| **1 — Notificações push** | ✅ feito (`2097fca`) | Chaves VAPID, `push_subscriptions` (RLS por perfil), Edge Function `enviar-push`, handler de push no `sw.js`, banner de ativar notificação. 1 evento cabeado ponta a ponta (orçamento aprovado no portal) | App avisa o gestor quando um cliente aprova um orçamento, mesmo fechado, em ambos os sistemas. **Faltam 2 eventos** (OS atribuída, follow-up do CRM) — é só repetir o padrão do delta25 |
+| **2 — Desbloqueio biométrico** | ⏳ próximo | Registro WebAuthn após o 1º PIN, tela de desbloqueio por Face ID/Touch ID/digital, fallback pro PIN | Reabrir o app é tão rápido quanto olhar pro celular |
+| **3 — Câmera unificada + compartilhamento** | ⏳ | Menu "Câmera ou Galeria" replicado nos 4 pontos que faltam, PDF via `navigator.share()` | Fluxo de campo (vistoria/OS/despesa/orçamento) consistente ponta a ponta |
+| **4 — Central de Notificações + polish** | ⏳ | Tela de histórico de notificações, revisão final de toque/acessibilidade em dispositivo real | Experiência redonda pro uso diário do time |
+| **5 — Android via Capacitor (opcional)** | ⏳ opcional | `.apk` assinado localmente, sideload direto, recursos nativos equivalentes reaproveitando o que os Sprints 0–4 já resolveram | Quem usa Android ganha um app "de verdade" instalável fora de loja — só se fizer sentido nessa hora |
 
-**Total ativo estimado (Sprints 0–4, sem loja nenhuma):** ~3–4 semanas.
 Sprint 5 (Android nativo) é independente e pode entrar antes, depois, ou
 nunca — não é pré-requisito de nada. Cada sprint entrega algo instalável
-e testável no seu próprio iPhone desde o primeiro dia.
+e testável desde o primeiro dia. **Bloqueio atual:** Sprints 0–1 só estão
+na branch `dev` — a `main` (o que está de fato em produção/instalável)
+está travada esperando validação de um trabalho fiscal de outra sessão
+(ver CLAUDE.md, seção "FLUXA MOBILE" → nota de coordenação). Sem isso,
+push real num aparelho físico não dá pra testar (precisa de HTTPS de
+produção).
