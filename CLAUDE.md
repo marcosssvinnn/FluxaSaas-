@@ -2420,9 +2420,79 @@ técnico bloqueado / vendas liberado; flag desliga; mobile 375px sem overflow de
 página (board rola interno) + desktop 1280px com 4 colunas; boot limpo sem erro
 de console; XSS coberto (`esc()` em cliente/notas/motivo/tel).
 
+### CRM v2 — situação da negociação, multi-contato (condomínio), aging por etapa (commit `af5540d`, sw v34→v35)
+Pedido do Marcos: buscar o que há de mais moderno em CRM no mercado e
+personalizar ao máximo pro nosso caso — serviço de manutenção, cliente
+recorrente é muito condomínio, decisão raramente é na hora (passa por
+síndico/conselho/assembleia) e o orçamento frequentemente compete com outros
+prestadores. Pesquisa rápida de mercado (ver fontes no fim desta seção)
+confirmou 2 padrões que orientaram o desenho:
+
+1. **"Idade média dos negócios abertos POR ETAPA" é a métrica mais útil e menos
+   observada** — mais do que o ciclo médio de negócios já fechados, ela aponta
+   o gargalo enquanto ainda dá tempo de agir. Isso é diferente de "dias sem
+   contato" (que mede se o vendedor está sendo negligente) — um negócio pode
+   estar muitíssimo bem trabalhado e ainda assim ficar 20 dias parado só
+   esperando a assembleia do condomínio acontecer.
+2. **Negócios com 3+ contatos engajados do lado do cliente fecham a ~68%,
+   contra ~23% com um único contato** ("multi-threading"). Em condomínio isso é
+   literal: síndico decide pouco sozinho — conselho/administradora também
+   pesam.
+
+**O que foi adicionado (tudo em cima da mesma tabela `orcamentos`, sem
+entidade nova):**
+- **`crm_situacao`** — por que o negócio está parado: 🗳️ *Aguardando aprovação
+  (síndico/conselho)* — com campo de **data prevista da assembleia/reunião**
+  — ⚔️ *Concorrência (comparando orçamentos)* ou 💰 *Negociando valor*. Chip
+  colorido no card; **some sozinho** ao sair de "Em negociação" (não faz
+  sentido perpetuar em Aprovado/Perdido).
+- **Auto-sugestão de follow-up respeitando o calendário do cliente** — ao
+  marcar "aguardando aprovação" com a data da assembleia, o próximo contato é
+  **sugerido** (nunca sobrescreve escolha manual) pra 2 dias DEPOIS da
+  assembleia — evita a armadilha óbvia de cobrar o síndico antes da reunião
+  sequer ter acontecido.
+- **`crm_contatos`** (multi-thread) — lista nome/papel/telefone por negócio,
+  com datalist sugerindo papéis comuns de condomínio (Síndico, Síndico
+  profissional, Conselho/Administradora, Zelador, Financeiro). Detecta
+  automaticamente `clientes.tipo==='condominio'` (campo que já existia no
+  cadastro, usado antes só em Vistorias) pra mostrar o ícone 🏢 no card e um
+  texto de incentivo no modal ("condomínio — síndico/conselho costumam
+  decidir juntos"). Chip "🧵 N" no card = quantidade de pessoas envolvidas.
+- **`etapa_desde`** — timestamp de quando o orçamento entrou na etapa atual
+  (`_setStatusOrc` grava a cada transição real). Modal mostra "há Nd nesta
+  etapa" — sinal de gargalo de processo, deliberadamente separado do chip
+  "🧊 esfriando" (que mede falta de contato do vendedor).
+- **`notifOrcamentoPorSituacao(o)`** — mensagem de WhatsApp específica por
+  situação em vez do texto genérico: cobra aprovação citando a data da
+  assembleia / reforça diferencial de acompanhamento e garantia (não entra em
+  guerra de preço) quando é concorrência / abre a conversa de condição de
+  pagamento quando é negociação de valor. Botão do modal troca sozinho pro
+  texto certo quando há situação marcada.
+
+**Schema aditivo** (`setup-v2-delta20.sql`, **já aplicado e verificado** via
+Management API): `crm_situacao text`, `crm_decisao_prevista date`,
+`crm_contatos jsonb DEFAULT '[]'`, `etapa_desde timestamptz` em `orcamentos`.
+RLS herdada (nenhuma policy nova).
+
+**Testado no Browser pane** (offline, mocks de condomínio + residência):
+detecção de cliente condomínio, campo de data condicional ao selecionar
+situação, follow-up auto-sugerido matematicamente correto (assembleia+2d),
+mensagem por situação com o texto certo pras 3 situações, contatos
+add/remove com XSS escapado, chip "🧵" contando certo, limpeza de
+situação/decisão ao sair de "pendente" ou ao trocar de situação,
+`etapa_desde`/aging zerando ao mudar de estágio. Board visual conferido em
+1280px (desktop).
+
+Fontes da pesquisa: [Deal Velocity — GoConsensus](https://goconsensus.com/blog/deal-velocity),
+[B2B Sales Pipeline Stages — monday.com](https://monday.com/blog/crm-and-sales/b2b-sales-pipeline-stages/),
+[How to improve deal velocity — monday.com](https://monday.com/blog/crm-and-sales/how-to-improve-deal-velocity/).
+
 ### Ideias mapeadas para as próximas rodadas (aprovadas em espírito pelo pedido "fora da curva")
-- **Automação de follow-up:** sugestão automática de `proximo_contato` ao criar
-  orçamento (ex.: +3 dias); notificação/badge no app quando há follow-up do dia.
+- ~~Automação de follow-up~~ → **parcialmente feita no CRM v2** (auto-sugestão
+  ligada à situação "aguardando aprovação"). Falta: sugestão genérica de
+  `proximo_contato` ao CRIAR o orçamento (hoje só existe depois, dentro do
+  funil) e notificação/badge no app quando há follow-up do dia (hoje só
+  aparece ao abrir a aba Funil).
 - **NPS/satisfação pós-serviço:** ao concluir OS, link de avaliação no portal do
   cliente; nota por técnico no Produtividade.
 - **Contratos recorrentes/financeiro:** MRR dos agendamentos recorrentes,
