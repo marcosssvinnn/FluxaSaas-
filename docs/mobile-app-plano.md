@@ -209,15 +209,30 @@ item opcional no fim, não bloqueia nada antes dele.
 | **0 — Fundação PWA** | ✅ feito (`bdbf523`/`2f302f7`) | `manifest.json`, ícones/`apple-touch-icon`, área segura (notch), banner de "Adicionar à Tela de Início" | App instala no iPhone e no Android, tela cheia, com tudo que o Fluxa já faz hoje — de graça |
 | **1 — Notificações push** | ✅ feito (`2097fca`) | Chaves VAPID, `push_subscriptions` (RLS por perfil), Edge Function `enviar-push`, handler de push no `sw.js`, banner de ativar notificação. 1 evento cabeado ponta a ponta (orçamento aprovado no portal) | App avisa o gestor quando um cliente aprova um orçamento, mesmo fechado, em ambos os sistemas. **Faltam 2 eventos** (OS atribuída, follow-up do CRM) — é só repetir o padrão do delta25 |
 | **2 — Desbloqueio biométrico** | ✅ feito (`214ce76`) | WebAuthn como gate local antes do auto-login silencioso (a sessão de conta já persistia; faltava um checkpoint), banner de 3 estados, escape hatch pro login normal | Reabrir o app com um checkpoint de verdade, sem perder o auto-login que já existia |
-| **3 — Câmera unificada + compartilhamento** | ⏳ próximo | Menu "Câmera ou Galeria" replicado nos 4 pontos que faltam, PDF via `navigator.share()` | Fluxo de campo (vistoria/OS/despesa/orçamento) consistente ponta a ponta |
-| **4 — Central de Notificações + polish** | ⏳ | Tela de histórico de notificações, revisão final de toque/acessibilidade em dispositivo real | Experiência redonda pro uso diário do time |
+| **3 — Câmera unificada** | ✅ feito, parcial (`3f9c931`) | `capture="environment"` removido dos 6 inputs restantes — mesmo mecanismo da vistoria (seletor nativo já oferece câmera+galeria sem esse atributo). **Compartilhamento de PDF descopado** (`html2pdf` já foi abandonado antes por gerar PDF em branco no mobile — não dava pra reintroduzir sem testar em aparelho real) | Fluxo de foto (vistoria/OS/despesa/orçamento) consistente ponta a ponta |
+| **4 — Central de Notificações** | ✅ feito (`5321e8c`) | Histórico via IndexedDB (o único storage que o Service Worker acessa sem aba aberta), sino no header com badge, dropdown de notificações, clique navega pra página certa | Experiência redonda pro uso diário do time |
 | **5 — Android via Capacitor (opcional)** | ⏳ opcional | `.apk` assinado localmente, sideload direto, recursos nativos equivalentes reaproveitando o que os Sprints 0–4 já resolveram | Quem usa Android ganha um app "de verdade" instalável fora de loja — só se fizer sentido nessa hora |
 
-Sprint 5 (Android nativo) é independente e pode entrar antes, depois, ou
-nunca — não é pré-requisito de nada. Cada sprint entrega algo instalável
-e testável desde o primeiro dia. **Bloqueio atual:** Sprints 0–1 só estão
-na branch `dev` — a `main` (o que está de fato em produção/instalável)
-está travada esperando validação de um trabalho fiscal de outra sessão
-(ver CLAUDE.md, seção "FLUXA MOBILE" → nota de coordenação). Sem isso,
-push real num aparelho físico não dá pra testar (precisa de HTTPS de
-produção).
+**Sprints 0–4 completos — a PWA está pronta (iPhone + Android, um só
+código-fonte).** Sprint 5 (Android nativo) é independente e pode entrar
+antes, depois, ou nunca — não é pré-requisito de nada.
+
+**Bloqueio atual pra ir ao ar de verdade:** tudo isso só está na branch
+`dev` — a `main` (o que está de fato em produção/instalável, servido por
+HTTPS real) está travada esperando validação de um trabalho fiscal de
+outra sessão (ver CLAUDE.md, seção "FLUXA MOBILE" → nota de coordenação).
+Sem isso, ninguém consegue instalar de verdade no iPhone nem testar push
+num aparelho físico (Web Push exige HTTPS de produção, não funciona em
+`localhost`).
+
+**Descoberto ao longo da implementação, registrado como próximos passos
+pequenos (não é preciso sprint novo, é continuar o padrão já criado):**
+- Push só está cabeado ponta a ponta pra 1 dos 3 eventos previstos
+  (orçamento aprovado no portal, via `setup-v2-delta25.sql`). Faltam "OS
+  atribuída" e "follow-up do CRM" — é repetir o mesmo padrão (montar o
+  payload, chamar `enviar-push` via `pg_net` ou direto do client
+  autenticado).
+- Existe uma sobrecarga antiga (3 parâmetros) de `portal_responder_orcamento`
+  ainda viva no banco, ao lado da nova (4 parâmetros, a que o app usa) —
+  achado incidental ao corrigir o bug de assinatura, provavelmente
+  inofensiva, mas vale um `DROP FUNCTION` de limpeza um dia.

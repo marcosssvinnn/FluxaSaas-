@@ -326,13 +326,46 @@ não, iOS ou Android) — nunca vira um branch de comportamento paralelo.
   de qualquer auto-login; sem credencial registrada = zero mudança de
   comportamento. Escape hatch "Entrar de outro jeito" chama `authLogout()`
   de verdade. sw v38→v39.
-- ⏳ **Sprint 3 — Câmera unificada + compartilhamento**: replicar o menu
-  "Câmera ou Galeria" que a vistoria já tem nos outros 4 pontos de foto
-  (OS, equipamento, despesa, orçamento); PDF via `navigator.share()`.
-- ⏳ **Sprint 4 — Central de Notificações + polish final**.
+- ✅ **Sprint 3 — Câmera unificada, parcial** (commit `3f9c931`, 2026-07-21):
+  achado ao investigar — o "Câmera ou Galeria" da vistoria não era um menu
+  customizado, era só um `<input type=file accept=image/*>` **sem**
+  `capture="environment"` (omitir esse atributo deixa o próprio seletor do
+  sistema oferecer as duas opções). Os outros 4 pontos (3 slots de OS,
+  equipamento, despesa) e o slot de orçamento (gerado em `app.js`) tinham
+  `capture="environment"`, forçando só câmera — removido dos 6 lugares,
+  zero mudança de comportamento pra quem sempre fotografava na hora.
+  **Compartilhamento de PDF descopado, não esquecido:** o código já
+  documenta que `html2pdf` foi abandonado pro fluxo interativo ("gerava
+  PDF em branco de forma consistente no mobile" — comentário em
+  `_gerarPDFVistoria`); orçamento/OS/vistoria usam todos `window.print()`,
+  que não expõe um `Blob` pra `navigator.share({files:[...]})`. Implementar
+  isso exigiria reintroduzir `html2pdf` no caminho interativo, sem como
+  validar em aparelho físico nesta sessão — preferi não arriscar reviver
+  um bug já corrigido antes. sw v39→v40.
+- ✅ **Sprint 4 — Central de Notificações** (commit `5321e8c`, 2026-07-21):
+  histórico das notificações push recebidas (mesmo com o app fechado) via
+  **IndexedDB** (`fluxa-notificacoes` — não `localStorage`, é o único
+  armazenamento que um Service Worker acessa sem nenhuma aba aberta);
+  `sw.js` grava no handler `push` (junto com `showNotification`) e avisa
+  abas já abertas via `postMessage` pro badge atualizar na hora. Sino 🔔
+  no header com badge de não lidas (dropdown reaproveitando `.gear-menu`,
+  fecha sozinho ao clicar fora/abrir o outro menu). **Bug pego no próprio
+  teste, corrigido:** clicar numa notificação só trocava `location.hash`,
+  que não navega pra NENHUMA página interna do app (Histórico, Funil,
+  Minhas OS...) — hash só existe pras rotas públicas especiais (`#portal`,
+  `#eq`...). Corrigido pra chamar `go()` de verdade (mesma função da
+  sidebar, já cuida de permissão por perfil). Descoberta lateral: o
+  Service Worker cacheia `native.js` "cache-first" (não está na lista
+  network-first do `sw.js`) — durante teste local isso mascarou o fix por
+  uma rodada inteira até limpar o cache manualmente; não afeta produção
+  (cada deploy já bumpa `CACHE`), só vale lembrar na próxima sessão de
+  teste local. sw v40→v41.
 - ⏳ **Sprint 5 — Android via Capacitor (opcional)**: só entra em cena se
   um dia fizer sentido ter um `.apk` "de verdade" fora do fluxo de
-  "Adicionar à Tela de Início" — não bloqueia nada antes dele.
+  "Adicionar à Tela de Início" — não bloqueia nada antes dele. **Único
+  item ainda não feito do plano original** — Sprints 0–4 (a versão PWA
+  completa, iPhone+Android) estão prontos, só faltando a `main` destravar
+  pra ir pra produção de verdade.
 
 ### ⚠️ Nota de coordenação (main travada de propósito)
 A `main` está intencionalmente **atrás** da `dev` neste momento — tem
