@@ -114,8 +114,38 @@ com uma query de leitura (não confie só em "não deu erro").
 - **Sem tela de PIN para quem já tem conta:** quem autentica por e-mail+senha e é `membros` da empresa ativa entra **direto** nessa persona (`_autoLoginMembroDaConta()`: lê `perfil`/`nome` de `membros`, chama `setSessao(...)` sem passar pelo PIN) — a conta já provou quem é, não faz sentido pedir PIN de novo. Roda tanto logo após `authSubmit` quanto no boot normal (sessão de conta persiste entre aberturas do navegador; a sessão interna em `sessionStorage`, não).
 - **PIN interno continua existindo, mas só para quem o gestor cria DEPOIS pelo app** (tela Usuários — vendas/técnico/outros gestores) — pensado para dispositivo compartilhado em campo, sem precisar de conta de e-mail individual. `authLogout` encerra a conta; `fazerLogout` só troca para um desses perfis internos (PIN).
 
-### Arquitetura fiscal (FUTURA — não implementar agora)
-Emissão fiscal client-side está **desativada** (`emitirNota` só avisa "em breve"; nenhuma chamada à API fiscal parte do cliente; nenhum `focusnfe_token` no cliente). No multi-tenant a conta fiscal é **única da plataforma** (o token master dá acesso às notas de TODAS as empresas — jamais no cliente). Futuro: emissão via **Edge Function** (token master como secret; valida JWT + membro da empresa; chama a API pelo CNPJ da empresa) + **webhook** de retorno da SEFAZ (outra Edge Function atualiza `notas_fiscais`) + onboarding do **certificado A1** por empresa (enviado direto ao provedor, nunca gravado em tabela legível pelo cliente). Mantidos: tabela `notas_fiscais`, campos fiscais de `lojas` e a UI (só a emissão fica "em breve").
+### Arquitetura fiscal — EM IMPLEMENTAÇÃO (não é mais só "futura", ver plano)
+> ⚠️ Esta seção estava desatualizada até 2026-07-20 — descrevia um modelo de
+> "token master único da plataforma" (uma conta Focus NFe pra todas as
+> empresas) que **não é mais o plano**. O Marcos decidiu não pagar mensalidade
+> de intermediário (Focus NFe) e usar a **NFS-e Nacional** (API gratuita do
+> governo) com o **certificado A1 de cada empresa** (per-CNPJ, não um token
+> compartilhado). Plano completo aprovado em
+> `~/.claude/plans/fluttering-questing-milner.md`.
+>
+> Emissão fiscal client-side continua **desativada** no `app.js`
+> (`emitirNota` só avisa "em breve" — ainda não religada; isso é o Marco 4,
+> pendente). O que já existe:
+> - **`fiscal-service/`** (novo diretório no repo) — microsserviço Node.js
+>   separado (não Edge Function — Deno/Supabase Edge não suporta mTLS de
+>   forma confiável, achado de pesquisa; ver `fiscal-service/README.md`).
+>   Assina a DPS (XMLDSig) e envia via mTLS usando o certificado A1 de cada
+>   empresa. Escopo desta fase: **só NFS-e (serviço)** — NFe (produto) fica
+>   pra depois.
+> - **`setup-v2-delta21.sql`** — certificado guardado no **Supabase Vault**
+>   (não numa tabela comum), acessível só por funções `SECURITY DEFINER`
+>   exclusivas da `service_role` (nem `gestor` via SQL direto tem acesso).
+> - **Marco 0 (prova de conceito de assinatura) — passos 1-3 concluídos e
+>   verificados**, passo 4 (certificado real contra homologação de verdade)
+>   ainda pendente, precisa do Marcos presente com o `.pfx` real.
+> - **Código do microsserviço nunca rodou** (ambiente de dev sem Node.js) —
+>   sintaxe validada por fora, lógica de payload testada e idêntica ao spike
+>   Python, mas precisa de smoke test real antes de confiar.
+> - **Ponto em aberto, não decidido por engenharia:** emitir ao aprovar o
+>   orçamento (como está hoje) ou ao concluir a OS? É pergunta pro contador
+>   do Marcos (fato gerador do ISS = serviço realizado, não orçamento aceito).
+>   `notas_fiscais.os_id` já existe no schema pra não precisar migrar de novo
+>   depois, mas o gatilho ainda não mudou.
 
 ### Versionamento e rollback (deploy único = bug atinge todas as empresas)
 - **Branches:** trabalhe sempre em `dev`. `main` é produção (sai o deploy); só recebe merge validado. Rollback = reverter o merge na `main`.
