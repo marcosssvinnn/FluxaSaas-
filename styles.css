@@ -1181,3 +1181,12 @@
     .pwa-install-close:hover{color:white}
     @media(min-width:681px){ .pwa-install-banner{left:auto;right:20px;bottom:20px;max-width:360px} }
     @media(max-width:680px){ .pwa-install-banner{bottom:calc(72px + env(safe-area-inset-bottom))} }
+
+    /* ── Bloqueio biométrico (Sprint 2) ── */
+    .biometric-lock-overlay{display:none;position:fixed;inset:0;z-index:9500;background:var(--c2);align-items:center;justify-content:center;padding:24px}
+    .biometric-lock-card{width:100%;max-width:340px;text-align:center;color:white}
+    .biometric-lock-icon{font-size:48px;margin-bottom:14px}
+    .biometric-lock-titulo{font-size:20px;font-weight:800}
+    .biometric-lock-sub{font-size:13px;color:rgba(255,255,255,.65);margin-top:6px;min-height:18px}
+    .biometric-lock-outro{display:block;width:100%;margin-top:14px;background:none;border:none;color:rgba(255,255,255,.55);font-size:12.5px;font-family:'Inter',sans-serif;cursor:pointer;padding:10px;text-decoration:underline}
+    .biometric-lock-outro:hover{color:white}

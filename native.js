@@ -59,7 +59,7 @@ async function fluxaInstalarAgora(){
 // que o app é instalável. Decide o que mostrar: banner de instalar (se ainda
 // não instalado) OU banner de ativar notificações (se já instalado e a
 // permissão nunca foi pedida) — nunca os dois ao mesmo tempo.
-function _fluxaAvaliarBannerInstalar(){
+async function _fluxaAvaliarBannerInstalar(){
   const el = document.getElementById('pwa-install-banner');
   if (!el) return;
 
@@ -84,20 +84,40 @@ function _fluxaAvaliarBannerInstalar(){
     return;
   }
 
-  // Já instalado — se a permissão de notificação nunca foi pedida, oferece ativar.
-  // Se já foi concedida antes (ex.: reinstalou o app), garante a inscrição sem perguntar de novo.
-  if (!('Notification' in window)) return;
-  if (Notification.permission === 'granted'){ fluxaInscreverPush(); return; }
-  if (Notification.permission === 'denied') return; // respeitou a negativa, não insiste
-  if (_pwaDismissAtivo()) return;
+  // Já instalado — 3 estados possíveis, nunca dois ao mesmo tempo:
+  // 1) notificação nunca pedida  2) biometria disponível e não ativada  3) nada a oferecer
+  if ('Notification' in window){
+    if (Notification.permission === 'granted'){ fluxaInscreverPush(); }
+    else if (Notification.permission !== 'denied' && !_pwaDismissAtivo()){
+      const corpo = document.getElementById('pwa-install-body');
+      const btn = document.getElementById('pwa-install-btn');
+      corpo.innerHTML = 'Ative as notificações pra saber na hora quando um cliente aprovar um orçamento, sem precisar abrir o app.';
+      btn.style.display = '';
+      btn.textContent = 'Ativar';
+      btn.onclick = fluxaAtivarNotificacoes;
+      el.classList.add('on');
+      return;
+    }
+  }
 
-  const corpo = document.getElementById('pwa-install-body');
-  const btn = document.getElementById('pwa-install-btn');
-  corpo.innerHTML = 'Ative as notificações pra saber na hora quando um cliente aprovar um orçamento, sem precisar abrir o app.';
-  btn.style.display = '';
-  btn.textContent = 'Ativar';
-  btn.onclick = fluxaAtivarNotificacoes;
-  el.classList.add('on');
+  if (typeof authUser !== 'undefined' && authUser && !fluxaTemCredencialBiometrica(authUser.id) && !_pwaDismissAtivo()){
+    const disponivel = await fluxaBiometriaDisponivel();
+    if (disponivel){
+      const corpo = document.getElementById('pwa-install-body');
+      const btn = document.getElementById('pwa-install-btn');
+      corpo.innerHTML = 'Ative o desbloqueio por Face ID/digital pra abrir o Fluxa mais rápido — e mais seguro se alguém pegar seu aparelho.';
+      btn.style.display = '';
+      btn.textContent = 'Ativar';
+      btn.onclick = async () => {
+        const ok = await fluxaAtivarBiometria();
+        if (ok){ const b = document.getElementById('pwa-install-banner'); if (b) b.classList.remove('on'); }
+      };
+      el.classList.add('on');
+      return;
+    }
+  }
+
+  el.classList.remove('on');
 }
 
 function _urlBase64ParaUint8Array(base64String){
@@ -120,6 +140,110 @@ async function fluxaAtivarNotificacoes(){
     if (el) el.classList.remove('on');
     if (perm === 'granted') await fluxaInscreverPush();
   }catch(e){ console.warn('[push] permissão', e?.message||e); }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Desbloqueio biométrico (Sprint 2, opt-in) — WebAuthn (Face ID/Touch ID/
+// impressão digital via autenticador de plataforma do próprio aparelho).
+//
+// O que isso NÃO é: não é uma segunda camada de autenticação server-side —
+// a sessão de conta (Supabase Auth) já é o que prova quem é o usuário pro
+// banco, e ela já sobrevive fechar o app (persistida pelo próprio SDK).
+// Isso é só um GATE de conveniência/segurança física: sem ele, qualquer
+// pessoa que pegasse o aparelho destravado abriria o Fluxa direto, sem
+// nenhum checkpoint. Por isso a credencial fica guardada localmente
+// (localStorage, por aparelho) e a verificação nunca sai do navegador —
+// não precisa de round-trip com o servidor pra este caso de uso.
+// ─────────────────────────────────────────────────────────────────────────
+
+function _bufParaB64url(buf){
+  const bytes = new Uint8Array(buf);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function _b64urlParaBuf(str){
+  const padding = '='.repeat((4 - str.length % 4) % 4);
+  const base64 = (str + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes.buffer;
+}
+
+async function fluxaBiometriaDisponivel(){
+  if (!window.PublicKeyCredential || !navigator.credentials) return false;
+  try{ return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable(); }
+  catch(e){ return false; }
+}
+function fluxaTemCredencialBiometrica(userId){
+  return !!userId && localStorage.getItem('fluxa_webauthn_user') === userId && !!localStorage.getItem('fluxa_webauthn_cred');
+}
+
+// Registro — chamado a partir do banner (Sprint 0/1 reaproveitado, 3º estado).
+async function fluxaAtivarBiometria(){
+  if (typeof authUser === 'undefined' || !authUser) return false;
+  try{
+    const cred = await navigator.credentials.create({
+      publicKey: {
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        rp: { name: 'Fluxa' },
+        user: {
+          id: new TextEncoder().encode(authUser.id),
+          name: authUser.email || (typeof getSessao === 'function' ? getSessao()?.nome : '') || 'usuario',
+          displayName: (typeof getSessao === 'function' ? getSessao()?.nome : '') || 'Usuário Fluxa',
+        },
+        pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+        authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'required' },
+        timeout: 60000,
+      },
+    });
+    if (!cred) return false;
+    localStorage.setItem('fluxa_webauthn_cred', _bufParaB64url(cred.rawId));
+    localStorage.setItem('fluxa_webauthn_user', authUser.id);
+    return true;
+  }catch(e){ console.warn('[webauthn] ativar', e?.message||e); return false; }
+}
+
+// Verificação — usada na tela de bloqueio, antes do boot continuar.
+async function fluxaVerificarBiometria(){
+  const credId = localStorage.getItem('fluxa_webauthn_cred');
+  if (!credId) return true; // sem credencial registrada: sem gate, nada a verificar
+  try{
+    const assertion = await navigator.credentials.get({
+      publicKey: {
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        allowCredentials: [{ id: _b64urlParaBuf(credId), type: 'public-key' }],
+        userVerification: 'required',
+        timeout: 60000,
+      },
+    });
+    return !!assertion;
+  }catch(e){ console.warn('[webauthn] verificar', e?.message||e); return false; }
+}
+
+function mostrarTelaBloqueioBiometrico(){
+  const el = document.getElementById('biometric-lock-overlay');
+  if (el) el.style.display = 'flex';
+}
+async function fluxaDesbloquearBiometria(){
+  const status = document.getElementById('biometric-lock-status');
+  if (status) status.textContent = 'Verificando…';
+  const ok = await fluxaVerificarBiometria();
+  if (ok){
+    sessionStorage.setItem('fluxa_webauthn_ok', '1');
+    location.reload();
+  } else if (status){
+    status.textContent = 'Não foi possível verificar. Tente de novo.';
+  }
+}
+// Escape hatch: biometria falhando/indisponível — sai da conta e volta pra
+// tela de login normal (e-mail/senha ou nome+PIN), sem meio-termo confuso.
+function fluxaUsarOutroLogin(){
+  localStorage.removeItem('fluxa_webauthn_cred');
+  localStorage.removeItem('fluxa_webauthn_user');
+  if (typeof authLogout === 'function') authLogout();
+  else location.reload();
 }
 
 // Registra (ou reaproveita) a inscrição de push do navegador e salva no banco.

@@ -2528,6 +2528,17 @@
   <button class="pwa-install-close" onclick="fluxaDispensarInstalar()" aria-label="Fechar">✕</button>
 </div>
 
+<!-- ══ Bloqueio biométrico (Sprint 2) — só aparece se o aparelho já tem credencial registrada ══ -->
+<div class="biometric-lock-overlay" id="biometric-lock-overlay" role="dialog" aria-modal="true" aria-label="Desbloquear o Fluxa">
+  <div class="biometric-lock-card">
+    <div class="biometric-lock-icon" aria-hidden="true">🔒</div>
+    <div class="biometric-lock-titulo">Fluxa bloqueado</div>
+    <div class="biometric-lock-sub" id="biometric-lock-status">Toque abaixo pra desbloquear.</div>
+    <button class="btn-primary" style="width:100%;margin-top:18px" onclick="fluxaDesbloquearBiometria()">🔓 Desbloquear</button>
+    <button class="biometric-lock-outro" onclick="fluxaUsarOutroLogin()">Entrar de outro jeito</button>
+  </div>
+</div>
+
 <div class="toast" id="toast" role="alert" aria-live="assertive" aria-atomic="true"></div>
 
 <!-- Error boundary global: captura erros JS e exibe tela amigável -->

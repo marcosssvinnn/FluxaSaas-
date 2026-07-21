@@ -1343,6 +1343,16 @@ function lsOrcProxNum(){ return lsOrcLer().reduce((a,o)=>Math.max(a,o.numero||0)
   // (ao fechar, cai na tela normal). Sem early return.
   if(/^#(termos|privacidade)$/.test(location.hash||'')){ try{ abrirLegal(location.hash.replace('#','')); }catch(e){} }
 
+  // Bloqueio biométrico (Sprint 2, opt-in) — só entra em cena se este aparelho
+  // já tem uma credencial WebAuthn registrada pra esse authUser E ainda não
+  // passamos pelo desbloqueio nesta aba (sessionStorage — some ao fechar,
+  // então todo cold-start pede de novo, mas um F5 no meio da sessão não).
+  // Sem credencial registrada = zero mudança de comportamento (segue direto).
+  if(authUser && !getSessao() && !sessionStorage.getItem('fluxa_webauthn_ok')
+     && typeof fluxaTemCredencialBiometrica==='function' && fluxaTemCredencialBiometrica(authUser.id)){
+    if(typeof mostrarTelaBloqueioBiometrico==='function'){ mostrarTelaBloqueioBiometrico(); return; }
+  }
+
   let modoAdminPlataforma = false;
   let semSessaoDeConta = false;
   if(temCreds && !authSession){
