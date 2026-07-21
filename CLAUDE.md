@@ -224,6 +224,75 @@ Fluxa (principal, piloto de IA), Fortemp (2 lojas/unidades no mesmo tenant), Aqu
 
 ---
 
+## 📱 FLUXA MOBILE — PWA instalável (Android + iPhone, sem loja)
+
+> **Se você é a outra IA e está lendo isso pela primeira vez:** existe uma
+> frente de trabalho aberta pra levar o Fluxa pro celular como app de
+> verdade. Não é Capacitor, não é React Native, não precisa de Xcode nem
+> Android Studio — é a PWA que já existe, reforçada. Pode continuar
+> qualquer sprint abaixo que não esteja marcado como feito. Plano completo
+> (com justificativa técnica, comparação de tecnologias e todos os
+> trade-offs): `docs/mobile-app-plano.md`.
+
+### A decisão (por quê)
+O Marcos pediu app mobile mas **sem custo e sem burocracia de loja** (uso
+interno, dele + das empresas) — isso descarta Apple Developer Program
+(US$ 99/ano) e Google Play Developer (US$ 25). No Android, instalar um
+`.apk` fora da loja é trivial e permanente; no **iPhone não existe
+equivalente grátis permanente** (o único caminho $0 via Xcode expira em 7
+dias). Como o time é **majoritariamente iPhone**, isso decidiu a
+arquitetura: em vez de Capacitor (shell nativo, exigiria loja pro iOS),
+a rota é **PWA reforçada** — desde o iOS 16.4, uma PWA "Adicionada à Tela
+de Início" ganha tela cheia, ícone próprio, **push de verdade** (Web
+Push/VAPID — não depende de certificado Apple) e desbloqueio biométrico
+via WebAuthn. Mesmo código serve Android e iPhone.
+
+### Regra de ouro: continua sendo UM código-fonte só
+`index.html`/`app.js`/`styles.css` continuam sendo os mesmos arquivos pra
+web E pra "app" — sem fork, sem pasta `www/` separada, sem build step novo
+(mantém a filosofia "sem framework, sem build step" do resto do projeto).
+`native.js` é só uma camada fina de *feature-detection* (standalone ou
+não, iOS ou Android) — nunca vira um branch de comportamento paralelo.
+
+### Status (atualizado a cada sprint concluído)
+- ✅ **Sprint 0 — Fundação PWA** (commits `bdbf523`/`2f302f7`, 2026-07-20):
+  `manifest.json`, `icons/` (gerado localmente com PIL — "F" branco sobre
+  o laranja `--c1`, mesmo tratamento do avatar que já existe no app),
+  `apple-touch-icon`, favicons, `env(safe-area-inset-top)` em
+  `.hdr`/`.sidebar`/`body` (notch/Dynamic Island), `native.js`
+  (`fluxaModoStandalone()`, `fluxaPlataforma()`, captura do
+  `beforeinstallprompt`), banner dismissível "Instalar o Fluxa" (texto
+  por plataforma, nunca aparece no desktop nem se já instalado, snooze de
+  7 dias — chamado de dentro de `aplicarPermissoesPerfil()`, dispara em
+  login/reload/troca de loja sem precisar tocar nos 7 call sites). sw
+  v36→v37 (precache de `native.js`/`manifest.json`/ícones).
+  **⚠️ Só está na `dev`, ainda NÃO foi promovido pra `main`** — ver nota
+  abaixo.
+- ⏳ **Sprint 1 — Notificações push**: chaves VAPID, handler `push`/
+  `notificationclick` no `sw.js`, Edge Function de envio, permissão pedida
+  só depois de instalado (limitação do iOS). Eventos: follow-up do CRM,
+  OS atribuída, orçamento aprovado no portal.
+- ⏳ **Sprint 2 — Desbloqueio biométrico**: WebAuthn (Face ID/Touch ID/
+  digital) pra liberar a sessão do PIN, que hoje vive em `sessionStorage`
+  e some ao fechar a aba.
+- ⏳ **Sprint 3 — Câmera unificada + compartilhamento**: replicar o menu
+  "Câmera ou Galeria" que a vistoria já tem nos outros 4 pontos de foto
+  (OS, equipamento, despesa, orçamento); PDF via `navigator.share()`.
+- ⏳ **Sprint 4 — Central de Notificações + polish final**.
+- ⏳ **Sprint 5 — Android via Capacitor (opcional)**: só entra em cena se
+  um dia fizer sentido ter um `.apk` "de verdade" fora do fluxo de
+  "Adicionar à Tela de Início" — não bloqueia nada antes dele.
+
+### ⚠️ Nota de coordenação (main travada de propósito)
+A `main` está intencionalmente **atrás** da `dev` neste momento — tem
+trabalho fiscal de outra sessão (`Marco 2/3 — microsserviço de emissão de
+NFS-e`, explicitamente marcado "não testado em Node real") entre o Sprint
+0 do mobile e a `main`. Antes de promover `dev`→`main`, confirme com o
+Marcos que o fiscal já foi validado — não é só sobre o mobile, é sobre não
+subir código fiscal não testado pra produção.
+
+---
+
 ## 📦 ESTOQUE (controle inteligente)
 
 Tabelas: `produtos` e `estoque_movimentos` (id texto `prod_*`/`mov_*`). **Saldo = soma dos movimentos** (ledger), nunca um contador editável. Só gestor edita; carregado no login (`loadEstoque`). `registrarMovimento(...)` é local-first + sync resiliente — **NUNCA** decremente um número, sempre crie um movimento.
@@ -259,6 +328,19 @@ Outra IA pode ter commitado desde a última vez. **Nunca trabalhe sobre um estad
 ### Toda sessão de trabalho deve:
 1. **Começar sincronizando com o `origin/main`** (acima) e **lendo este arquivo**
 2. **Terminar atualizando este arquivo** com tudo que foi feito ou decidido na sessão
+
+### 📱 Iniciativa ativa: app mobile (PWA, sem loja) — ver seção "FLUXA MOBILE" abaixo
+Desde 2026-07-20 há uma frente aberta pra transformar o Fluxa num app instalável
+de verdade (Android + iPhone). **Decisão do Marcos: sem Capacitor, sem Apple
+Developer Program, sem Google Play Developer — uso interno, sem loja, sem
+custo.** Se você (outra IA) for mexer em `index.html`/`app.js`/`styles.css` e
+notar arquivos que não reconhece (`manifest.json`, `native.js`, `icons/`,
+`sw.js` com URLs novas na lista de precache) — é isso, não é lixo, não apague.
+Plano completo, cronograma por sprint e o que já foi feito: `docs/mobile-app-
+plano.md` + seção "📱 FLUXA MOBILE" mais abaixo neste arquivo. Pode ajudar
+livremente — é só continuar dali, seguindo o mesmo padrão (commitar por
+sprint/mudança lógica, nunca mexer em `fiscal-service/` ou outro trabalho que
+não seja seu sem entender o que é primeiro).
 
 ### O que sempre atualizar ao final de cada sessão:
 - Módulos ou funcionalidades implementadas → mover para a lista de "já implementados"
