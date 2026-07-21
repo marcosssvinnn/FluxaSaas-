@@ -94,6 +94,7 @@ function aplicarPermissoesPerfil(){
 
   // ── Sidebar nav ──
   const snbRules = {
+    'snb-painel'       : gestor,
     'snb-form'         : gestor||vendas,
     'snb-history'      : gestor||vendas,
     'snb-crm'          : (gestor||vendas)&&_crmAtivo(),
@@ -1065,7 +1066,7 @@ async function fazerLogin(){
       aplicarPermissoesPerfil();
       atualizarHeaderLoja();
       logAcao('login', loginUserSelecionado.nome+' (gestor '+(getLojaNome(loginUserSelecionado.loja_id))+')');
-      go('history');
+      go('painel');
     } else if(loginUserSelecionado.perfil==='tecnico' && !loginUserSelecionado.loja_id){
       // Técnico que atende mais de uma empresa → escolhe a empresa da sessão
       document.getElementById('login-step-pin').classList.remove('show');
@@ -1143,7 +1144,7 @@ function confirmarLojaGestor(lojaId){
   atualizarBadgeUsuario();
   aplicarPermissoesPerfil();
   atualizarHeaderLoja();
-  go('history');
+  go('painel');
 }
 
 // v2: o técnico pertence a UMA empresa (tenant) — não há escolha de empresa no login
@@ -1370,7 +1371,10 @@ function lsOrcProxNum(){ return lsOrcLer().reduce((a,o)=>Math.max(a,o.numero||0)
   // ── Credenciais do Supabase (ponto único: constantes SUPABASE_URL/ANON_KEY) ──
   const sbUrl = SUPABASE_URL;
   const sbKey = SUPABASE_ANON_KEY;
-  go('form');
+  // Destino inicial: gestor/master cai no Painel (visão geral do mês); vendas em
+  // Orçamento; técnico já foi redirecionado pra Minhas OS por aplicarPermissoesPerfil
+  // acima (e bloqueado aqui pelo próprio go(), que só aceita p in pagesTecnico).
+  go(eGestor()?'painel':'form');
 
   async function tentarConectar(tentativa){
     try {
@@ -1933,8 +1937,15 @@ function go(p){
   const snb=document.getElementById('snb-'+p); if(snb){ snb.classList.add('on'); snb.setAttribute('aria-current','page'); }
   closeSidebar();
   if(p==='portal') { /* página gerenciada por checkPortalHash */ }
-  if(p==='history'){ initOrcMes(); loadHist(); setTimeout(renderGraficoDash,200); }
-  if(p==='crm'){ if(!_crmAtivo()){ toast('Funil desativado para esta empresa.'); go('history'); return; } renderCRM(); }
+  if(p==='painel'){
+    initOrcMes(); loadHist(); loadOSHist();
+    document.getElementById('painel-nome').textContent=getSessao()?.nome||'';
+    document.getElementById('painel-mes-label').textContent='Como está '+_renderOrcMesLabelStr();
+    setTimeout(renderGraficoDash,200);
+    setTimeout(renderPainelCRM,250);
+  }
+  if(p==='history'){ initOrcMes(); loadHist(); }
+  if(p==='crm'){ if(!_crmAtivo()){ toast('Funil desativado para esta empresa.'); go('painel'); return; } loadOSHist(); renderCRM(); }
   if(p==='form'){
     // Restaura rascunho APENAS quando se navega direto para a tela (nav/menu).
     // Nunca ao editar (abrirOrc), criar novo (novoOrc) ou duplicar — esses fluxos
@@ -11178,9 +11189,9 @@ function notifOrcamentoPorSituacao(o){
   return typeof notifOrcamento==='function' ? notifOrcamento(o) : `Olá${nome?', '+nome:''}! Passando para saber sobre o orçamento ${numero}.`;
 }
 
-function renderCRM(){
-  const board=document.getElementById('crm-board'); if(!board) return;
-  if(typeof verificarVencidos==='function') verificarVencidos();
+// Núcleo de cálculo do funil — compartilhado entre o board completo (renderCRM)
+// e o resumo do Painel (renderPainelCRM), pra nunca divergir os dois números.
+function _crmComputarStats(){
   const lista=filtrarPorLoja(todosOrc||[]);
   const limite=Date.now()-_CRM_JANELA_DIAS*86400000;
   const porEtapa={pendente:[],aprovado:[],concluido:[],perdido:[]};
@@ -11192,6 +11203,42 @@ function renderCRM(){
     }
     porEtapa[et].push(o);
   });
+  const soma=arr=>arr.reduce((s,o)=>s+(parseFloat(o.total)||0),0);
+  const neg=porEtapa.pendente;
+  const decididos=lista.filter(o=>{
+    const et=_crmEtapaDoOrc(o); if(et==='pendente') return false;
+    const ref=new Date(o.data_aprovacao||o.data_criacao||0).getTime();
+    return ref>=limite;
+  });
+  const ganhos=decididos.filter(o=>_crmEtapaDoOrc(o)!=='perdido').length;
+  const fuDue=lista.filter(o=>['pendente','aprovado'].includes(_crmEtapaDoOrc(o))&&['atrasado','hoje'].includes(_crmFuStatus(o)));
+  return {lista, porEtapa, soma, neg, negSoma:soma(neg), decididos, ganhos,
+    conversao: decididos.length?Math.round(ganhos/decididos.length*100):null,
+    fuDue, esfriandoQtd: neg.filter(_crmEsfriando).length};
+}
+
+// Resumo do funil pro Painel — mesmos números do board completo (via _crmComputarStats),
+// só que compactos e com atalho pra abrir os itens que precisam de atenção agora.
+function renderPainelCRM(){
+  const body=document.getElementById('painel-crm-body'); if(!body) return;
+  if(!_crmAtivo()){ document.getElementById('painel-crm-card').style.display='none'; return; }
+  if(typeof verificarVencidos==='function') verificarVencidos();
+  const {neg, negSoma, fuDue, conversao, esfriandoQtd}=_crmComputarStats();
+  const atrasados=fuDue.filter(o=>_crmFuStatus(o)==='atrasado');
+  body.innerHTML=`
+    <div class="painel-crm-stats">
+      <div class="painel-crm-stat"><div class="pcs-v">${brl(negSoma)}</div><div class="pcs-l">${neg.length} em negociação</div></div>
+      <div class="painel-crm-stat"><div class="pcs-v">${conversao===null?'—':conversao+'%'}</div><div class="pcs-l">conversão (90d)</div></div>
+      <div class="painel-crm-stat"><div class="pcs-v" style="color:${fuDue.length?'var(--yellow)':'inherit'}">${fuDue.length}</div><div class="pcs-l">follow-up hoje</div></div>
+      <div class="painel-crm-stat"><div class="pcs-v" style="color:${esfriandoQtd?'var(--red)':'inherit'}">${esfriandoQtd}</div><div class="pcs-l">esfriando</div></div>
+    </div>
+    ${atrasados.length?`<div class="painel-crm-alerta" onclick="go('crm')">⚠️ ${atrasados.length} follow-up${atrasados.length===1?'':'s'} atrasado${atrasados.length===1?'':'s'} — <u>ver no funil</u></div>`:''}`;
+}
+
+function renderCRM(){
+  const board=document.getElementById('crm-board'); if(!board) return;
+  if(typeof verificarVencidos==='function') verificarVencidos();
+  const {porEtapa, soma, neg, negSoma, fuDue, conversao, esfriandoQtd}=_crmComputarStats();
   // Urgência primeiro: follow-up atrasado > hoje > esfriando > mais recentes
   const peso=o=>{ const f=_crmFuStatus(o); if(f==='atrasado') return 0; if(f==='hoje') return 1; if(_crmEsfriando(o)) return 2; return 3; };
   porEtapa.pendente.sort((a,b)=>peso(a)-peso(b)||new Date(b.data_criacao||0)-new Date(a.data_criacao||0));
@@ -11200,21 +11247,12 @@ function renderCRM(){
   porEtapa.perdido.sort((a,b)=>new Date(b.data_criacao||0)-new Date(a.data_criacao||0));
 
   // ── Stats ──
-  const soma=arr=>arr.reduce((s,o)=>s+(parseFloat(o.total)||0),0);
-  const neg=porEtapa.pendente;
-  document.getElementById('crm-d-neg').textContent=brl(soma(neg));
+  document.getElementById('crm-d-neg').textContent=brl(negSoma);
   document.getElementById('crm-d-neg-q').textContent=`${neg.length} orçamento${neg.length===1?'':'s'}`;
-  const decididos=lista.filter(o=>{
-    const et=_crmEtapaDoOrc(o); if(et==='pendente') return false;
-    const ref=new Date(o.data_aprovacao||o.data_criacao||0).getTime();
-    return ref>=limite;
-  });
-  const ganhos=decididos.filter(o=>_crmEtapaDoOrc(o)!=='perdido').length;
-  document.getElementById('crm-d-conv').textContent=decididos.length?Math.round(ganhos/decididos.length*100)+'%':'—';
-  const fuDue=lista.filter(o=>['pendente','aprovado'].includes(_crmEtapaDoOrc(o))&&['atrasado','hoje'].includes(_crmFuStatus(o)));
+  document.getElementById('crm-d-conv').textContent=conversao===null?'—':conversao+'%';
   document.getElementById('crm-d-fu').textContent=fuDue.length;
   document.getElementById('crm-d-fu-q').textContent=fuDue.some(o=>_crmFuStatus(o)==='atrasado')?'⚠️ há atrasados':'a contatar';
-  document.getElementById('crm-d-frio').textContent=neg.filter(_crmEsfriando).length;
+  document.getElementById('crm-d-frio').textContent=esfriandoQtd;
 
   // ── Follow-ups do dia ──
   const fuCard=document.getElementById('crm-fu-card');

@@ -1150,3 +1150,21 @@
     .crm-chip.sit-negociando_valor{background:#dcfce7;color:#16a34a}
     .crm-contato-item{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;background:var(--gray-light);border-radius:8px;margin-bottom:5px;font-size:12px}
     .crm-contato-info{color:var(--c2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+    /* ── PAINEL (home do gestor) ── */
+    .painel-hero{margin-bottom:18px}
+    .painel-hero-titulo{font-size:22px;font-weight:800;color:var(--c2)}
+    .painel-hero-sub{font-size:13px;color:var(--gray);margin-top:2px;text-transform:capitalize}
+    .painel-acoes{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px}
+    .painel-acao-btn{display:flex;align-items:center;justify-content:center;gap:6px;padding:13px 10px;border:none;border-radius:var(--r);background:var(--c1);color:white;font-family:'Inter',sans-serif;font-size:13px;font-weight:700;cursor:pointer;transition:filter .15s;min-height:44px}
+    .painel-acao-btn:hover{filter:brightness(1.06)}
+    .painel-acao-btn:nth-child(2){background:var(--c2)}
+    .painel-acao-btn:nth-child(3){background:#7c3aed}
+    .painel-acao-btn:nth-child(4){background:#0f766e}
+    @media(max-width:680px){ .painel-acoes{grid-template-columns:1fr 1fr} }
+    .painel-crm-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+    @media(max-width:680px){ .painel-crm-stats{grid-template-columns:1fr 1fr} }
+    .painel-crm-stat{text-align:center;padding:10px 4px;background:var(--gray-light);border-radius:10px}
+    .painel-crm-stat .pcs-v{font-size:18px;font-weight:800;color:var(--c2)}
+    .painel-crm-stat .pcs-l{font-size:10.5px;color:var(--gray);margin-top:2px;text-transform:uppercase;letter-spacing:.3px}
+    .painel-crm-alerta{margin-top:12px;padding:10px 12px;background:var(--red-bg);color:var(--red);border-radius:8px;font-size:12.5px;font-weight:600;cursor:pointer}

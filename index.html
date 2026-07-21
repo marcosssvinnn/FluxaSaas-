@@ -238,19 +238,22 @@
 <!-- ══ SIDEBAR ══ -->
 <aside class="sidebar s-hidden" id="sidebar" role="navigation" aria-label="Menu principal">
   <nav class="snav">
-    <button class="snb on" id="snb-form" onclick="go('form')"><span class="sicon">＋</span><span class="slabel">Orçamento</span></button>
-    <button class="snb" id="snb-os" onclick="novaOS();go('os')"><span class="sicon">📋</span><span class="slabel">OS</span></button>
-    <button class="snb" id="snb-history" onclick="go('history')"><span class="sicon">📊</span><span class="slabel">Histórico</span></button>
+    <!-- Ordem por frequência de uso real (pedido do Marcos): painel primeiro,
+         depois funil/histórico/estoque/orçamento/OS — o resto vai pra "Mais opções". -->
+    <button class="snb on" id="snb-painel" onclick="go('painel')"><span class="sicon">🏠</span><span class="slabel">Painel</span></button>
     <button class="snb" id="snb-crm" onclick="go('crm')"><span class="sicon">🎯</span><span class="slabel">Funil</span></button>
-    <button class="snb" id="snb-minhas-os" onclick="go('minhas-os')" style="display:none"><span class="sicon">📋</span><span class="slabel">Minhas OS</span></button>
-    <button class="snb" id="snb-visitas" onclick="go('visitas')"><span class="sicon">🔍</span><span class="slabel">Vistorias</span></button>
+    <button class="snb" id="snb-history" onclick="go('history')"><span class="sicon">📊</span><span class="slabel">Histórico</span></button>
+    <button class="snb" id="snb-estoque" onclick="go('estoque')"><span class="sicon">📦</span><span class="slabel">Estoque</span></button>
+    <button class="snb" id="snb-form" onclick="go('form')"><span class="sicon">＋</span><span class="slabel">Orçamento</span></button>
+    <button class="snb" id="snb-os" onclick="novaOS();go('os')"><span class="sicon">📋</span><span class="slabel">OS</span></button>
     <button class="snb" id="snb-agendamentos" onclick="go('agendamentos')"><span class="sicon">📅</span><span class="slabel">Agenda</span></button>
+    <button class="snb" id="snb-visitas" onclick="go('visitas')"><span class="sicon">🔍</span><span class="slabel">Vistorias</span></button>
+    <button class="snb" id="snb-minhas-os" onclick="go('minhas-os')" style="display:none"><span class="sicon">📋</span><span class="slabel">Minhas OS</span></button>
     <div class="snav-div"></div>
     <span class="snav-section-label">Mais opções</span>
-    <button class="snb" id="snb-os-history" onclick="go('os-history')"><span class="sicon">📄</span><span class="slabel">Hist. OS</span></button>
     <button class="snb" id="snb-clientes" onclick="go('clientes')"><span class="sicon">👥</span><span class="slabel">Clientes</span></button>
+    <button class="snb" id="snb-os-history" onclick="go('os-history')"><span class="sicon">📄</span><span class="slabel">Hist. OS</span></button>
     <button class="snb" id="snb-equipamentos" onclick="go('equipamentos')"><span class="sicon">🔧</span><span class="slabel">Equipamentos</span></button>
-    <button class="snb" id="snb-estoque" onclick="go('estoque')"><span class="sicon">📦</span><span class="slabel">Estoque</span></button>
     <button class="snb" id="snb-despesas" onclick="go('despesas')"><span class="sicon">💸</span><span class="slabel">Despesas</span></button>
     <button class="snb" id="snb-produtividade" onclick="go('produtividade')"><span class="sicon">📈</span><span class="slabel">Produtividade</span></button>
     <div class="snav-div"></div>
@@ -285,6 +288,89 @@
 
 <!-- ══ MAIN CONTENT ══ -->
 <main id="main-content" role="main">
+
+<!-- ══ PAGE: PAINEL (visão geral do mês — landing do gestor) ══ -->
+<div class="page" id="page-painel">
+  <div class="wrap">
+    <div class="painel-hero">
+      <div class="painel-hero-titulo">Olá, <span id="painel-nome">👋</span></div>
+      <div class="painel-hero-sub" id="painel-mes-label">Como está o mês —</div>
+    </div>
+
+    <div class="painel-acoes">
+      <button class="painel-acao-btn" onclick="novoOrc();go('form')"><span class="sicon">＋</span> Novo Orçamento</button>
+      <button class="painel-acao-btn" onclick="novaOS();go('os')"><span class="sicon">📋</span> Nova OS</button>
+      <button class="painel-acao-btn" onclick="go('crm')"><span class="sicon">🎯</span> Ver Funil</button>
+      <button class="painel-acao-btn" onclick="go('estoque')"><span class="sicon">📦</span> Ver Estoque</button>
+    </div>
+
+    <div class="dash">
+      <div class="dc o"><div class="dl">Total Emitido</div><div class="dv" id="d-emit">—</div><div class="ds" id="d-emit-q">— orç.</div></div>
+      <div class="dc g"><div class="dl">Aprovados</div><div class="dv" id="d-aprov">—</div><div class="ds" id="d-aprov-q">— aprovados</div></div>
+      <div class="dc y"><div class="dl">A Receber</div><div class="dv" id="d-rec">—</div><div class="ds" id="d-rec-q">aprovado s/ pagto</div></div>
+      <div class="dc b"><div class="dl">Ticket Médio</div><div class="dv" id="d-tick">—</div><div class="ds">por orçamento</div></div>
+    </div>
+
+    <!-- ── Resumo do Funil de Vendas ── -->
+    <div class="dash-chart-card" id="painel-crm-card">
+      <div class="dash-chart-hdr">
+        <div class="dash-chart-titulo">🎯 Funil de Vendas</div>
+        <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:5px 12px;font-size:12px" onclick="go('crm')">Ver funil completo →</button>
+      </div>
+      <div id="painel-crm-body"></div>
+    </div>
+
+    <!-- ── Gráfico de faturamento ── -->
+    <div class="dash-chart-card">
+      <div class="dash-chart-hdr">
+        <div class="dash-chart-titulo" id="dash-chart-titulo">📊 Faturamento</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <select id="dash-chart-periodo" onchange="renderGraficoDash()" style="padding:5px 10px;border:1.5px solid var(--gray-mid);border-radius:50px;font-size:12px;font-family:'Inter',sans-serif;outline:none;cursor:pointer">
+            <option value="3">3 meses</option>
+            <option value="6" selected>6 meses</option>
+            <option value="12">12 meses</option>
+            <option value="24">24 meses</option>
+            <option value="ano">Este ano</option>
+            <option value="tudo">Tudo</option>
+          </select>
+          <select id="dash-chart-tipo" onchange="renderGraficoDash()" style="padding:5px 10px;border:1.5px solid var(--gray-mid);border-radius:50px;font-size:12px;font-family:'Inter',sans-serif;outline:none;cursor:pointer">
+            <option value="aprovado">Aprovados</option>
+            <option value="emitido">Total emitido</option>
+          </select>
+        </div>
+      </div>
+      <div class="dash-chart-wrap">
+        <canvas id="dash-chart"></canvas>
+      </div>
+    </div>
+
+    <!-- ── Origem dos clientes ── -->
+    <div class="dash-chart-card" id="dash-origem-card" style="display:none">
+      <div class="dash-chart-hdr">
+        <div class="dash-chart-titulo">📣 Origem dos Clientes</div>
+        <select id="dash-origem-periodo" onchange="renderOrigemDash()" style="padding:5px 10px;border:1.5px solid var(--gray-mid);border-radius:50px;font-size:12px;font-family:'Inter',sans-serif;outline:none;cursor:pointer">
+          <option value="mes" selected>Este mês</option>
+          <option value="3">3 meses</option>
+          <option value="12">12 meses</option>
+          <option value="tudo">Tudo</option>
+        </select>
+      </div>
+      <div id="dash-origem-body"></div>
+    </div>
+
+    <!-- ── Estoque: produtos para repor ── -->
+    <div class="dash-chart-card" id="dash-estoque-card" style="display:none">
+      <div class="dash-chart-hdr">
+        <div class="dash-chart-titulo">📦 Estoque — comprar / repor</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:5px 12px;font-size:12px" onclick="go('estoque')">Abrir estoque →</button>
+          <button class="ba" style="background:transparent;color:var(--gray);padding:5px 8px;font-size:12px;border:1.5px solid var(--gray-mid)" onclick="dispensarAlertaEstoque()" title="Ocultar este aviso por 7 dias">✕ Ignorar 7 dias</button>
+        </div>
+      </div>
+      <div id="dash-estoque-body"></div>
+    </div>
+  </div>
+</div>
 
 <!-- ══ PAGE: EMPRESA ══ -->
 <div class="page" id="page-empresa">
@@ -893,63 +979,6 @@
 <!-- ══ PAGE: HISTÓRICO ══ -->
 <div class="page" id="page-history">
   <div class="wrap">
-    <div class="dash">
-      <div class="dc o"><div class="dl">Total Emitido</div><div class="dv" id="d-emit">—</div><div class="ds" id="d-emit-q">— orç.</div></div>
-      <div class="dc g"><div class="dl">Aprovados</div><div class="dv" id="d-aprov">—</div><div class="ds" id="d-aprov-q">— aprovados</div></div>
-      <div class="dc y"><div class="dl">A Receber</div><div class="dv" id="d-rec">—</div><div class="ds" id="d-rec-q">aprovado s/ pagto</div></div>
-      <div class="dc b"><div class="dl">Ticket Médio</div><div class="dv" id="d-tick">—</div><div class="ds">por orçamento</div></div>
-    </div>
-
-    <!-- ── Gráfico de faturamento ── -->
-    <div class="dash-chart-card">
-      <div class="dash-chart-hdr">
-        <div class="dash-chart-titulo" id="dash-chart-titulo">📊 Faturamento</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <select id="dash-chart-periodo" onchange="renderGraficoDash()" style="padding:5px 10px;border:1.5px solid var(--gray-mid);border-radius:50px;font-size:12px;font-family:'Inter',sans-serif;outline:none;cursor:pointer">
-            <option value="3">3 meses</option>
-            <option value="6" selected>6 meses</option>
-            <option value="12">12 meses</option>
-            <option value="24">24 meses</option>
-            <option value="ano">Este ano</option>
-            <option value="tudo">Tudo</option>
-          </select>
-          <select id="dash-chart-tipo" onchange="renderGraficoDash()" style="padding:5px 10px;border:1.5px solid var(--gray-mid);border-radius:50px;font-size:12px;font-family:'Inter',sans-serif;outline:none;cursor:pointer">
-            <option value="aprovado">Aprovados</option>
-            <option value="emitido">Total emitido</option>
-          </select>
-        </div>
-      </div>
-      <div class="dash-chart-wrap">
-        <canvas id="dash-chart"></canvas>
-      </div>
-    </div>
-
-    <!-- ── Origem dos clientes ── -->
-    <div class="dash-chart-card" id="dash-origem-card" style="display:none">
-      <div class="dash-chart-hdr">
-        <div class="dash-chart-titulo">📣 Origem dos Clientes</div>
-        <select id="dash-origem-periodo" onchange="renderOrigemDash()" style="padding:5px 10px;border:1.5px solid var(--gray-mid);border-radius:50px;font-size:12px;font-family:'Inter',sans-serif;outline:none;cursor:pointer">
-          <option value="mes" selected>Este mês</option>
-          <option value="3">3 meses</option>
-          <option value="12">12 meses</option>
-          <option value="tudo">Tudo</option>
-        </select>
-      </div>
-      <div id="dash-origem-body"></div>
-    </div>
-
-    <!-- ── Estoque: produtos para repor ── -->
-    <div class="dash-chart-card" id="dash-estoque-card" style="display:none">
-      <div class="dash-chart-hdr">
-        <div class="dash-chart-titulo">📦 Estoque — comprar / repor</div>
-        <div style="display:flex;gap:6px;align-items:center">
-          <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:5px 12px;font-size:12px" onclick="go('estoque')">Abrir estoque →</button>
-          <button class="ba" style="background:transparent;color:var(--gray);padding:5px 8px;font-size:12px;border:1.5px solid var(--gray-mid)" onclick="dispensarAlertaEstoque()" title="Ocultar este aviso por 7 dias">✕ Ignorar 7 dias</button>
-        </div>
-      </div>
-      <div id="dash-estoque-body"></div>
-    </div>
-
     <div class="card">
       <!-- ── Cabeçalho com navegação de mês ── -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
