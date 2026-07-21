@@ -294,9 +294,22 @@ não, iOS ou Android) — nunca vira um branch de comportamento paralelo.
   pendência): existe uma sobrecarga antiga de 3 parâmetros da mesma função
   ainda viva no banco (`oid 17937`) — provavelmente inofensiva (o app só
   chama a de 4 parâmetros), mas vale um `DROP FUNCTION` de limpeza um dia.
-- ⏳ **Sprint 2 — Desbloqueio biométrico**: WebAuthn (Face ID/Touch ID/
-  digital) pra liberar a sessão do PIN, que hoje vive em `sessionStorage`
-  e some ao fechar a aba.
+- ✅ **Sprint 2 — Desbloqueio biométrico** (commit `214ce76`, 2026-07-21):
+  **correção de entendimento importante:** a sessão de CONTA (Supabase Auth)
+  já sobrevive fechar o app (persistida pelo SDK) — `_autoLoginMembroDaConta()`
+  já reabria sozinho, sem PIN. O problema real não era "a sessão não
+  persiste" (já persistia), era **não existir nenhum checkpoint** antes
+  desse auto-login silencioso. WebAuthn (`navigator.credentials.create`/
+  `get`, autenticador de plataforma) vira esse checkpoint — gate 100% local
+  (a credencial fica só no `localStorage` do aparelho, verificação nunca
+  sai do navegador; a prova de identidade real continua sendo a sessão
+  Supabase Auth, isso só decide SE ela pode ser usada agora). Banner do
+  Sprint 0/1 ganhou 3º estado (instalar → notificação → biometria). Gate
+  no boot: se há credencial pro `authUser` E ainda não desbloqueou nesta
+  aba, mostra `#biometric-lock-overlay` (tela cheia, cor da marca) ANTES
+  de qualquer auto-login; sem credencial registrada = zero mudança de
+  comportamento. Escape hatch "Entrar de outro jeito" chama `authLogout()`
+  de verdade. sw v38→v39.
 - ⏳ **Sprint 3 — Câmera unificada + compartilhamento**: replicar o menu
   "Câmera ou Galeria" que a vistoria já tem nos outros 4 pontos de foto
   (OS, equipamento, despesa, orçamento); PDF via `navigator.share()`.
