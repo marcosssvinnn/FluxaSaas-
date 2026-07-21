@@ -163,9 +163,25 @@ com uma query de leitura (não confie só em "não deu erro").
 >   dropdown "Cidade do serviço (fiscal)" no form de orçamento
 >   (`index.html`/`app.js`, `carregarMunicipiosFiscais()`), opcional por
 >   enquanto (emissão ainda não religada — Marco 4).
->   **Ainda pendente, fora de engenharia:** alíquota de ISS por município
->   (contador) e regras de retenção/CPOM por município (pesquisar legislação
->   específica de cada um antes de religar a emissão de verdade).
+>   **`iss_aliquota`/`obs_retencao` preenchidos em 2026-07-21**
+>   (`setup-v2-delta26.sql`, dados de pesquisa feita por outra IA a pedido do
+>   Marcos via leis.org — não é fonte oficial primária pra todas as 5
+>   cidades, só Itajaí teve o PDF localizado no portal oficial da
+>   prefeitura): Itapema 5%, Camboriú 3% (⚠️ menor confiança — não achou lei
+>   2025/2026 confirmando o subitem 7.10), Balneário Camboriú 2,5%, Itajaí
+>   2%, Porto Belo 5% (⚠️ menor confiança — lei-base de 2014, difícil de
+>   rastrear online). Nenhuma das 5 tem exigência formal de CPOM; em
+>   Itapema/Itajaí/Porto Belo a retenção só é obrigatória se o prestador não
+>   emitir nota fiscal autorizada, já em Camboriú/Balneário Camboriú a
+>   retenção do subitem 7.10 é obrigatória por lei independente de cadastro
+>   (detalhes em `municipios_fiscais.obs_retencao` de cada linha). **Isso NÃO
+>   é usado em nenhum cálculo automático hoje** (a DPS não tem campo de
+>   alíquota — é só referência/exibição futura), mas **confirmar com a
+>   Fazenda de cada prefeitura ou o contador do Marcos antes de religar a
+>   emissão de verdade** (Marco 4) — a pesquisa foi feita por uma IA
+>   pesquisando na web, não é aconselhamento fiscal profissional.
+>   Editável a qualquer momento via `UPDATE municipios_fiscais` — não
+>   precisa mexer em código.
 >   Venda de produtos/químicos separada (não dentro do serviço) é **ICMS**,
 >   sistema diferente (NFe), fora do escopo desta fase.
 
