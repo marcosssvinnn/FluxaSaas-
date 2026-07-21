@@ -1,6 +1,6 @@
 // Altere este número a cada novo deploy para forçar atualização em todos os dispositivos
 // (não é mais obrigatório: o index.html detecta novas versões sozinho via ETag/Last-Modified)
-const CACHE = 'fluxa-v40';
+const CACHE = 'fluxa-v41';
 
 const URLS = [
   'libs/supabase.min.js',
@@ -79,16 +79,44 @@ self.addEventListener('fetch', e => {
 
 // ── Web Push (Sprint 1 do plano mobile) ──
 // Payload enviado pela Edge Function enviar-push: { title, body, url }.
+
+// Grava no mesmo IndexedDB que a Central de Notificações (native.js) lê —
+// é a única forma confiável de persistir algo aqui: o Service Worker pode
+// rodar sem nenhuma aba do Fluxa aberta, então localStorage/página não servem.
+function _swSalvarNotificacao(data){
+  return new Promise(resolve => {
+    const req = indexedDB.open('fluxa-notificacoes', 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains('notificacoes')) db.createObjectStore('notificacoes', { keyPath: 'id', autoIncrement: true });
+    };
+    req.onsuccess = () => {
+      const db = req.result;
+      const tx = db.transaction('notificacoes', 'readwrite');
+      tx.objectStore('notificacoes').add({ title: data.title, body: data.body, url: data.url, recebidaEm: Date.now(), lida: false });
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    };
+    req.onerror = () => resolve();
+  });
+}
+
 self.addEventListener('push', e => {
   let data = { title: 'Fluxa', body: 'Você tem uma notificação nova.', url: '/' };
   try { if (e.data) data = { ...data, ...e.data.json() }; } catch (err) {}
   e.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
-      icon: 'icons/icon-192.png',
-      badge: 'icons/icon-192.png',
-      data: { url: data.url || '/' },
-    })
+    Promise.all([
+      self.registration.showNotification(data.title, {
+        body: data.body,
+        icon: 'icons/icon-192.png',
+        badge: 'icons/icon-192.png',
+        data: { url: data.url || '/' },
+      }),
+      _swSalvarNotificacao(data),
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientsArr => {
+        clientsArr.forEach(c => c.postMessage({ type: 'FLUXA_NOTIF_NOVA' }));
+      }),
+    ])
   );
 });
 

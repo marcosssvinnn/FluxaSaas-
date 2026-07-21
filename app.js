@@ -190,6 +190,10 @@ function aplicarPermissoesPerfil(){
   if(typeof _fluxaAvaliarBannerInstalar==='function'){
     try{ _fluxaAvaliarBannerInstalar(); }catch(e){ console.warn('[pwa-install]', e?.message||e); }
   }
+  // ── Badge de notificações não lidas ──
+  if(typeof _fluxaAtualizarBadgeNotif==='function'){
+    try{ _fluxaAtualizarBadgeNotif(); }catch(e){ console.warn('[notif-badge]', e?.message||e); }
+  }
 }
 
 // Atualiza badge de usuário no header
@@ -2061,7 +2065,9 @@ function voltar(){
 // Gear dropdown
 function toggleGear(){
   const m=document.getElementById('gear-menu');
-  m.style.display=m.style.display==='none'?'block':'none';
+  const abrir=m.style.display==='none';
+  if(abrir && typeof closeNotificacoes==='function') closeNotificacoes();
+  m.style.display=abrir?'block':'none';
 }
 function closeGear(){ document.getElementById('gear-menu').style.display='none'; }
 // Fechar gear ao clicar fora

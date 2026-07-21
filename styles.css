@@ -1190,3 +1190,15 @@
     .biometric-lock-sub{font-size:13px;color:rgba(255,255,255,.65);margin-top:6px;min-height:18px}
     .biometric-lock-outro{display:block;width:100%;margin-top:14px;background:none;border:none;color:rgba(255,255,255,.55);font-size:12.5px;font-family:'Inter',sans-serif;cursor:pointer;padding:10px;text-decoration:underline}
     .biometric-lock-outro:hover{color:white}
+
+    /* ── Central de Notificações (Sprint 4) ── */
+    .notif-badge{position:absolute;top:2px;right:2px;background:var(--red);color:white;font-size:9px;font-weight:800;min-width:15px;height:15px;border-radius:50%;display:flex;align-items:center;justify-content:center;padding:0 3px;line-height:1}
+    .notif-menu{min-width:300px;max-width:340px}
+    @media(max-width:420px){ .notif-menu{position:fixed;left:10px;right:10px;top:60px;min-width:0;max-width:none} }
+    .notif-item{display:block;width:100%;text-align:left;padding:10px 16px;border-bottom:1px solid #f3f4f6;background:none;border-left:3px solid transparent;cursor:pointer;font-family:'Inter',sans-serif}
+    .notif-item:hover{background:#f9fafb}
+    .notif-item.nao-lida{background:#fff7ed;border-left-color:var(--c1)}
+    .notif-item-titulo{font-size:12.5px;font-weight:700;color:#374151}
+    .notif-item-corpo{font-size:11.5px;color:#6b7280;margin-top:2px;line-height:1.4}
+    .notif-item-tempo{font-size:10px;color:#9ca3af;margin-top:4px}
+    .notif-vazio{padding:24px 16px;text-align:center;font-size:12.5px;color:#9ca3af}

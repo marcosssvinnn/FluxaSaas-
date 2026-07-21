@@ -279,3 +279,140 @@ async function fluxaInscreverPush(){
     return true;
   }catch(e){ console.warn('[push] inscrever', e?.message||e); return false; }
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Central de Notificações (Sprint 4) — histórico das notificações push
+// recebidas, mesmo as que chegaram com o app fechado. O Service Worker
+// escreve direto no IndexedDB (não tem window lá); esta camada só lê/marca
+// como lida — mesmo banco (fluxa-notificacoes), mesmo object store.
+// IndexedDB (não localStorage) porque é o único armazenamento que um
+// Service Worker acessa de forma confiável sem uma página aberta.
+// ─────────────────────────────────────────────────────────────────────────
+
+const FLUXA_NOTIF_DB = 'fluxa-notificacoes';
+function _abrirNotifDB(){
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(FLUXA_NOTIF_DB, 1);
+    req.onupgradeneeded = () => {
+      const idb = req.result;
+      if (!idb.objectStoreNames.contains('notificacoes')){
+        idb.createObjectStore('notificacoes', { keyPath: 'id', autoIncrement: true });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function fluxaListarNotificacoes(limite){
+  limite = limite || 30;
+  try{
+    const idb = await _abrirNotifDB();
+    return await new Promise((resolve, reject) => {
+      const tx = idb.transaction('notificacoes', 'readonly');
+      const req = tx.objectStore('notificacoes').getAll();
+      req.onsuccess = () => {
+        const todas = (req.result || []).sort((a, b) => b.recebidaEm - a.recebidaEm);
+        resolve(todas.slice(0, limite));
+      };
+      req.onerror = () => reject(req.error);
+    });
+  }catch(e){ console.warn('[notif] listar', e?.message||e); return []; }
+}
+
+async function fluxaMarcarNotificacoesLidas(){
+  try{
+    const idb = await _abrirNotifDB();
+    await new Promise((resolve) => {
+      const tx = idb.transaction('notificacoes', 'readwrite');
+      const req = tx.objectStore('notificacoes').openCursor();
+      req.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor){
+          const v = cursor.value;
+          if (!v.lida){ v.lida = true; cursor.update(v); }
+          cursor.continue();
+        } else resolve();
+      };
+      req.onerror = () => resolve();
+    });
+  }catch(e){ console.warn('[notif] marcar lidas', e?.message||e); }
+}
+
+async function _fluxaAtualizarBadgeNotif(){
+  const badge = document.getElementById('notif-badge');
+  if (!badge) return;
+  const lista = await fluxaListarNotificacoes(50);
+  const naoLidas = lista.filter((n) => !n.lida).length;
+  badge.textContent = naoLidas > 9 ? '9+' : String(naoLidas);
+  badge.style.display = naoLidas > 0 ? 'flex' : 'none';
+}
+
+function _fluxaTempoRelativo(ts){
+  const min = Math.floor((Date.now() - ts) / 60000);
+  if (min < 1) return 'agora';
+  if (min < 60) return `há ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `há ${h}h`;
+  const d = Math.floor(h / 24);
+  return `há ${d}d`;
+}
+
+async function renderNotificacoes(){
+  const el = document.getElementById('notif-lista');
+  if (!el) return;
+  const lista = await fluxaListarNotificacoes(30);
+  el.innerHTML = lista.length
+    ? lista.map((n) => `
+      <button class="notif-item${n.lida ? '' : ' nao-lida'}" onclick="_fluxaAbrirNotif(${n.id})">
+        <div class="notif-item-titulo">${esc(n.title || 'Fluxa')}</div>
+        <div class="notif-item-corpo">${esc(n.body || '')}</div>
+        <div class="notif-item-tempo">${_fluxaTempoRelativo(n.recebidaEm)}</div>
+      </button>`).join('')
+    : '<div class="notif-vazio">Nenhuma notificação ainda</div>';
+  _fluxaAtualizarBadgeNotif();
+}
+
+async function _fluxaAbrirNotif(id){
+  try{
+    const idb = await _abrirNotifDB();
+    const tx = idb.transaction('notificacoes', 'readwrite');
+    const store = tx.objectStore('notificacoes');
+    const n = await new Promise((resolve) => { const r = store.get(id); r.onsuccess = () => resolve(r.result); r.onerror = () => resolve(null); });
+    if (n && !n.lida){ n.lida = true; store.put(n); }
+    // O "url" da notificação é sempre uma página interna (ex.: "/#history"),
+    // nunca uma rota de servidor de verdade — o app é 100% client-side. Extrai
+    // o nome da página e navega com go() (mesma função que a sidebar usa,
+    // já cuida de permissão por perfil) em vez de só trocar o hash — o hash
+    // sozinho não dispara navegação nenhuma pras páginas internas do app,
+    // só pras rotas públicas especiais (#portal, #eq, #termos...).
+    if (n && n.url){
+      const alvo = (n.url.includes('#') ? n.url.split('#').pop() : n.url.replace(/^\//, '')).trim();
+      const rotasPublicas = ['portal', 'eq', 'termos', 'privacidade', 'recuperar'];
+      if (alvo && rotasPublicas.some((p) => alvo.startsWith(p))) location.hash = alvo;
+      else if (alvo && typeof go === 'function') { try{ go(alvo); }catch(err){ console.warn('[notif] go', err?.message||err); } }
+    }
+  }catch(e){ console.warn('[notif] abrir', e?.message||e); }
+  toggleNotificacoes(false);
+  renderNotificacoes();
+}
+
+function closeNotificacoes(){ const m = document.getElementById('notif-menu'); if (m) m.style.display = 'none'; }
+document.addEventListener('click', (e) => { if (!e.target.closest('#notif-wrap')) closeNotificacoes(); });
+
+function toggleNotificacoes(forcar){
+  const menu = document.getElementById('notif-menu');
+  if (!menu) return;
+  const abrir = forcar !== undefined ? forcar : menu.style.display === 'none';
+  if (abrir && typeof closeGear === 'function') closeGear();
+  menu.style.display = abrir ? 'block' : 'none';
+  if (abrir) renderNotificacoes();
+}
+
+// Recebe o aviso do Service Worker (postMessage) de que uma notificação nova
+// chegou — atualiza o badge na hora, sem esperar o próximo boot/foco de aba.
+if (typeof navigator !== 'undefined' && navigator.serviceWorker){
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    if (e.data && e.data.type === 'FLUXA_NOTIF_NOVA') _fluxaAtualizarBadgeNotif();
+  });
+}

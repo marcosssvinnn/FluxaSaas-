@@ -220,6 +220,18 @@
       <div class="hdr-user-avatar" id="hdr-user-avatar">G</div>
       <span class="hdr-user-nome" id="hdr-user-nome">Gestor</span>
     </div>
+    <div class="gear-wrap" id="notif-wrap">
+      <button class="btn-sm btn-gear" id="btn-notif" onclick="toggleNotificacoes()" title="Notificações" style="position:relative">
+        🔔<span class="notif-badge" id="notif-badge" style="display:none">0</span>
+      </button>
+      <div class="gear-menu notif-menu" id="notif-menu" style="display:none">
+        <div class="gear-section" style="display:flex;justify-content:space-between;align-items:center;padding-right:12px">
+          <span>Notificações</span>
+          <button onclick="fluxaMarcarNotificacoesLidas().then(renderNotificacoes)" style="background:none;border:none;color:var(--c1);font-size:11px;font-weight:700;cursor:pointer;padding:2px" id="notif-marcar-lidas">Marcar lidas</button>
+        </div>
+        <div id="notif-lista" style="max-height:340px;overflow-y:auto"></div>
+      </div>
+    </div>
     <button class="btn-sm" id="btn-atualizar" onclick="atualizarDados(this)" title="Atualizar dados" style="background:none;border:none;cursor:pointer;font-size:16px;padding:4px 6px;line-height:1">🔄</button>
     <div class="gear-wrap">
       <button class="btn-sm btn-gear" id="btn-gear" onclick="toggleGear()" title="Configurações">⚙️</button>
