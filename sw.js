@@ -1,6 +1,6 @@
 // Altere este número a cada novo deploy para forçar atualização em todos os dispositivos
 // (não é mais obrigatório: o index.html detecta novas versões sozinho via ETag/Last-Modified)
-const CACHE = 'fluxa-v37';
+const CACHE = 'fluxa-v38';
 
 const URLS = [
   'libs/supabase.min.js',
@@ -73,6 +73,34 @@ self.addEventListener('fetch', e => {
         return res;
       }).catch(() => cached);
       return cached || network;
+    })
+  );
+});
+
+// ── Web Push (Sprint 1 do plano mobile) ──
+// Payload enviado pela Edge Function enviar-push: { title, body, url }.
+self.addEventListener('push', e => {
+  let data = { title: 'Fluxa', body: 'Você tem uma notificação nova.', url: '/' };
+  try { if (e.data) data = { ...data, ...e.data.json() }; } catch (err) {}
+  e.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: 'icons/icon-192.png',
+      badge: 'icons/icon-192.png',
+      data: { url: data.url || '/' },
+    })
+  );
+});
+
+// Clique na notificação: foca uma aba já aberta do Fluxa, ou abre uma nova.
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || '/';
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientsArr => {
+      const existente = clientsArr.find(c => 'focus' in c);
+      if (existente) { existente.navigate(url).catch(() => {}); return existente.focus(); }
+      return self.clients.openWindow(url);
     })
   );
 });
