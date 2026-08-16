@@ -195,6 +195,24 @@ com uma query de leitura (não confie só em "não deu erro").
 ### Portal do cliente (público, sem login) — só RPCs
 O portal (`#portal/<token>`) usa **apenas** `rpc('portal_dados',{p_token})` (devolve cliente + orçamentos + OS + vistorias + equipamentos) e `rpc('portal_responder_orcamento',{p_token,p_orc_id,p_aprovar,p_assinatura})`. **Nenhuma query direta** no fluxo do portal (a RLS `authenticated` retornaria vazio). A **reserva de estoque** na aprovação NÃO roda no portal (anon): roda no app do **gestor** ao receber o UPDATE por realtime (`sincronizarReservaOrcamento`, idempotente).
 
+> 🔴 **`portal_dados()` vazava colunas internas — corrigido em 2026-08-15**
+> (`setup-v2-delta28.sql`). Achado comparando com uma auditoria de segurança
+> do v1 (`fluxa-app`) que achou o mesmo tipo de bug: a função devolvia
+> `to_jsonb(o) - 'foto_base64'`/`to_jsonb(s) - 'fotos'` — a LINHA INTEIRA de
+> cada orçamento/OS, menos um campo — pro navegador de qualquer cliente com
+> link de portal válido. Vazava `nota_interna`, `crm_notas`, `motivo_perda`,
+> `valor_recebido`, `obs_tecnica`/`materiais` da OS e, o mais grave,
+> `crm_contatos` (nome/telefone de síndico/conselho — dado de **terceiros**,
+> não só do cliente do portal). Fix: `jsonb_build_object()` com lista
+> explícita de campos (só o que `app.js:renderPortal()`/`_hashDocumentoOrc()`
+> de fato usam), em vez de "tudo menos X". **Banco não tinha nenhum cliente
+> cadastrado ainda** (sistema pré-lançamento) — bug real, mas ninguém foi
+> exposto de fato. `vistorias`/`equipamentos` não mudaram (auditados, sem
+> campo interno claro, mesma conclusão do v1). **Ao adicionar qualquer coluna
+> nova em `orcamentos`/`ordens_servico` no futuro, ela FICA DE FORA do
+> portal por padrão agora** — só aparece lá se for explicitamente adicionada
+> em `portal_dados()`. Isso é intencional (allowlist, não denylist).
+
 ### Painel ROOT da plataforma (admin do SaaS, cross-tenant — separado de "gestor")
 "Gestor" só enxerga a própria empresa (RLS de sempre). "Admin da plataforma" é uma
 camada NOVA e separada, para o dono do SaaS gerenciar TODAS as empresas — não se
