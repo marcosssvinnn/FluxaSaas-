@@ -1254,6 +1254,7 @@ let db = null, dbOk = false;
 let svcs = [], editId = null;
 let osSvcs = [], modalOrcId = null, osOrcId = null; // osOrcId = ID do orçamento vinculado à OS
 let todosOrc = [], filtroSt = localStorage.getItem('fluxa_filtroSt')||'todos', busca = '';
+let _orcPagina = 1; // paginação client-side da lista já carregada (16/08, portado do v1) — 25/página
 let todosOS = [], filtroOSSt = localStorage.getItem('fluxa_filtroOSSt')||'todos', buscaOS = '', filtroOSTec = '';
 // Paginação do histórico (achado de auditoria 2026-07-20): loadHist()/loadOSHist()
 // baixavam a tabela INTEIRA do banco toda vez que a tela abria — ok pra empresa
@@ -3497,9 +3498,11 @@ function filt(btn){
   document.querySelectorAll('.hf .fb[data-s]').forEach(b=>b.classList.remove('on'));
   btn.classList.add('on'); filtroSt=btn.dataset.s;
   localStorage.setItem('fluxa_filtroSt', filtroSt);
+  _orcPagina=1;
   renderTabela();
 }
-function buscar(v){ busca=v.toLowerCase(); renderTabela(); }
+function buscar(v){ busca=v.toLowerCase(); _orcPagina=1; renderTabela(); }
+function _orcMudarPagina(delta){ _orcPagina=Math.max(1,_orcPagina+delta); renderTabela(); }
 
 // ──────────────────────────────────────────────────
 //  GRÁFICO DE FATURAMENTO
@@ -3607,12 +3610,14 @@ function orcNavMes(delta){
   const d=new Date(y,m-1+delta,1);
   orcMesRef=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
   _renderOrcMesLabel();
+  _orcPagina=1;
   atualizarDash(); renderTabela();
 }
 
 function orcVerTodos(){
   orcMesRef='';
   _renderOrcMesLabel();
+  _orcPagina=1;
   atualizarDash(); renderTabela();
 }
 
@@ -3688,13 +3693,53 @@ function renderOrcMiniKpis(lista){
     </div>`;
 }
 
-function renderTabela(){
-  // auto-vence orçamentos pendentes com prazo expirado
-  autoVencerOrc(todosOrc);
-  // base: filtro por mês de vigência
+// Resumo de "o que fazer" pra cada linha do histórico — portado do v1
+// (renderTabela/Fase 5), mas reaproveitando os cálculos que o Funil já
+// tinha (_crmFuStatus/_crmEsfriando/_crmSituacaoCfg), em vez de duplicar
+// lógica nova. Retorna null quando não há ação pendente (não polui a
+// linha à toa).
+function _orcProximaAcaoTxt(o){
+  const st=o.status||'pendente';
+  if(st==='aprovado'){
+    const temOS=(todosOS||[]).some(x=>x.orcamento_id===o.id);
+    return temOS ? null : {txt:'Agendar OS', urgente:true};
+  }
+  if(st==='recusado') return null;
+  if(st==='vencido') return {txt:'Revalidar preço', urgente:true};
+  const fu=_crmFuStatus(o);
+  if(fu==='atrasado') return {txt:'📞 Atrasado', urgente:true};
+  if(fu==='hoje') return {txt:'📞 Ligar hoje', urgente:true};
+  if(fu==='futuro') return {txt:'Follow-up '+_crmDataBr(o.proximo_contato), urgente:false};
+  if(_crmEsfriando(o)) return {txt:'🧊 Esfriando', urgente:false};
+  return null;
+}
+
+// Exporta a lista FILTRADA (mesma que está na tela — status/busca/mês) em
+// CSV. Portado do v1 (Fase 5), adaptado pra chamar _orcListaFiltradaAtual()
+// em vez de recalcular filtro — evita divergir do que a tela mostra.
+function _orcExportarCSV(){
+  const lista=_orcListaFiltradaAtual();
+  const linhas=[['Nº','Cliente','Valor','Status','Próxima ação','Origem']];
+  lista.forEach(o=>{
+    const acao=_orcProximaAcaoTxt(o);
+    linhas.push([
+      String(o.numero||'').padStart(3,'0'), o.cliente||'',
+      String(o.total||0).replace('.',','), o.status||'pendente',
+      acao?acao.txt:'', o.origem_cliente||''
+    ]);
+  });
+  const csv=linhas.map(l=>l.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(';')).join('\r\n');
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download='orcamentos_'+_hojeLocal()+'.csv'; a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+const _ORC_POR_PAGINA=25;
+// Filtro (mês/status/busca) isolado do render — reaproveitado pelo CSV
+// (_orcExportarCSV) pra nunca divergir do que a tela mostra.
+function _orcListaFiltradaAtual(){
   let listaMes=_orcListaMes();
-  // Renderiza mini KPIs para o período selecionado (antes dos filtros de status/busca)
-  renderOrcMiniKpis(listaMes);
   let lista=listaMes;
   if(filtroSt!=='todos') lista=lista.filter(o=>o.status===filtroSt);
   if(busca) lista=lista.filter(o=>
@@ -3702,14 +3747,32 @@ function renderTabela(){
     (o.local_servico||'').toLowerCase().includes(busca)||
     String(o.numero||'').includes(busca.replace('#',''))
   );
-  if(!lista.length){
+  return lista;
+}
+function renderTabela(){
+  // auto-vence orçamentos pendentes com prazo expirado
+  autoVencerOrc(todosOrc);
+  // Renderiza mini KPIs para o período selecionado (antes dos filtros de status/busca)
+  renderOrcMiniKpis(_orcListaMes());
+  const listaTotal=_orcListaFiltradaAtual();
+  if(!listaTotal.length){
     const msgBusca=busca?`Nenhum resultado para "<strong>${esc(busca)}</strong>"`:
       orcMesRef?`Nenhum orçamento em ${_renderOrcMesLabelStr()}.`:'Nenhum orçamento encontrado.';
     document.getElementById('hist-body').innerHTML=`<div class="empty-st"><div class="ei">📭</div><p>${msgBusca}</p><button class="btn-primary" style="margin-top:12px" onclick="novoOrc();go('form')">＋ Criar Orçamento</button></div>`; return;
   }
+  // Paginação client-side (16/08, portado do v1) — 25/página, sobre a lista
+  // já filtrada/carregada; "Carregar mais" (abaixo) continua sendo o que
+  // busca MAIS dados do servidor quando o lote baixado acaba.
+  const totalPaginas=Math.max(1,Math.ceil(listaTotal.length/_ORC_POR_PAGINA));
+  if(_orcPagina>totalPaginas) _orcPagina=totalPaginas;
+  const ini=(_orcPagina-1)*_ORC_POR_PAGINA;
+  const lista=listaTotal.slice(ini, ini+_ORC_POR_PAGINA);
   const sopts=s=>['pendente','aprovado','recusado','vencido'].map(x=>`<option value="${x}" ${x===s?'selected':''}>${x.charAt(0).toUpperCase()+x.slice(1)}</option>`).join('');
   const ocultarFinanceiro=eVendas();
-  let h=`<div class="htw"><table class="ht"><thead><tr><th>#</th><th>Cliente</th>${ocultarFinanceiro?'':'<th>Total / Recebido</th>'}<th>Data</th><th>Status</th><th>Ações</th></tr></thead><tbody>`;
+  let h=`<div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+    <button type="button" class="rd-btn rd-btn-secondary" style="font-size:12px;padding:6px 12px" onclick="_orcExportarCSV()">⬇ Exportar CSV</button>
+  </div>`;
+  h+=`<div class="htw"><table class="ht"><thead><tr><th>#</th><th>Cliente</th>${ocultarFinanceiro?'':'<th>Total / Recebido</th>'}<th>Data</th><th>Status</th><th>Ações</th></tr></thead><tbody>`;
   lista.forEach(o=>{
     _nc[o.id]=o;
     const num=String(o.numero||'—').padStart(3,'0');
@@ -3720,9 +3783,13 @@ function renderTabela(){
     const recTxt=rec>0?brl(rec):'—';
     const notaIcon=o.nota_interna?` <span title="${esc(o.nota_interna)}" style="cursor:help">📝</span>`:'';
     const pendSync=String(o.id).startsWith('local_');
+    // Próxima ação (16/08, portado do v1) — só aparece quando há algo
+    // pendente de verdade, reaproveitando o mesmo cálculo do Funil.
+    const acao=_orcProximaAcaoTxt(o);
+    const acaoHtml=acao?`<div style="margin-top:3px"><span class="rd-badge ${acao.urgente?'rd-badge-warn':'rd-badge-neutral'}" style="font-size:10px">${esc(acao.txt)}</span></div>`:'';
     h+=`<tr>
       <td><span class="on">#${num}</span>${pendSync?'<div title="Não sincronizado com o banco — aguardando conexão" style="font-size:9px;font-weight:700;color:#dc2626;background:#fee2e2;border-radius:4px;padding:1px 5px;margin-top:2px;text-align:center">⚠ PEND.</div>':''}</td>
-      <td><div class="ocl">${esc(o.cliente||'—')}${notaIcon}</div><div class="oloc">${esc(o.local_servico||'')}</div><div class="osvc" title="${esc(svs)}">${esc(svs)}</div><div style="margin-top:3px;display:flex;gap:5px;flex-wrap:wrap;align-items:center">${getLojaBadge(o.loja_id)}${getOrigemBadge(o.origem_cliente)}</div>${(()=>{ const etapas=[]; const st=o.status||'pendente'; const osVinc=(todosOS||[]).find(x=>x.orcamento_id===o.id); const entregue=!orcTemEntregaPendente(o)&&(o.servicos||[]).some(s=>s.produto_id); const etApr=st==='aprovado'||st==='recusado'||osVinc||entregue; const etOS=!!osVinc; const etConc=osVinc?.status==='concluido'; const dot=(ok,lbl)=>`<span style="display:flex;align-items:center;gap:2px;font-size:10px;color:${ok?'#16a34a':'#9ca3af'};font-weight:${ok?'700':'400'}">${ok?'●':'○'} ${lbl}</span>`; return `<div style="display:flex;gap:6px;align-items:center;margin-top:4px;flex-wrap:wrap">${dot(true,'Criado')}›${dot(etApr,'Aprovado')}›${dot(etOS,'OS')}›${dot(etConc,'Concluído')}</div>`; })()}</td>
+      <td><div class="ocl">${esc(o.cliente||'—')}${notaIcon}</div><div class="oloc">${esc(o.local_servico||'')}</div><div class="osvc" title="${esc(svs)}">${esc(svs)}</div><div style="margin-top:3px;display:flex;gap:5px;flex-wrap:wrap;align-items:center">${getLojaBadge(o.loja_id)}${getOrigemBadge(o.origem_cliente)}</div>${acaoHtml}${(()=>{ const etapas=[]; const st=o.status||'pendente'; const osVinc=(todosOS||[]).find(x=>x.orcamento_id===o.id); const entregue=!orcTemEntregaPendente(o)&&(o.servicos||[]).some(s=>s.produto_id); const etApr=st==='aprovado'||st==='recusado'||osVinc||entregue; const etOS=!!osVinc; const etConc=osVinc?.status==='concluido'; const dot=(ok,lbl)=>`<span style="display:flex;align-items:center;gap:2px;font-size:10px;color:${ok?'#16a34a':'#9ca3af'};font-weight:${ok?'700':'400'}">${ok?'●':'○'} ${lbl}</span>`; return `<div style="display:flex;gap:6px;align-items:center;margin-top:4px;flex-wrap:wrap">${dot(true,'Criado')}›${dot(etApr,'Aprovado')}›${dot(etOS,'OS')}›${dot(etConc,'Concluído')}</div>`; })()}</td>
       ${ocultarFinanceiro?'':'<td><span class="otot">'+brl(ttl)+'</span><br><span class="'+recCl+'" style="font-size:11px">'+recTxt+'</span></td>'}
       <td><span class="odt">${dt}</span></td>
       <td><select class="ss ${o.status||'pendente'}" onchange="mudarSt('${o.id}',this)">${sopts(o.status||'pendente')}</select></td>
@@ -3741,6 +3808,16 @@ function renderTabela(){
     </tr>`;
   });
   h+='</tbody></table></div>';
+  // Paginação (16/08) — só aparece com mais de 1 página do que já está
+  // carregado; independente do "Carregar mais" abaixo (esse busca MAIS do
+  // servidor, isto pagina o que já está na memória).
+  if(totalPaginas>1){
+    h+=`<div style="display:flex;align-items:center;justify-content:center;gap:12px;padding:14px 0">
+      <button type="button" class="rd-btn rd-btn-secondary" style="padding:6px 12px" ${_orcPagina<=1?'disabled':''} onclick="_orcMudarPagina(-1)">← Anterior</button>
+      <span style="font-size:12px;color:var(--tx2)">Página ${_orcPagina} de ${totalPaginas} · ${listaTotal.length} orçamento${listaTotal.length!==1?'s':''}</span>
+      <button type="button" class="rd-btn rd-btn-secondary" style="padding:6px 12px" ${_orcPagina>=totalPaginas?'disabled':''} onclick="_orcMudarPagina(1)">Próxima →</button>
+    </div>`;
+  }
   // "Carregar mais" — só quando o servidor pode ter mais orçamentos além do lote
   // já baixado (ver _ORC_PAGE em loadHist/_carregarMaisOrcamentos). Sem isso o
   // histórico baixava a tabela inteira sempre, crescendo sem limite com o tempo.
