@@ -397,12 +397,10 @@
     .os-atrasado{background:#fff7ed;color:#c2410c}
 
     /* ── HISTÓRICO ── */
+    /* .dc/.dl/.dv/.ds removidas (16/08) — último uso convertido pro padrão
+       .rd-card/.rd-kpi-* (Painel/Orçamentos/Despesas/Funil/Estoque); .dash
+       continua (grid wrapper, ainda usado pelos cards novos). */
     .dash{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
-    .dc{background:var(--white);border-radius:var(--r);padding:16px 18px;box-shadow:var(--sh);border-top:3px solid var(--gray-mid)}
-    .dc.o{border-top-color:var(--c1)}.dc.g{border-top-color:var(--green)}.dc.y{border-top-color:var(--yellow)}.dc.b{border-top-color:var(--blue)}
-    .dl{font-size:11px;font-weight:600;color:var(--gray);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px}
-    .dv{font-size:22px;font-weight:800;color:var(--c2)}
-    .ds{font-size:12px;color:var(--gray);margin-top:2px}
 
     .hf{display:flex;gap:7px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
     .fb{padding:6px 14px;border-radius:50px;border:1.5px solid var(--gray-mid);background:var(--white);font-size:12px;font-weight:600;color:var(--gray);cursor:pointer;transition:all .15s;font-family:'Inter',sans-serif}
@@ -528,7 +526,7 @@
       @page{margin:0;size:A4}
       .pdoc.print-active+.pdoc.print-active{page-break-before:always}
       html,body{background:white;font-family:'Inter',sans-serif;margin:0;padding:0}
-      .hdr,.wrap,.toast,.modal-bg{display:none!important}
+      .hdr,.wrap,.toast,.modal-bg,.rd-modal-bg{display:none!important}
       .sidebar,.sidebar-overlay{display:none!important}
       .mob-nav,#mob-nav{display:none!important}
       body{padding-left:0!important}
@@ -881,10 +879,6 @@
 
       /* Cards */
       .card{padding:16px 14px}
-
-      /* Dashboard */
-      .dv{font-size:17px}
-      .dc{padding:12px 13px}
 
       /* Filtros do histórico */
       .hf{gap:6px}

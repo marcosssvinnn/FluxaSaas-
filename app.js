@@ -1699,8 +1699,13 @@ function aplicarCFG(){
       if(CFG.logoB64){ loginLogoImg.src=CFG.logoB64; loginLogoImg.style.display='block'; loginInitials.style.display='none'; }
       else { loginLogoImg.style.display='none'; loginInitials.style.display='flex'; loginInitials.textContent=(CFG.nome||'F').charAt(0).toUpperCase(); }
     }
+    // Achado numa revisão: sem fallback, isto apagava o headline do painel
+    // esquerdo (redesign 15/08) assim que a conta autenticava — a maioria
+    // das empresas nunca configurou CFG.tagline, então a tela de PIN (que
+    // usa o mesmo painel esquerdo) ficava com o espaço em branco onde devia
+    // ter o headline. Mesmo texto padrão do HTML, não um texto novo.
     const loginTagline=document.getElementById('login-brand-tagline');
-    if(loginTagline) loginTagline.textContent=CFG.tagline||'';
+    if(loginTagline) loginTagline.textContent=CFG.tagline||'Orçamento, ordem de serviço e vistoria no mesmo lugar.';
     document.title = CFG.nome + ' — Orçamentos';
   }
   renderPresets();
@@ -5449,6 +5454,19 @@ window.addEventListener('beforeunload', function(e){
   document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') setTimeout(_tentarSync,2000); });
 })();
 
+// Escape fecha o confirm() aberto no momento — UM listener persistente
+// (adicionado uma vez só, abaixo) em vez de um novo por chamada de
+// confirmar(). Achado numa revisão: _excluirOrcVerificarEstoque() (l.3829)
+// clona #confirmar-nao e fecha o modal na mão (classList.remove direto),
+// sem passar pelo fechar() de baixo — com um listener por chamada, esse
+// caminho vazava um keydown no document a cada uso. Com listener único e
+// _confirmarEscHandler trocando de dono a cada abertura, não tem o que
+// vazar: o pior caso é um handler velho ser chamado uma vez à toa.
+let _confirmarEscHandler = null;
+document.addEventListener('keydown', (e)=>{
+  if(e.key==='Escape' && _confirmarEscHandler){ const fn=_confirmarEscHandler; _confirmarEscHandler=null; fn(); }
+});
+
 // M-01 — Diálogo de confirmação acessível (substitui window.confirm)
 // Portado do v1 (15/08): shell .rd-modal + variante destrutiva. Aceita
 // objeto (novo) OU os argumentos posicionais de sempre — todas as chamadas
@@ -5491,15 +5509,14 @@ function confirmar(a, cbSim, titulo, cbNao, labelNao, labelSim){
   } else { hintEl.style.display='none'; }
   bg.classList.add('on');
   const focoAnterior=document.activeElement;
-  const onKey=(e)=>{ if(e.key==='Escape') fechar(o.onNao); };
   const fechar=(cb)=>{
     bg.classList.remove('on');
     simBtn.onclick=null; naoBtn.onclick=null;
-    document.removeEventListener('keydown', onKey);
+    _confirmarEscHandler=null;
     if(focoAnterior&&focoAnterior.focus) setTimeout(()=>focoAnterior.focus(),0);
     cb&&cb();
   };
-  document.addEventListener('keydown', onKey);
+  _confirmarEscHandler=()=>fechar(o.onNao);
   naoBtn.onclick=()=>fechar(o.onNao);
   simBtn.onclick=()=>fechar(o.onSim);
   setTimeout(()=>(destrutivo?naoBtn:simBtn).focus(), 50);
@@ -5509,13 +5526,19 @@ function confirmar(a, cbSim, titulo, cbNao, labelNao, labelSim){
 // mesmo shell .rd-modal-bg/.rd-modal do resto do app, em vez de cada modal
 // ad-hoc montar sua própria moldura na mão. `corpo` é o HTML de dentro do
 // card (título, texto, ações — quem chama decide, isto só monta a moldura).
+// Nome com sufixo "Generico" de propósito — já existia um fecharModal()
+// (sem argumento, fecha #modal-pg de pagamento, ~l.4041) muito antes desta
+// migração. Um nome igual aqui sobrescreveria silenciosamente aquela função
+// (JS mantém só a última declaração de mesmo nome) e quebraria o fluxo de
+// registrar pagamento inteiro — achado numa revisão, corrigido antes de
+// virar bug em produção.
 function abrirModal({corpo, largura, id}){
   const modalId = id || 'rd-modal-dinamico';
-  fecharModal(modalId);
+  fecharModalGenerico(modalId);
   const bg=document.createElement('div');
   bg.className='rd-modal-bg on';
   bg.id=modalId;
-  bg.onclick=(e)=>{ if(e.target===bg) fecharModal(modalId); };
+  bg.onclick=(e)=>{ if(e.target===bg) fecharModalGenerico(modalId); };
   bg.innerHTML=`<div class="rd-modal${largura?' rd-modal-'+largura:''}"><div class="rd-modal-grip"></div>${corpo}</div>`;
   document.body.appendChild(bg);
   return bg;
@@ -5528,7 +5551,7 @@ function atualizarModal(corpo, id){
   const grip=card.querySelector('.rd-modal-grip');
   card.innerHTML=(grip?grip.outerHTML:'<div class="rd-modal-grip"></div>')+corpo;
 }
-function fecharModal(id){
+function fecharModalGenerico(id){
   const bg=document.getElementById(id||'rd-modal-dinamico'); if(bg) bg.remove();
 }
 
