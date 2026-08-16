@@ -21,7 +21,10 @@
   <script src="libs/html2pdf.bundle.min.js"></script>
   <script src="libs/chart.umd.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Inter: telas ainda não migradas pro redesign (regra hardcoded font-family:'Inter').
+       Instrument Sans: fonte do redesign (portado do fluxa-app v1, 15/08) — body usa ela
+       por padrão agora, Inter fica como fallback só onde uma regra antiga ainda pede. -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Instrument+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body class="no-sbar">

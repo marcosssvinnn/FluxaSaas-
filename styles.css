@@ -17,9 +17,38 @@
       --r: 12px; --sh: 0 1px 4px rgba(0,0,0,.08);
       --sidebar-w: 220px;
       --sidebar-c: 52px;
+
+      /* ── Tokens do redesign (portados do fluxa-app v1, 15/08) — aditivos,
+         não substituem os acima (telas ainda não migradas continuam usando
+         os antigos). --c1-hover/press/border usam color-mix() em vez do hex
+         fixo que o v1 usa — lá o valor é fixo porque cada deploy já nasce
+         com a cor da empresa; aqui --c1 muda em runtime por empresa (CFG.cor,
+         ver app.js), então as sombras precisam seguir dinamicamente. */
+      --c1-hover: color-mix(in srgb, var(--c1) 80%, black);
+      --c1-press: color-mix(in srgb, var(--c1) 65%, black);
+      --c1-border: color-mix(in srgb, var(--c1) 45%, white);
+      /* Hierarquia de texto */
+      --tx2: #4E5867;  --tx3: #6B7686;  --tx4: #8D99A9;
+      /* Superfícies */
+      --bg-app: #F7F9FC; --surface2: #EBEFF5;
+      --line: #DFE5EE; --line2: #EDF1F7;
+      --frame-line: #D5DDE8; --field-line: #C9D4E2;
+      --row-hl: #F5F9FF;
+      /* Navegação (fixa — não troca por empresa, só o item ativo usa --c1) */
+      --nav-bg: #0D131B; --nav-item-bg: #1B2430;
+      --nav-tx: #B4C1D1; --nav-tx2: #93A1B3; --nav-tx-strong: #F2F6FB;
+      /* Status — paleta própria do redesign, distinta de --green/--red/--yellow
+         (que continuam em uso nas telas antigas) */
+      --ok: #2F7D3A; --ok-bg: #E9F3EB;
+      --warn: #A6521A; --warn-dot: #C98A2E; --warn-bg: #FDF3E7; --warn-border: #F0DCC2; --warn-row: #FDF9F3;
+      --bad: #9C3A2E; --bad-bg: #FBEAE7;
+      --info: #1F5FA8; --info-bg: #E7F0FC;
+      /* Raios */
+      --r-lg: 14px; --r-sm: 8px; --r-xs: 6px; --r-pill: 999px;
+      --sh-pdf: 0 10px 24px -16px rgba(16,28,48,0.4);
     }
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:'Inter',sans-serif;background:#f0f2f5;color:var(--c2);min-height:100vh;padding-top:calc(56px + env(safe-area-inset-top));padding-left:var(--sidebar-w);transition:padding-left .2s ease}
+    body{font-family:'Instrument Sans','Inter',sans-serif;background:#f0f2f5;color:var(--c2);min-height:100vh;padding-top:calc(56px + env(safe-area-inset-top));padding-left:var(--sidebar-w);transition:padding-left .2s ease;-webkit-font-smoothing:antialiased}
     body.sbar-col{padding-left:var(--sidebar-c)}
     body.no-sbar{padding-left:0}
 
