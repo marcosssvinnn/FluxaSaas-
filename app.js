@@ -5442,22 +5442,86 @@ window.addEventListener('beforeunload', function(e){
 })();
 
 // M-01 — Diálogo de confirmação acessível (substitui window.confirm)
-function confirmar(msg, cbSim, titulo, cbNao, labelNao, labelSim){
-  const bg = document.getElementById('confirmar-modal-bg');
-  const titEl = document.getElementById('confirmar-titulo');
-  const msgEl = document.getElementById('confirmar-msg');
-  const simBtn = document.getElementById('confirmar-sim');
-  const naoBtn = document.getElementById('confirmar-nao');
-  if(!bg){ cbSim(); return; } // fallback sem modal: confirma direto (PWA nunca cai aqui)
-  titEl.textContent = titulo || 'Confirmar';
-  msgEl.textContent = msg;
-  naoBtn.textContent = labelNao || 'Cancelar';
-  simBtn.textContent = labelSim || 'Confirmar';
+// Portado do v1 (15/08): shell .rd-modal + variante destrutiva. Aceita
+// objeto (novo) OU os argumentos posicionais de sempre — todas as chamadas
+// existentes continuam funcionando sem mudança:
+//   confirmar({titulo, msg, detalhe:[{k,v}], destrutivo, labelSim, labelNao, onSim, onNao})
+//   confirmar(msg, cbSim, titulo, cbNao, labelNao, labelSim)  ← forma antiga
+// Sem `destrutivo`, comportamento idêntico ao de antes (foco no confirmar).
+// Com `destrutivo:true`: ícone/botão de confirmar em vermelho, foco inicial
+// no CANCELAR (Enter não confirma uma ação destrutiva sem querer). Escape e
+// clique no fundo cancelam; foco volta pra quem abriu o diálogo.
+function confirmar(a, cbSim, titulo, cbNao, labelNao, labelSim){
+  const o = (a && typeof a==='object') ? a : {msg:a, onSim:cbSim, titulo, onNao:cbNao, labelNao, labelSim};
+  const bg=document.getElementById('confirmar-modal-bg');
+  if(!bg){ o.onSim&&o.onSim(); return; } // fallback sem modal: confirma direto (PWA nunca cai aqui)
+  const titEl=document.getElementById('confirmar-titulo');
+  const msgEl=document.getElementById('confirmar-msg');
+  const icoEl=document.getElementById('confirmar-ico');
+  const detEl=document.getElementById('confirmar-detalhe');
+  const hintEl=document.getElementById('confirmar-hint');
+  const simBtn=document.getElementById('confirmar-sim');
+  const naoBtn=document.getElementById('confirmar-nao');
+  const destrutivo=!!o.destrutivo;
+  titEl.textContent = o.titulo || 'Confirmar';
+  msgEl.textContent = o.msg || '';
+  naoBtn.textContent = o.labelNao || (destrutivo?'Manter':'Cancelar');
+  simBtn.textContent = o.labelSim || (destrutivo?'Excluir':'Confirmar');
+  simBtn.classList.toggle('destrutivo', destrutivo);
+  naoBtn.classList.toggle('destrutivo', destrutivo);
+  icoEl.textContent = destrutivo?'!':'?';
+  icoEl.style.background = destrutivo?'var(--bad-bg)':'var(--info-bg)';
+  icoEl.style.color = destrutivo?'var(--bad)':'var(--info)';
+  if(o.detalhe&&o.detalhe.length){
+    detEl.style.display='';
+    detEl.classList.toggle('destrutivo', destrutivo);
+    detEl.innerHTML=o.detalhe.map(d=>`<div class="rd-modal-detail-row"><span>${esc(d.k)}</span><span>${esc(d.v)}</span></div>`).join('');
+  } else { detEl.style.display='none'; detEl.innerHTML=''; }
+  if(destrutivo){
+    hintEl.style.display='';
+    hintEl.textContent=`O foco começa em "${naoBtn.textContent}" — Enter não confirma.`;
+  } else { hintEl.style.display='none'; }
   bg.classList.add('on');
-  const fechar = () => { bg.classList.remove('on'); simBtn.onclick = null; naoBtn.textContent='Cancelar'; simBtn.textContent='Confirmar'; };
-  naoBtn.onclick = () => { fechar(); if(cbNao) cbNao(); };
-  simBtn.onclick = () => { fechar(); cbSim(); };
-  setTimeout(()=>simBtn.focus(), 50);
+  const focoAnterior=document.activeElement;
+  const onKey=(e)=>{ if(e.key==='Escape') fechar(o.onNao); };
+  const fechar=(cb)=>{
+    bg.classList.remove('on');
+    simBtn.onclick=null; naoBtn.onclick=null;
+    document.removeEventListener('keydown', onKey);
+    if(focoAnterior&&focoAnterior.focus) setTimeout(()=>focoAnterior.focus(),0);
+    cb&&cb();
+  };
+  document.addEventListener('keydown', onKey);
+  naoBtn.onclick=()=>fechar(o.onNao);
+  simBtn.onclick=()=>fechar(o.onSim);
+  setTimeout(()=>(destrutivo?naoBtn:simBtn).focus(), 50);
+}
+
+// Modal genérico pra conteúdo montado em JS (portado do v1, 15/08) — usa o
+// mesmo shell .rd-modal-bg/.rd-modal do resto do app, em vez de cada modal
+// ad-hoc montar sua própria moldura na mão. `corpo` é o HTML de dentro do
+// card (título, texto, ações — quem chama decide, isto só monta a moldura).
+function abrirModal({corpo, largura, id}){
+  const modalId = id || 'rd-modal-dinamico';
+  fecharModal(modalId);
+  const bg=document.createElement('div');
+  bg.className='rd-modal-bg on';
+  bg.id=modalId;
+  bg.onclick=(e)=>{ if(e.target===bg) fecharModal(modalId); };
+  bg.innerHTML=`<div class="rd-modal${largura?' rd-modal-'+largura:''}"><div class="rd-modal-grip"></div>${corpo}</div>`;
+  document.body.appendChild(bg);
+  return bg;
+}
+// Troca o conteúdo de um modal já aberto (ex.: lista → progresso → resultado
+// no mesmo card, sem fechar/reabrir) — mantém o grip do topo.
+function atualizarModal(corpo, id){
+  const bg=document.getElementById(id||'rd-modal-dinamico'); if(!bg) return;
+  const card=bg.querySelector('.rd-modal'); if(!card) return;
+  const grip=card.querySelector('.rd-modal-grip');
+  card.innerHTML=(grip?grip.outerHTML:'<div class="rd-modal-grip"></div>')+corpo;
+}
+function fecharModal(id){
+  const bg=document.getElementById(id||'rd-modal-dinamico'); if(bg) bg.remove();
 }
 
 // ══════════════════════════════════════════════════

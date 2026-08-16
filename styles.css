@@ -223,6 +223,55 @@
     @keyframes rd-skel-pulse{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
     @media (prefers-reduced-motion: reduce){ .rd-skel::after{animation:none} }
 
+    /* Shell de modal unificado (.rd-modal), portado do v1 (15/08) — usado
+       pelo diálogo de confirmação (M-01, substitui window.confirm) e por
+       abrirModal()/atualizarModal()/fecharModal() (app.js) pra conteúdo
+       montado em JS. Os modais mais antigos (.modal-bg/.modal, ainda usados
+       em crm-contato/receb/aprov-os/QR/NF-e) ficam de fora desta migração
+       de propósito — mesmo princípio do v1: "migrar por uso, não de uma
+       vez". Cor de ação usa var(--c1) (branded por empresa) em vez do hex
+       fixo do v1 — mesma adaptação já feita nos outros componentes .rd-*. */
+    .rd-modal-bg{position:fixed;inset:0;background:rgba(16,28,48,.42);z-index:900;display:none;align-items:center;justify-content:center;padding:20px}
+    .rd-modal-bg.on{display:flex;animation:fx-fade-in 160ms ease-out both}
+    .rd-modal{width:100%;max-width:440px;background:#FFFFFF;border-radius:14px;box-shadow:0 24px 60px -24px rgba(16,28,48,.5);padding:22px 24px;display:flex;flex-direction:column;gap:14px;animation:fx-card-in 200ms cubic-bezier(.2,.8,.2,1) both}
+    .rd-modal-grip{display:none}
+    .rd-modal-head{display:flex;align-items:flex-start;gap:13px}
+    .rd-modal-ico{width:36px;height:36px;border-radius:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:17px;font-weight:700;line-height:1;background:var(--info-bg);color:var(--info)}
+    .rd-modal-headtx{display:flex;flex-direction:column;gap:5px;flex:1;min-width:0}
+    .rd-modal-headtx h3{margin:0;font-size:17px;font-weight:600;color:var(--c2);letter-spacing:-0.01em;line-height:1.25}
+    .rd-modal-headtx p{margin:0;font-size:13px;color:var(--tx2);line-height:1.5}
+    .rd-modal-detail{background:var(--bg-app);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:7px}
+    .rd-modal-detail.destrutivo{background:var(--bad-bg)}
+    .rd-modal-detail-row{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+    .rd-modal-detail-row span:first-child{font-size:12px;color:var(--tx2)}
+    .rd-modal-detail-row span:last-child{font-size:13px;font-weight:600;color:var(--c2);font-variant-numeric:tabular-nums;text-align:right}
+    .rd-modal-acts{display:flex;gap:9px;margin-top:2px}
+    .rd-modal-btn{flex:1;font-family:'Instrument Sans',sans-serif;font-size:14px;font-weight:600;border-radius:10px;padding:12px;cursor:pointer;border:none;transition:background .12s,border-color .12s}
+    .rd-modal-btn-nao{background:#FFFFFF;color:#333C4A;border:1px solid var(--line)}
+    .rd-modal-btn-nao:hover{background:var(--bg-app)}
+    .rd-modal-btn-nao:focus-visible,.rd-modal-btn-nao:focus{outline:none;border-color:var(--c1);box-shadow:0 0 0 3px rgba(11,98,206,.18)}
+    .rd-modal-btn-nao.destrutivo{border-color:var(--c1)}
+    .rd-modal-btn-sim{background:var(--c1);color:#FFFFFF}
+    .rd-modal-btn-sim:hover{background:var(--c1-hover)}
+    .rd-modal-btn-sim:focus-visible{outline:2px solid var(--c1);outline-offset:2px}
+    .rd-modal-btn-sim.destrutivo{background:var(--bad)}
+    .rd-modal-btn-sim.destrutivo:hover{filter:brightness(.85)}
+    .rd-modal-hint{font-size:11px;color:var(--tx3);text-align:center}
+    .rd-modal>h3{margin:0;font-size:17px;font-weight:600;color:var(--c2);letter-spacing:-0.01em;line-height:1.25}
+    .rd-modal-sub{font-size:13px;color:var(--tx2);line-height:1.5;margin:0}
+    .rd-modal-wide{max-width:560px;max-height:90vh;overflow-y:auto}
+    .rd-modal-narrow{max-width:340px;text-align:center}
+    .rd-modal-narrow img{width:200px;height:200px;border:1px solid var(--line);border-radius:8px;align-self:center}
+    @media(max-width:680px){
+      .rd-modal-bg{align-items:flex-end;padding:0}
+      .rd-modal{max-width:100%;border-radius:18px 18px 0 0;animation:fx-sheet-in 240ms cubic-bezier(.2,.8,.2,1) both;padding-bottom:calc(22px + env(safe-area-inset-bottom))}
+      .rd-modal-grip{display:block;width:38px;height:4px;border-radius:999px;background:var(--line);align-self:center;margin-bottom:-4px}
+    }
+    @keyframes fx-fade-in{from{opacity:0}to{opacity:1}}
+    @keyframes fx-card-in{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+    @keyframes fx-sheet-in{from{transform:translateY(100%)}to{transform:translateY(0)}}
+    @media(prefers-reduced-motion:reduce){ .rd-modal-bg.on,.rd-modal{animation-duration:.01ms!important} }
+
     /* ── PAGES ── */
     .page{display:none}.page.on{display:block}
     .wrap{max-width:1200px;margin:0 auto;padding:22px 14px 80px}

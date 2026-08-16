@@ -2481,15 +2481,26 @@
   </div>
 </div>
 
-<!-- ══ MODAL: CONFIRMAÇÃO (M-01) ══ -->
-<div class="modal-bg" id="confirmar-modal-bg" role="dialog" aria-modal="true" aria-labelledby="confirmar-titulo">
-  <div class="modal">
-    <h3 id="confirmar-titulo">Confirmar</h3>
-    <p id="confirmar-msg" style="font-size:14px;color:var(--gray);margin-bottom:0"></p>
-    <div class="modal-acts">
-      <button class="btn-sec" id="confirmar-nao" onclick="document.getElementById('confirmar-modal-bg').classList.remove('on')">Cancelar</button>
-      <button class="btn-pri" id="confirmar-sim" style="background:var(--red)">Confirmar</button>
+<!-- ══ MODAL: CONFIRMAÇÃO (M-01) — shell .rd-modal (portado do v1, 15/08).
+     IDs mantidos iguais (confirmar-modal-bg/titulo/msg/nao/sim) —
+     _excluirOrcVerificarEstoque() (app.js) clona #confirmar-nao em tempo
+     de execução pra adicionar um 3º botão, não renomear. ══ -->
+<div class="rd-modal-bg" id="confirmar-modal-bg" role="dialog" aria-modal="true" aria-labelledby="confirmar-titulo" aria-describedby="confirmar-msg" onclick="if(event.target===this) document.getElementById('confirmar-nao').click()">
+  <div class="rd-modal">
+    <div class="rd-modal-grip"></div>
+    <div class="rd-modal-head">
+      <div class="rd-modal-ico" id="confirmar-ico">?</div>
+      <div class="rd-modal-headtx">
+        <h3 id="confirmar-titulo">Confirmar</h3>
+        <p id="confirmar-msg"></p>
+      </div>
     </div>
+    <div class="rd-modal-detail" id="confirmar-detalhe" style="display:none"></div>
+    <div class="rd-modal-acts">
+      <button type="button" class="rd-modal-btn rd-modal-btn-nao" id="confirmar-nao">Cancelar</button>
+      <button type="button" class="rd-modal-btn rd-modal-btn-sim" id="confirmar-sim">Confirmar</button>
+    </div>
+    <span class="rd-modal-hint" id="confirmar-hint" style="display:none"></span>
   </div>
 </div>
 
