@@ -413,11 +413,29 @@
       <button class="painel-acao-btn" onclick="go('estoque')"><span class="sicon">📦</span> Ver Estoque</button>
     </div>
 
+    <!-- KPIs no padrão .rd-card/.rd-kpi-* (portado do v1, 16/08) — mesmos
+         IDs de sempre, atualizarDash() (app.js) não mudou. -->
     <div class="dash">
-      <div class="dc o"><div class="dl">Total Emitido</div><div class="dv" id="d-emit">—</div><div class="ds" id="d-emit-q">— orç.</div></div>
-      <div class="dc g"><div class="dl">Aprovados</div><div class="dv" id="d-aprov">—</div><div class="ds" id="d-aprov-q">— aprovados</div></div>
-      <div class="dc y"><div class="dl">A Receber</div><div class="dv" id="d-rec">—</div><div class="ds" id="d-rec-q">aprovado s/ pagto</div></div>
-      <div class="dc b"><div class="dl">Ticket Médio</div><div class="dv" id="d-tick">—</div><div class="ds">por orçamento</div></div>
+      <div class="rd-card rd-card-dense rd-card-dark">
+        <div class="rd-kpi-lbl">Total emitido</div>
+        <div class="rd-kpi-num" id="d-emit">—</div>
+        <div class="rd-kpi-apoio" id="d-emit-q">— orç.</div>
+      </div>
+      <div class="rd-card rd-card-dense">
+        <div class="rd-kpi-lbl">Aprovados</div>
+        <div class="rd-kpi-num" id="d-aprov">—</div>
+        <div class="rd-kpi-apoio" id="d-aprov-q">— aprovados</div>
+      </div>
+      <div class="rd-card rd-card-dense">
+        <div class="rd-kpi-lbl">A receber</div>
+        <div class="rd-kpi-num" id="d-rec">—</div>
+        <div class="rd-kpi-apoio" id="d-rec-q">aprovado s/ pagto</div>
+      </div>
+      <div class="rd-card rd-card-dense">
+        <div class="rd-kpi-lbl">Ticket médio</div>
+        <div class="rd-kpi-num" id="d-tick">—</div>
+        <div class="rd-kpi-apoio">por orçamento</div>
+      </div>
     </div>
 
     <!-- ── Resumo do Funil de Vendas ── -->
