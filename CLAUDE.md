@@ -2961,3 +2961,55 @@ você hoje" de verdade (juntar cadência + follow-up do funil + estoque
 baixo numa lista só, ranqueada) — hoje são dois cards separados no Painel
 (Funil e Cadência). Juntar isso é decisão de design de tela, não só
 matemática — fica pra quando o Painel for redesenhado de fato.
+
+### Continuação (16/08) — Venda Rápida / balcão (POS tela cheia), commit pendente
+
+Portado do fluxa-app (v1), Tarefa 3e.3 lá — a última das 3 tarefas do
+"faça todos" desta rodada (junto com paginação/CSV de Orçamentos e dedup
+de clientes, já commitados antes). Venda avulsa de balcão: carrinho com N
+itens, vira UMA transação em `vendas_balcao`, cliente opcional, alimenta o
+histórico do cliente. Tela cheia (sem sidebar/header — `go()` alterna
+`.s-hidden`/`.no-sbar`/`#app-hdr`), não modal.
+
+- `setup-v2-delta30.sql` (aplicado e verificado via Management API): tabela
+  `vendas_balcao` com o padrão de RLS por perfil (igual `equipamentos`/
+  `piscinas`), NÃO o `"anon full access"` do v1 (lá é single-tenant, aqui
+  seria buraco de segurança real). Diferença dos outros deltas: INSERT
+  libera `gestor`/`vendas`/**`tecnico`** — no v1 um técnico na casa do
+  cliente pode vender produto avulso, mesmo desenho aqui (`pagesTecnico`
+  ganhou `'venda-balcao'` em `go()`).
+- Reaproveitado quase tudo do motor de Estoque que já existia no v2 sem
+  mudança: `registrarMovimento()` (já resolve `loja_id` sozinho — não
+  precisei do `_lojaParaMovimento()` do v1), `disponivelProduto()`,
+  `curvaABC()` (aba "Mais vendidos"), `produtosVisiveis()`, `dbInsert()`
+  (injeta `empresa_id` sozinho). **Achado ao portar:** v1 usa
+  `p.estoque_min`, o campo real no v2 é `p.estoque_minimo` — copiar o nome
+  do v1 aqui teria quebrado o aviso de "estoque baixo" no card do produto
+  em silêncio (`parseFloat(undefined)||0` = sempre 0 = nunca baixo).
+- Cliente: reaproveita o modal `abrirBuscaCli()` que Orçamento/OS/Vistoria
+  já usam — só adicionei o `else if(_buscaCliCtx==='venda')` em
+  `selecionarCliModal()`.
+- `#app-hdr` — precisei dar id no header de empresa porque o v2 tem DOIS
+  `.hdr` no DOM (o admin da plataforma e o de empresa); copiar o seletor
+  `document.querySelector('.hdr')` do v1 teria escondido o header errado
+  (o de admin, que já começa `display:none`) e deixado o de empresa visível
+  por cima da tela cheia.
+- CSS: cores trocadas dos hex fixos do v1 (`#101720`, `#0B62CE` etc.) pros
+  tokens do redesign (`--nav-bg`, `--c1`, `--c1-hover`...) — v1 pode usar
+  hex fixo porque cada deploy já nasce com a cor da empresa; aqui `--c1`
+  muda em runtime (`CFG.cor`).
+- Testado no Browser pane (sessão fake, catálogo fake, `dbOk=false`):
+  adicionar por clique e por código de barras exato, stepper +/-, desconto,
+  item livre, "sem cliente identificado", busca de cliente (seleciona e
+  preenche), seleção de forma de pagamento, finalizar venda (baixa de
+  estoque conferida — 50→48 e 10→9 nos dois produtos de teste — carrinho
+  limpa e permanece na tela pro próximo cliente, rascunho local salvo em
+  `localStorage['fluxa_vendas_balcao']`), sair do balcão (sidebar/header
+  voltam, volta pra tela anterior).
+- **Não testado** (sem cenário fácil de simular offline): sincronização
+  real com o Supabase (`dbInsert` contra `vendas_balcao`), fluxo completo
+  de restaurar rascunho após F5 (`_vbRestaurarRascunho`), layout mobile
+  (`@media(max-width:900px)`).
+- **Fora do escopo desta rodada**: tela de histórico/relatório de vendas de
+  balcão (só a captura existe; `todasVendasBalcao`/`loadVendasBalcao()`
+  ficam prontos pra uma tela de listagem futura, se fizer sentido).

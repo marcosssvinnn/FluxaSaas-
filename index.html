@@ -208,7 +208,7 @@
 </header>
 
 <!-- ══ HEADER (app de empresa — não aparece pra admin da plataforma) ══ -->
-<header class="hdr">
+<header class="hdr" id="app-hdr">
   <button class="btn-sbar" id="btn-sbar" onclick="toggleSidebar()" aria-label="Menu lateral" title="Menu">☰</button>
   <div class="hdr-logo">
     <img id="hdr-logo-img" alt="Logo da empresa" width="32" height="32">
@@ -322,6 +322,10 @@
       <button class="snb" id="snb-agendamentos" onclick="go('agendamentos')">
         <svg class="sicon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v15H4zM8 3v4M16 3v4M4 10h16"></path></svg>
         <span class="slabel">Agenda</span>
+      </button>
+      <button class="snb" id="snb-venda-balcao" onclick="abrirVendaBalcao();closeSidebar()">
+        <svg class="sicon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8l8-4 8 4v8l-8 4-8-4zM4 8l8 4 8-4M12 12v8"></path></svg>
+        <span class="slabel">Venda Rápida</span>
       </button>
       <button class="snb" id="snb-visitas" onclick="go('visitas')">
         <svg class="sicon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14M16.5 16.5L21 21"></path></svg>
@@ -2219,6 +2223,100 @@
     <div style="display:flex;gap:8px;margin-top:8px">
       <button class="btn-primary" onclick="confirmarBalanco()" id="balanco-confirmar-btn" style="flex:1">✅ Confirmar ajustes</button>
       <button onclick="fecharBalancoModal()" style="padding:10px 14px;border:1.5px solid var(--gray-mid);border-radius:8px;background:none;cursor:pointer;font-size:13px;color:var(--gray)">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PAGE: VENDA RÁPIDA (balcão) — tela cheia, sem sidebar/header, ver go() ══ -->
+<div class="page" id="page-venda-balcao">
+  <div class="vb-topbar">
+    <button type="button" class="vb-sair" onclick="fecharVendaBalcao()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l-6 6 6 6"></path></svg>
+      Sair do balcão
+    </button>
+    <div class="vb-topbar-div"></div>
+    <span class="vb-topbar-titulo">Venda Rápida</span>
+    <div class="vb-topbar-busca">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6FA8E8" stroke-width="2" stroke-linecap="round"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14M16.5 16.5L21 21"></path></svg>
+      <input type="text" id="venda-busca" placeholder="Nome, código ou leitor de código de barras…" oninput="vendaBuscarProduto(this.value)" autocomplete="off">
+      <span class="vb-topbar-busca-hint">Código de barras</span>
+    </div>
+    <div class="vb-topbar-right">
+      <span class="vb-topbar-loja" id="vb-topbar-loja">—</span>
+      <div class="vb-topbar-avatar" id="vb-topbar-avatar">—</div>
+    </div>
+  </div>
+
+  <div class="vb-body">
+    <div class="vb-esquerda">
+      <div id="vb-tabs" class="vb-tabs"></div>
+      <div id="venda-sugestoes" class="vb-sugestoes"></div>
+      <div id="vb-grade" class="vb-grade"></div>
+
+      <div class="vb-livre-card">
+        <div class="vb-livre-tx">
+          <span class="vb-livre-titulo">Item que não está no catálogo</span>
+          <span class="vb-livre-sub">Digite descrição e valor à mão — entra na venda sem baixa de estoque.</span>
+        </div>
+        <button type="button" class="vb-livre-btn" onclick="_vendaAbrirItemLivre()">Item livre</button>
+      </div>
+    </div>
+
+    <div class="vb-carrinho-col">
+      <div class="vb-carrinho-hdr">
+        <div class="vb-carrinho-hdr-tx">
+          <span class="vb-carrinho-titulo">Venda atual</span>
+          <span class="vb-carrinho-cont" id="venda-cont">carrinho vazio</span>
+        </div>
+        <span class="vb-limpar" onclick="_vbAbrir()">Limpar</span>
+      </div>
+
+      <div id="venda-carrinho" class="vb-carrinho-lista"></div>
+
+      <div class="vb-rodape">
+        <div class="vb-rodape-linha">
+          <div class="cli-input-wrap" style="flex:1">
+            <input type="text" id="venda-cli" placeholder="Cliente (opcional)" autocomplete="off" oninput="_vendaClienteEditado()">
+            <button type="button" class="cli-search-btn" onclick="abrirBuscaCli('venda')" title="Buscar cliente na base">🔍</button>
+          </div>
+          <span class="vb-desconto-link" onclick="_vendaAbrirDesconto()">Desconto</span>
+        </div>
+        <button type="button" class="tb" id="venda-sem-cliente-btn" onclick="_vendaSemCliente()" style="font-size:11px;padding:5px 10px;align-self:flex-start">Balcão — sem cliente identificado</button>
+
+        <div class="vb-totais">
+          <div class="vb-totais-linha"><span>Subtotal</span><span id="venda-subtotal">R$ 0,00</span></div>
+          <div class="vb-totais-linha" id="venda-desconto-linha" style="display:none"><span>Desconto</span><span id="venda-desconto-val" class="vb-desc-neg">− R$ 0,00</span></div>
+        </div>
+
+        <div class="vb-total-box">
+          <span>Total</span>
+          <span id="venda-total">R$ 0,00</span>
+        </div>
+
+        <div class="vb-pgto-grid">
+          <button type="button" class="vb-pgto-btn" data-f="Pix" onclick="_vendaSetFormaPgto('Pix')">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 9-9 9-9-9z"></path></svg>
+            Pix
+          </button>
+          <button type="button" class="vb-pgto-btn" data-f="Cartão" onclick="_vendaSetFormaPgto('Cartão')">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18v10H3zM3 11h18"></path></svg>
+            Cartão
+          </button>
+          <button type="button" class="vb-pgto-btn" data-f="Dinheiro" onclick="_vendaSetFormaPgto('Dinheiro')">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18v12H3zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6"></path></svg>
+            Dinheiro
+          </button>
+          <button type="button" class="vb-pgto-btn" data-f="A prazo" onclick="_vendaSetFormaPgto('A prazo')">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v15H4zM8 3v4M16 3v4M8 13h8"></path></svg>
+            A prazo
+          </button>
+        </div>
+
+        <div class="vb-acts">
+          <button type="button" class="vb-btn-salvar" onclick="vendaSalvarRascunho()">Salvar</button>
+          <button type="button" class="vb-btn-finalizar" id="venda-btn" onclick="confirmarVendaBalcao()">Finalizar venda</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
