@@ -10010,13 +10010,35 @@ function renderEstoque(){
   const valorReservado=todos.reduce((a,p)=>a+(Math.max(0,reservadoProduto(p.id))*(parseFloat(p.custo)||0)),0);
   const valorEncomenda=enc.reduce((a,x)=>a+(x.falta*(parseFloat(x.p.custo)||0)),0);
   const valorParado=parados.reduce((a,p)=>a+(Math.max(0,fisicaProduto(p.id))*(parseFloat(p.custo)||0)),0);
+  // Padrão .rd-card/.rd-kpi-* (portado do v1, 16/08) — mesmos cálculos,
+  // só o container mudou.
   const kpis=document.getElementById('estoque-kpis');
   if(kpis) kpis.innerHTML=`
-    <div class="dc o"><div class="dl">Valor em estoque</div><div class="dv">${brl(valorEstoque)}</div><div class="ds">${todos.length} produto${todos.length!==1?'s':''}</div></div>
-    <div class="dc ${enc.length?'r':'g'}" style="cursor:pointer" onclick="filtEstoque('comprar')"><div class="dl">A comprar (encomenda)</div><div class="dv">${enc.length}</div><div class="ds">${brl(valorEncomenda)}</div></div>
-    <div class="dc y" style="cursor:pointer" onclick="filtEstoque('repor')"><div class="dl">Repor (mínimo)</div><div class="dv">${repor.length}</div><div class="ds">abaixo do mínimo</div></div>
-    <div class="dc b" style="cursor:pointer" onclick="filtEstoque('parados')"><div class="dl">Capital parado</div><div class="dv">${brl(valorParado)}</div><div class="ds">${parados.length} sem giro (90d)</div></div>
-    ${vencendo.length?`<div class="dc r" style="cursor:pointer" onclick="filtEstoque('validade')"><div class="dl">Validade</div><div class="dv">${vencendo.length}</div><div class="ds">vencendo/vencido</div></div>`:''}`;
+    <div class="rd-card rd-card-dense rd-card-dark">
+      <div class="rd-kpi-lbl">Valor em estoque</div>
+      <div class="rd-kpi-num rd-kpi-num-sm">${brl(valorEstoque)}</div>
+      <div class="rd-kpi-apoio">${todos.length} produto${todos.length!==1?'s':''}</div>
+    </div>
+    <div class="rd-card rd-card-dense" style="cursor:pointer" onclick="filtEstoque('comprar')">
+      <div class="rd-kpi-lbl"><span class="rd-badge ${enc.length?'rd-badge-bad':'rd-badge-ok'}">A comprar</span></div>
+      <div class="rd-kpi-num rd-kpi-num-sm" style="color:${enc.length?'var(--bad)':'var(--ok)'}">${enc.length}</div>
+      <div class="rd-kpi-apoio">${brl(valorEncomenda)}</div>
+    </div>
+    <div class="rd-card rd-card-dense" style="cursor:pointer" onclick="filtEstoque('repor')">
+      <div class="rd-kpi-lbl"><span class="rd-badge rd-badge-warn">Repor (mínimo)</span></div>
+      <div class="rd-kpi-num rd-kpi-num-sm" style="color:var(--warn)">${repor.length}</div>
+      <div class="rd-kpi-apoio">abaixo do mínimo</div>
+    </div>
+    <div class="rd-card rd-card-dense" style="cursor:pointer" onclick="filtEstoque('parados')">
+      <div class="rd-kpi-lbl"><span class="rd-badge rd-badge-info">Capital parado</span></div>
+      <div class="rd-kpi-num rd-kpi-num-sm" style="color:var(--info)">${brl(valorParado)}</div>
+      <div class="rd-kpi-apoio">${parados.length} sem giro (90d)</div>
+    </div>
+    ${vencendo.length?`<div class="rd-card rd-card-dense" style="cursor:pointer" onclick="filtEstoque('validade')">
+      <div class="rd-kpi-lbl"><span class="rd-badge rd-badge-bad">Validade</span></div>
+      <div class="rd-kpi-num rd-kpi-num-sm" style="color:var(--bad)">${vencendo.length}</div>
+      <div class="rd-kpi-apoio">vencendo/vencido</div>
+    </div>`:''}`;
 
   // ── Abas de filtro ──
   const tabs=[

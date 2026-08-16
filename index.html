@@ -1147,10 +1147,26 @@
 <div class="page" id="page-crm">
   <div class="wrap">
     <div class="dash">
-      <div class="dc o"><div class="dl">Em Negociação</div><div class="dv" id="crm-d-neg">—</div><div class="ds" id="crm-d-neg-q">— orçamentos</div></div>
-      <div class="dc g"><div class="dl">Conversão (90d)</div><div class="dv" id="crm-d-conv">—</div><div class="ds">aprovados ÷ decididos</div></div>
-      <div class="dc y"><div class="dl">Follow-ups Hoje</div><div class="dv" id="crm-d-fu">—</div><div class="ds" id="crm-d-fu-q">a contatar</div></div>
-      <div class="dc b"><div class="dl">Esfriando</div><div class="dv" id="crm-d-frio">—</div><div class="ds">7+ dias sem contato</div></div>
+      <div class="rd-card rd-card-dense rd-card-dark">
+        <div class="rd-kpi-lbl">Em negociação</div>
+        <div class="rd-kpi-num rd-kpi-num-sm" id="crm-d-neg">—</div>
+        <div class="rd-kpi-apoio" id="crm-d-neg-q">— orçamentos</div>
+      </div>
+      <div class="rd-card rd-card-dense">
+        <div class="rd-kpi-lbl"><span class="rd-badge rd-badge-ok">Conversão (90d)</span></div>
+        <div class="rd-kpi-num rd-kpi-num-sm" style="color:var(--ok)" id="crm-d-conv">—</div>
+        <div class="rd-kpi-apoio">aprovados ÷ decididos</div>
+      </div>
+      <div class="rd-card rd-card-dense">
+        <div class="rd-kpi-lbl"><span class="rd-badge rd-badge-warn">Follow-ups hoje</span></div>
+        <div class="rd-kpi-num rd-kpi-num-sm" style="color:var(--warn)" id="crm-d-fu">—</div>
+        <div class="rd-kpi-apoio" id="crm-d-fu-q">a contatar</div>
+      </div>
+      <div class="rd-card rd-card-dense">
+        <div class="rd-kpi-lbl"><span class="rd-badge rd-badge-info">Esfriando</span></div>
+        <div class="rd-kpi-num rd-kpi-num-sm" style="color:var(--info)" id="crm-d-frio">—</div>
+        <div class="rd-kpi-apoio">7+ dias sem contato</div>
+      </div>
     </div>
 
     <div class="card" id="crm-fu-card" style="display:none">
@@ -1807,9 +1823,21 @@
     </div>
 
     <div class="desp-dash">
-      <div class="dc y"><div class="dl">Total Pendente</div><div class="dv" id="desp-d-pend">—</div><div class="ds" id="desp-d-pend-q">— itens</div></div>
-      <div class="dc g"><div class="dl">Reembolsado</div><div class="dv" id="desp-d-reimb">—</div><div class="ds" id="desp-d-reimb-q">— itens</div></div>
-      <div class="dc o"><div class="dl">Total Geral</div><div class="dv" id="desp-d-total">—</div><div class="ds">este mês</div></div>
+      <div class="rd-card rd-card-dense">
+        <div class="rd-kpi-lbl"><span class="rd-badge rd-badge-warn">Total pendente</span></div>
+        <div class="rd-kpi-num rd-kpi-num-sm" style="color:var(--warn)" id="desp-d-pend">—</div>
+        <div class="rd-kpi-apoio" id="desp-d-pend-q">— itens</div>
+      </div>
+      <div class="rd-card rd-card-dense">
+        <div class="rd-kpi-lbl"><span class="rd-badge rd-badge-ok">Reembolsado</span></div>
+        <div class="rd-kpi-num rd-kpi-num-sm" style="color:var(--ok)" id="desp-d-reimb">—</div>
+        <div class="rd-kpi-apoio" id="desp-d-reimb-q">— itens</div>
+      </div>
+      <div class="rd-card rd-card-dense rd-card-dark">
+        <div class="rd-kpi-lbl">Total geral</div>
+        <div class="rd-kpi-num rd-kpi-num-sm" id="desp-d-total">—</div>
+        <div class="rd-kpi-apoio">este mês</div>
+      </div>
     </div>
 
     <div class="card" id="desp-cat-card" style="display:none">
