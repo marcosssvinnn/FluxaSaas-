@@ -2887,10 +2887,40 @@ cliente" mais acima (`setup-v2-delta28.sql`).
   console. Sintaxe do app.js validada via JXA (mesmo método de sempre, sem
   Node neste ambiente).
 
-### Próximos passos (roadmap completo nas tasks desta sessão)
-Ícones SVG na nav mobile → sistema de modais unificado → login → Insights →
-Orçamentos → Estoque/OS/Financeiro → telas restantes → CRM (ficha técnica de
-piscina, captura de contato, dedup) → aplicar `setup-v2-delta27.sql`
-(insights de IA, já escrito por outra sessão, não aplicado) → Venda Rápida
-(POS) → central de notificações (comparar com o que o v2 já tem do Sprint 4
-PWA). Ver task list da sessão pra status atualizado.
+### Progresso desta rodada (16/08) — o que foi feito e o que ficou pra depois
+
+**Feito e no ar** (commits `99bacdd`..`839d98c`): ícones SVG na nav mobile,
+shell de modal unificado `.rd-modal` + `confirmar()` com variante
+destrutiva, painel esquerdo + cartão do login (corrigido o mesmo bug de
+contraste que a auditoria do v1 achou), e **todo cartão de KPI no padrão
+antigo `.dc/.dl/.dv/.ds` convertido pro novo `.rd-card/.rd-kpi-*`** —
+Painel, Orçamentos (mini-KPIs), Despesas, Funil/CRM, Estoque. Em todos os
+casos, só o HTML/template de saída mudou; nenhum cálculo, `onclick` ou
+`id` foi tocado — risco baixo, testado no Browser pane em cada um.
+
+**Deliberadamente NÃO feito** — dois motivos bem diferentes, registrados
+nas tasks da sessão pra quem continuar:
+
+1. **Depende de motor de CRM que o v2 ainda não tem** (tasks #45/#39-41):
+   a página "Insights" completa do v1 (fila unificada "Precisa de você
+   hoje", pipeline segmentado por situação) e a versão redesenhada de
+   Orçamentos/CRM/Vistoria dependem de `_itensPainelHoje`/
+   `crmCandidatos`/`cadenciaCandidatos`/`_orcSituacao` — engenharia de
+   negócio de verdade, não CSS. Fazer DEPOIS de construir isso.
+
+2. **Alto risco de reescrever tabela/formulário no fluxo mais crítico do
+   negócio** (task #47, e a parte não feita da #37): `renderTabela()` de
+   Orçamentos, a prévia de PDF ao vivo, e as listas de OS/Clientes/
+   Equipamentos/Agenda/Vistoria são ~300+ linhas de reescrita cada, em
+   código que lida com dinheiro e agendamento reais. O v1 só confiou
+   nessas mudanças depois de testar com **299 orçamentos reais**. Não é
+   o tipo de coisa pra apressar — fica pra uma sessão dedicada, tela por
+   tela, com tempo de testar direito.
+
+**Nota pra quem mexer no Portal do Cliente depois:** já teve um vazamento
+de dados corrigido lá (`setup-v2-delta28.sql`, ver seção "Portal do
+cliente" acima) — qualquer redesign futuro precisa preservar o allowlist
+de campos do `portal_dados()`, não voltar pro padrão antigo.
+
+Ver task list da sessão (tasks #30-47) pra status detalhado e o que cada
+uma cobre.
