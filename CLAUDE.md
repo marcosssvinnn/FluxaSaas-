@@ -2922,5 +2922,42 @@ de dados corrigido lá (`setup-v2-delta28.sql`, ver seção "Portal do
 cliente" acima) — qualquer redesign futuro precisa preservar o allowlist
 de campos do `portal_dados()`, não voltar pro padrão antigo.
 
-Ver task list da sessão (tasks #30-47) pra status detalhado e o que cada
+Ver task list da sessão (tasks #30-48) pra status detalhado e o que cada
 uma cobre.
+
+### Continuação (16/08) — motor de CRM: achado que separou os dois
+
+Ao entrar no "motor de CRM que falta" (fila unificada, priorização), achei
+o motivo real de não ser porta simples: o `crmCandidatos()` do v1 é
+calibrado com **taxa de conversão medida no histórico de vendas da
+Forthemp** (6,8% equipamento / 39,8% serviço, regex de produto tipo
+`/trocador|fromtherm|jelly/i` — nomes de produto da Forthemp) — um negócio
+diferente do Fluxa piscinas (que é serviço de manutenção, não venda de
+trocador de calor pra condomínio). Copiar isso pro v2 seria fingir dado que
+não existe.
+
+**Decisão do Marcos:** construir o mecanismo mesmo assim (não esperar
+dado), mas com número neutro em vez de calibração emprestada, atrás de
+flag até ter histórico real (opção 2 de 3 propostas).
+
+- **Não portado** `crmCandidatos()` (dois trilhos equipamento/serviço,
+  calibração Forthemp) — o v2 já tem priorização de follow-up própria
+  (`_crmComputarStats`, sem calibração nenhuma, só data/dias) que cobre o
+  mesmo espaço sem depender de número de outro negócio.
+- **Portado, adaptado**: `analiseClientes()`/`cadenciaCandidatos()`/
+  `cadenciaProximos()` — ritmo de recompra é **auto-referente** (compara o
+  cliente com o histórico DELE MESMO), não carrega calibração externa
+  nenhuma. Atrás de `flagAtiva('crm_cadencia')` (desligada por padrão).
+  Card no Painel (`#painel-cadencia-card`) só some/aparece pela flag.
+- `loadPiscinas()`/`todasPiscinas` adicionados (sem cache local ainda) —
+  a previsão teórica de recompra por volume de piscina depende disso.
+
+**Ativar quando fizer sentido** (tem histórico real de recompra):
+`UPDATE empresas SET config = jsonb_set(config, '{flags,crm_cadencia}',
+'true') WHERE id = '<empresa_id>';` ou via `admin_set_flag_empresa`.
+
+**Ainda falta, de propósito** (task #45): a fila unificada "Precisa de
+você hoje" de verdade (juntar cadência + follow-up do funil + estoque
+baixo numa lista só, ranqueada) — hoje são dois cards separados no Painel
+(Funil e Cadência). Juntar isso é decisão de design de tela, não só
+matemática — fica pra quando o Painel for redesenhado de fato.
