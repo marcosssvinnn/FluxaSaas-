@@ -2040,7 +2040,10 @@ function go(p){
   if(p==='os-history') loadOSHist();
   if(p==='clientes'){ renderClientes(); carregarClientesRemoto(); }
   if(p==='empresa') preencherFormEmpresa();
-  if(p==='equipamentos') loadEquipamentos();
+  if(p==='equipamentos'){
+    loadEquipamentos();
+    if(typeof loadPiscinas==='function') Promise.resolve(loadPiscinas()).then(()=>{ if(typeof _eqRenderPiscinas==='function') _eqRenderPiscinas(); }).catch(e=>console.warn('[go equipamentos loadPiscinas]', e?.message||e));
+  }
   if(p==='agendamentos'){ loadAgendamentos(); populaTecSelects(); initCal(); renderCal(); }
   if(p==='despesas') loadDespesas();
   if(p==='estoque') loadEstoque();
@@ -2052,6 +2055,7 @@ function go(p){
   if(p==='minhas-os') loadMinhasOS();
   if(p==='visitas'){
     initVisitas();
+    if(typeof loadPiscinas==='function') Promise.resolve(loadPiscinas()).then(()=>{ if(typeof _visRenderPiscinas==='function') _visRenderPiscinas(); }).catch(e=>console.warn('[go visitas loadPiscinas]', e?.message||e));
     // Todos os perfis caem direto na aba Locais (acompanhamento mensal)
     // "Nova Vistoria" fica acessível pela aba, mas não é a tela inicial
     visTab('locais');
@@ -4986,9 +4990,17 @@ function selecionarCliModal(id, nome, end, tel, cnpj){
     setV('os-cli', nome); setV('os-cli-id', id||'');
     if(end) setV('os-loc', end);
     if(cnpj) setV('os-cnpj', cnpj);
+  } else if(_buscaCliCtx === 'eq'){
+    setV('eq-cli-nome', nome); setV('eq-cli-id', id||'');
+    _eqClienteSelecionado = id ? {id, nome} : null;
+    _eqPiscinaSelecionadaId = null;
+    const _eqNovoForm=document.getElementById('eq-piscina-novo'); if(_eqNovoForm) _eqNovoForm.style.display='none';
+    if(typeof _eqRenderPiscinas==='function') _eqRenderPiscinas();
   } else if(_buscaCliCtx === 'vis'){
     setV('vis-cli', nome); setV('vis-cli-id', id||'');
     if(end) setV('vis-loc', end);
+    _visPiscinaSelecionadaId = null;
+    if(typeof _visRenderPiscinas==='function') _visRenderPiscinas();
     // auto-fill email from client record
     const clis=JSON.parse(ls('fluxa_clientes_full')||'[]');
     const cliVis=clis.find(c=>(c.nome||'')=== nome);
@@ -6926,10 +6938,11 @@ function _fazerCheckoutConfirmado(){
 
 // ══════════════════════════════════════════════════
 //  MÓDULO 1b — PISCINAS (ficha técnica + consumo teórico de químicos)
-//  Portado do fluxa-app v1 (16/08) — setup-v2-delta29.sql cria a tabela.
-//  Só o cálculo puro entra aqui por enquanto; a UI de cadastrar/editar
-//  piscina dentro de Equipamentos/Vistoria fica pra outra rodada (task
-//  #37) — é mudança de interação real em 2 telas, não matemática.
+//  Portado do fluxa-app v1 (16/08 e 17/08) — setup-v2-delta29.sql cria a
+//  tabela. Cálculo puro entra logo abaixo; a UI de cadastrar/selecionar
+//  piscina em Equipamentos (cadastro, inline) e Vistoria (seleção, só
+//  leitura — cadastro fica em Equipamentos, igual v1) está mais abaixo,
+//  perto de cada módulo (_eqRenderPiscinas/_visRenderPiscinas).
 // ══════════════════════════════════════════════════
 
 // Estação do ano no Brasil (hemisfério sul).
@@ -7009,9 +7022,9 @@ function consumoTeoricoDias(tipoTratamento, volumeM3, d, exposicaoSolar){
   return {dias:Math.round(dias), embalagemLabel:ref.embalagemLabel};
 }
 
-// Carregamento simples (sem cache local ainda — não há UI de criar/editar
-// piscina no v2 por enquanto, task própria pra isso). Só leitura, usada pela
-// análise de cadência de recompra abaixo.
+// Carregamento simples (sem cache local ainda — piscina é cadastro leve,
+// não crítico offline como estoque/orçamento). Usada pela ficha em
+// Equipamentos, pelo seletor em Vistoria e pela análise de cadência.
 let todasPiscinas = [];
 async function loadPiscinas(){
   if(!(dbOk&&db&&EMPRESA_ID)) return;
@@ -7020,6 +7033,150 @@ async function loadPiscinas(){
     if(error) throw error;
     todasPiscinas=data||[];
   }catch(e){ console.warn('[loadPiscinas]', e?.message||e); }
+}
+
+// ── Ficha de piscina em Equipamentos (17/08, portado do fluxa-app v1) ──
+// Cadastro/edição vive aqui; Vistoria só SELECIONA (ver _visRenderPiscinas,
+// perto do módulo de Vistoria). Só lista/permite cadastrar quando o
+// cliente foi ESCOLHIDO (lupa ou sugestão), não só digitado — precisa do
+// cliente_id real pra vincular a piscina a ele.
+let _eqClienteSelecionado = null; // {id, nome} — null se digitado à mão
+let _eqPiscinaSelecionadaId = null;
+let _eqPiscinaEditId = null;
+
+function mostrarSugestoesCliEq(val){
+  const sug = document.getElementById('eq-cli-suggestions'); if(!sug) return;
+  setV('eq-cli-id',''); _eqClienteSelecionado=null; _eqPiscinaSelecionadaId=null;
+  const _npF=document.getElementById('eq-piscina-novo'); if(_npF) _npF.style.display='none';
+  _eqRenderPiscinas();
+  if(!val||val.length<2){ sug.style.display='none'; return; }
+  const clientes = JSON.parse(ls('fluxa_clientes_full')||'[]');
+  const hits = clientes.filter(c=>(c.nome||'').toLowerCase().includes(val.toLowerCase())).slice(0,5);
+  if(!hits.length){ sug.style.display='none'; return; }
+  sug.innerHTML = hits.map(c=>`<div class="cli-suggestion-item" onmousedown="selecionarCliEq('${esc(c.id||'')}','${esc(c.nome||'')}')"><div class="cli-sug-name">${esc(c.nome)}</div></div>`).join('');
+  sug.style.display='block';
+}
+function hideSugCliEq(){ const el=document.getElementById('eq-cli-suggestions'); if(el) el.style.display='none'; }
+function selecionarCliEq(id, nome){
+  const inp=document.getElementById('eq-cli-nome'); if(inp) inp.value=nome;
+  setV('eq-cli-id', id||'');
+  _eqClienteSelecionado = id ? {id, nome} : null;
+  hideSugCliEq();
+  _eqPiscinaSelecionadaId=null;
+  const _npF2=document.getElementById('eq-piscina-novo'); if(_npF2) _npF2.style.display='none';
+  _eqRenderPiscinas();
+}
+
+// Não mexe em eq-piscina-novo aqui — quem decide se o form inline de
+// cadastro fica aberto ou fechado é quem CHAMA esta função (achado ao
+// testar: _eqPiscinaSelect('__nova__') abria o form e, na sequência, essa
+// própria função fechava de novo, deixando "+ Cadastrar nova piscina…"
+// sem efeito nenhum na tela).
+function _eqRenderPiscinas(){
+  const sel=document.getElementById('eq-piscina'); if(!sel) return;
+  const btnEd=document.getElementById('eq-piscina-editar-btn');
+  if(!_eqClienteSelecionado?.id){
+    sel.innerHTML='<option value="">Selecione o cliente primeiro</option>';
+    sel.disabled=true;
+    if(btnEd) btnEd.style.display='none';
+    return;
+  }
+  sel.disabled=false;
+  const doCliente=(todasPiscinas||[]).filter(p=>p.cliente_id===_eqClienteSelecionado.id && p.ativo!==false);
+  sel.innerHTML = '<option value="">Nenhuma / não informado</option>'
+    + doCliente.map(p=>`<option value="${esc(p.id)}"${p.id===_eqPiscinaSelecionadaId?' selected':''}>${esc(p.nome||'Piscina')}${p.volume_m3?' — '+p.volume_m3+'m³':''}</option>`).join('')
+    + '<option value="__nova__">+ Cadastrar nova piscina…</option>';
+  if(_eqPiscinaSelecionadaId && doCliente.some(p=>p.id===_eqPiscinaSelecionadaId)) sel.value=_eqPiscinaSelecionadaId;
+  // Editar só faz sentido com uma piscina real escolhida (não '' nem '__nova__').
+  if(btnEd) btnEd.style.display = _eqPiscinaSelecionadaId ? '' : 'none';
+}
+function _eqPiscinaLimparForm(){
+  setV('eq-piscina-nome',''); setV('eq-piscina-vol',''); setV('eq-piscina-trat','');
+  ['eq-piscina-capa','eq-piscina-aquecida'].forEach(id=>{ const el=document.getElementById(id); if(el) el.checked=false; });
+  const est=document.getElementById('eq-piscina-estabilizante'); if(est) est.checked=true;
+  setV('eq-piscina-exposicao','pleno'); setV('eq-piscina-uso','residencial'); setV('eq-piscina-banhistas','');
+  _eqPiscinaAtualizarUso();
+}
+// Campo de banhistas só aparece pra condomínio — divulgação progressiva,
+// residência não precisa decidir um número que não existe.
+function _eqPiscinaAtualizarUso(){
+  const uso=gV('eq-piscina-uso');
+  const wrap=document.getElementById('eq-piscina-banhistas-wrap');
+  if(wrap) wrap.style.display = uso==='condominio' ? '' : 'none';
+}
+function _eqPiscinaSelect(val){
+  const novoForm=document.getElementById('eq-piscina-novo');
+  if(val==='__nova__'){
+    _eqPiscinaEditId=null;
+    novoForm.style.display='block';
+    _eqPiscinaLimparForm();
+    _eqPiscinaSelecionadaId=null;
+  } else {
+    novoForm.style.display='none';
+    _eqPiscinaSelecionadaId = val||null;
+  }
+  _eqRenderPiscinas();
+}
+// Reabre o form inline pré-preenchido com a piscina já escolhida no select
+// — sem isto não existia jeito nenhum de completar depois os campos que o
+// cadastro rápido não pergunta (capa, exposição, banhistas, etc.).
+function _eqPiscinaEditar(){
+  if(!_eqPiscinaSelecionadaId) return;
+  const p=(todasPiscinas||[]).find(x=>x.id===_eqPiscinaSelecionadaId); if(!p) return;
+  _eqPiscinaEditId=p.id;
+  document.getElementById('eq-piscina-novo').style.display='block';
+  setV('eq-piscina-nome',p.nome||''); setV('eq-piscina-vol',p.volume_m3!=null?String(p.volume_m3):'');
+  setV('eq-piscina-trat',p.tipo_tratamento||'');
+  const capa=document.getElementById('eq-piscina-capa'); if(capa) capa.checked=!!p.capa_termica;
+  const aquec=document.getElementById('eq-piscina-aquecida'); if(aquec) aquec.checked=!!p.aquecida;
+  const est=document.getElementById('eq-piscina-estabilizante'); if(est) est.checked=p.estabilizante!==false;
+  setV('eq-piscina-exposicao',p.exposicao_solar||'pleno');
+  setV('eq-piscina-uso',p.tipo_uso||'residencial');
+  setV('eq-piscina-banhistas',p.banhistas_dia!=null?String(p.banhistas_dia):'');
+  _eqPiscinaAtualizarUso();
+}
+async function _eqPiscinaCriar(){
+  if(!_eqClienteSelecionado?.id){ toast('⚠️ Selecione o cliente pela lupa 🔍 antes de cadastrar a piscina'); return; }
+  const nome=(gV('eq-piscina-nome')||'').trim()||'Piscina principal';
+  const vol=parseFloat((gV('eq-piscina-vol')||'').replace(',','.'))||null;
+  const trat=(gV('eq-piscina-trat')||'').trim()||null;
+  const uso=gV('eq-piscina-uso')||'residencial';
+  const dados={
+    cliente_id:_eqClienteSelecionado.id, local_id:null, nome, volume_m3:vol, tipo_tratamento:trat,
+    capa_termica:!!document.getElementById('eq-piscina-capa')?.checked,
+    exposicao_solar:gV('eq-piscina-exposicao')||'pleno',
+    aquecida:!!document.getElementById('eq-piscina-aquecida')?.checked,
+    tipo_uso:uso,
+    banhistas_dia: uso==='condominio' ? (parseInt(gV('eq-piscina-banhistas'))||null) : null,
+    estabilizante: document.getElementById('eq-piscina-estabilizante')?.checked!==false,
+    loja_id:lojaAtiva||null, ativo:true
+  };
+  if(_eqPiscinaEditId){
+    const idEd=_eqPiscinaEditId;
+    const idx=todasPiscinas.findIndex(x=>x.id===idEd);
+    if(idx>=0) todasPiscinas[idx]={...todasPiscinas[idx], ...dados};
+    _eqPiscinaSelecionadaId=idEd; _eqPiscinaEditId=null;
+    document.getElementById('eq-piscina-novo').style.display='none';
+    _eqRenderPiscinas();
+    toast('✅ Piscina atualizada');
+    if(dbOk&&db) dbUpdate('piscinas', dados, 'id', idEd).catch(e=>console.warn('[_eqPiscinaCriar update]', e?.message||e));
+    return;
+  }
+  const tempId='pisc_'+Date.now();
+  todasPiscinas.unshift({...dados, id:tempId});
+  _eqPiscinaSelecionadaId=tempId;
+  document.getElementById('eq-piscina-novo').style.display='none';
+  _eqRenderPiscinas();
+  toast('✅ Piscina cadastrada');
+  if(dbOk&&db){
+    try{
+      const {data:ins}=await dbInsert('piscinas', dados);
+      if(ins){
+        todasPiscinas=todasPiscinas.filter(x=>x.id!==tempId); todasPiscinas.unshift(ins);
+        if(_eqPiscinaSelecionadaId===tempId){ _eqPiscinaSelecionadaId=ins.id; _eqRenderPiscinas(); }
+      }
+    }catch(e){ console.warn('[_eqPiscinaCriar]', e?.message||e); }
+  }
 }
 
 // ══════════════════════════════════════════════════
@@ -7035,6 +7192,7 @@ function abrirFormEq(id){
   if(id){
     const eq = todosEq.find(x=>x.id===id); if(!eq) return;
     setV('eq-cli-nome', eq.cliente_nome||'');
+    setV('eq-cli-id', eq.cliente_id||'');
     setV('eq-tipo', eq.tipo||'');
     setV('eq-marca', eq.marca||'');
     setV('eq-modelo', eq.modelo||'');
@@ -7047,14 +7205,20 @@ function abrirFormEq(id){
     eqFotoB64 = eq.foto_base64||'';
     const prev = document.getElementById('eq-foto-prev');
     if(eqFotoB64){ prev.src=eqFotoB64; prev.style.display='block'; document.getElementById('eq-btn-rm-foto').style.display='block'; }
+    _eqClienteSelecionado = eq.cliente_id ? {id:eq.cliente_id, nome:eq.cliente_nome} : null;
+    _eqPiscinaSelecionadaId = eq.piscina_id || null;
   } else {
-    ['eq-cli-nome','eq-tipo','eq-marca','eq-modelo','eq-potencia','eq-serie','eq-instalacao','eq-obs'].forEach(id=>setV(id,''));
+    ['eq-cli-nome','eq-cli-id','eq-tipo','eq-marca','eq-modelo','eq-potencia','eq-serie','eq-instalacao','eq-obs'].forEach(id=>setV(id,''));
     setV('eq-garantia','12'); setV('eq-garantia-venc','');
     eqFotoB64='';
     const prev=document.getElementById('eq-foto-prev'); prev.style.display='none';
     document.getElementById('eq-btn-rm-foto').style.display='none';
     document.getElementById('eq-foto-lbl').textContent='Tirar foto ou selecionar imagem';
+    _eqClienteSelecionado = null;
+    _eqPiscinaSelecionadaId = null;
   }
+  document.getElementById('eq-piscina-novo').style.display='none';
+  _eqRenderPiscinas();
   card.scrollIntoView({behavior:'smooth'});
 }
 function fecharFormEq(){ document.getElementById('eq-form-card').style.display='none'; eqEditId=null; eqFotoB64=''; }
@@ -7086,14 +7250,6 @@ function carregarFotoEq(inp){
 }
 function removerFotoEq(){ eqFotoB64=''; document.getElementById('eq-foto-prev').style.display='none'; document.getElementById('eq-foto-lbl').textContent='Tirar foto ou selecionar imagem'; document.getElementById('eq-btn-rm-foto').style.display='none'; document.getElementById('eq-foto-input').value=''; }
 
-function filtrarClientesEq(v){
-  const dl=document.getElementById('eq-cli-list'); dl.innerHTML='';
-  const clientes=JSON.parse(ls('fluxa_clientes_full')||'[]');
-  clientes.filter(c=>(c.nome||'').toLowerCase().includes(v.toLowerCase())).slice(0,8).forEach(c=>{
-    const opt=document.createElement('option'); opt.value=c.nome; dl.appendChild(opt);
-  });
-}
-
 async function salvarEquipamento(){
   const nome=gV('eq-cli-nome').trim(), tipo=gV('eq-tipo');
   if(!nome||!tipo){ toast('⚠️ Informe o cliente e o tipo'); return; }
@@ -7101,7 +7257,8 @@ async function salvarEquipamento(){
   if(_btnEq){ _btnEq.disabled=true; _btnEq.textContent='Salvando…'; }
   const venc=calcVencGarantia();
   const dados={
-    cliente_nome:nome, tipo, marca:gV('eq-marca'), modelo:gV('eq-modelo'),
+    cliente_nome:nome, cliente_id:_eqClienteSelecionado?.id||null, piscina_id:_eqPiscinaSelecionadaId||null,
+    tipo, marca:gV('eq-marca'), modelo:gV('eq-modelo'),
     potencia:gV('eq-potencia'), numero_serie:gV('eq-serie'),
     data_instalacao:gV('eq-instalacao'), garantia_meses:parseInt(gV('eq-garantia'))||12,
     garantia_vencimento:venc, obs:gV('eq-obs'), foto_base64:eqFotoB64||null, ativo:true,
@@ -8762,10 +8919,40 @@ function visCheckout(){
   toast('✅ Check-out registrado');
 }
 
+// ── Piscina em Vistoria (17/08, portado do fluxa-app v1) — só SELECIONA
+// uma piscina já cadastrada (cadastro fica em Equipamentos); filtra pelo
+// plano/local quando a vistoria veio de um local cadastrado (window.
+// _visLocalId), senão cai pro cliente — mesma prioridade de local_id do v1.
+let _visPiscinaSelecionadaId = null;
+function _visRenderPiscinas(){
+  const sel=document.getElementById('vis-piscina'); if(!sel) return;
+  const cliId=document.getElementById('vis-cli-id')?.value||'';
+  const localId=window._visLocalId||'';
+  const porLocal=localId ? (todasPiscinas||[]).filter(p=>p.local_id===localId && p.ativo!==false) : [];
+  const lista = porLocal.length ? porLocal : (cliId?(todasPiscinas||[]).filter(p=>p.cliente_id===cliId && p.ativo!==false):[]);
+  if(!cliId && !localId){
+    sel.innerHTML='<option value="">Selecione o cliente primeiro</option>';
+    sel.disabled=true;
+    return;
+  }
+  sel.disabled=false;
+  if(!lista.length){
+    sel.innerHTML='<option value="">Nenhuma piscina cadastrada pra este cliente</option>';
+    _visPiscinaSelecionadaId=null;
+    return;
+  }
+  sel.innerHTML='<option value="">Não informado</option>'
+    + lista.map(p=>`<option value="${esc(p.id)}"${p.id===_visPiscinaSelecionadaId?' selected':''}>${esc(p.nome||'Piscina')}${p.volume_m3?' — '+p.volume_m3+'m³':''}</option>`).join('');
+  if(_visPiscinaSelecionadaId && !lista.some(p=>p.id===_visPiscinaSelecionadaId)) _visPiscinaSelecionadaId=null;
+  sel.value=_visPiscinaSelecionadaId||'';
+}
+function _visPiscinaSelect(val){ _visPiscinaSelecionadaId=val||null; }
+
 // ── Autocomplete cliente no campo vis-cli ──
 function mostrarSugestoesCliVis(val){
   const sug = document.getElementById('vis-cli-suggestions'); if(!sug) return;
   setV('vis-cli-id',''); // digitou de novo → invalida vínculo de uma sugestão anterior
+  _visPiscinaSelecionadaId=null; _visRenderPiscinas();
   if(!val||val.length<2){ sug.style.display='none'; return; }
   const clientes = JSON.parse(ls('fluxa_clientes_full')||'[]');
   const hits = clientes.filter(c=>(c.nome||'').toLowerCase().includes(val.toLowerCase())).slice(0,5);
@@ -8777,6 +8964,7 @@ function hideSugCliVis(){ const el=document.getElementById('vis-cli-suggestions'
 function selecionarCliVis(id, nome, local){
   const inp=document.getElementById('vis-cli'); if(inp) inp.value=nome;
   setV('vis-cli-id', id||'');
+  _visPiscinaSelecionadaId=null; _visRenderPiscinas();
   const loc=document.getElementById('vis-loc'); if(loc&&local&&!loc.value) loc.value=local;
   // Auto-fill email from client record
   const clientes=JSON.parse(ls('fluxa_clientes_full')||'[]');
@@ -8892,6 +9080,7 @@ async function _montarRecVistoria(){
     local_id: window._visLocalId||'',
     cliente:_clienteVis,
     cliente_id:(document.getElementById('vis-cli-id')?.value||null)||await _autoSalvarCliente(_clienteVis,null,_localVis,null,_lojaRec)||null,
+    piscina_id: _visPiscinaSelecionadaId||null,
     local:_localVis,
     data: document.getElementById('vis-data')?.value||_hojeLocal(),
     hora,
@@ -9555,6 +9744,8 @@ function novaVistoria(cliNome, cliLocal, tecNome){
   const _vdt = document.getElementById('vis-dados-toggle');
   if(window._visLocalId && _vdb){ _vdb.style.display='none'; if(_vdt) _vdt.textContent='▼ expandir'; }
   else if(_vdb){ _vdb.style.display=''; if(_vdt) _vdt.textContent='▲ recolher'; }
+  _visPiscinaSelecionadaId=null;
+  _visRenderPiscinas();
   renderVisChips();
   renderVisEquipGrid();
 }
@@ -9586,6 +9777,8 @@ function editarVistoria(id){
   const pc=document.getElementById('vis-precarga-banner'); if(pc) pc.style.display='none';
   const set=(elId,val)=>{ const e=document.getElementById(elId); if(e) e.value=val||''; };
   set('vis-cli',vis.cliente); set('vis-cli-id',vis.cliente_id); set('vis-loc',vis.local);
+  _visPiscinaSelecionadaId = vis.piscina_id||null;
+  _visRenderPiscinas();
   const _en=new Date(); const _ed=`${_en.getFullYear()}-${String(_en.getMonth()+1).padStart(2,'0')}-${String(_en.getDate()).padStart(2,'0')}`;
   set('vis-data',vis.data||_ed);
   set('vis-mes-ref',vis.mes_ref||_ed.slice(0,7));

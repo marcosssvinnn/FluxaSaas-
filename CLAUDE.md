@@ -3013,3 +3013,61 @@ histórico do cliente. Tela cheia (sem sidebar/header — `go()` alterna
 - **Fora do escopo desta rodada**: tela de histórico/relatório de vendas de
   balcão (só a captura existe; `todasVendasBalcao`/`loadVendasBalcao()`
   ficam prontos pra uma tela de listagem futura, se fizer sentido).
+
+### Continuação (16/08) — CRM: UI de piscina em Equipamentos/Vistoria (task #48)
+
+Última pendência do roadmap de CRM (task #39 tinha feito só o schema +
+matemática de consumo teórico, a UI de cadastrar/selecionar piscina ficava
+pra depois). Portado do fluxa-app v1: cadastro/edição de piscina vive em
+Equipamentos (inline, dentro do form de equipamento); Vistoria só
+**seleciona** uma piscina já cadastrada (mesma divisão de responsabilidade
+do v1) — filtra por `local_id` do plano de vistoria quando existe, senão
+cai pro `cliente_id`.
+
+**Achado que virou pré-requisito, não estava no escopo original:**
+Equipamentos no v2 nunca capturava `cliente_id` — só um campo de texto
+livre (`eq-cli-nome`) com datalist de sugestão, diferente de
+Orçamento/OS/Vistoria que já tinham o padrão lupa+id (task #23). Piscina
+depende de `cliente_id` real pra vincular, então tive que trazer
+Equipamentos pro mesmo padrão primeiro (`cli-input-wrap` + `eq-cli-id`
+oculto + `abrirBuscaCli('eq')` + sugestões ao digitar) antes de construir a
+ficha de piscina em cima. `filtrarClientesEq()`/datalist antigos removidos
+(substituídos, não duplicados).
+
+**Bug real achado e corrigido durante o teste** (não existia forma de
+reproduzir sem testar de verdade, código lia certo): `_eqRenderPiscinas()`
+fechava incondicionalmente o formulário inline de nova piscina toda vez
+que rodava — e `_eqPiscinaSelect('__nova__')` ABRIA o formulário e, na
+sequência, chamava `_eqRenderPiscinas()`, que fechava de novo. Resultado:
+"+ Cadastrar nova piscina…" no select não tinha efeito nenhum na tela. Essa
+mesma estrutura existe no v1 (`_eqRenderPiscinas` também zera o form
+incondicionalmente lá) — ou é um bug latente que também afeta o v1, ou lá
+funciona por algum motivo que não investiguei; aqui corrigi tirando esse
+`display='none'` de dentro de `_eqRenderPiscinas()` e deixando cada
+chamador (abrir form, trocar de cliente, digitar de novo) decidir
+explicitamente quando fechar o formulário inline.
+
+- `EMPRESA_ID`: `equipamentos.piscina_id` e `equipamentos.cliente_id` já
+  existiam no schema (delta29/task23) — só faltava a UI escrever neles.
+- `todasPiscinas` (carregado por `loadPiscinas()`, task #39) agora também
+  carrega ao entrar em Equipamentos ou Vistoria (`go()`), não só quando a
+  flag `crm_cadencia` está ligada — piscina é cadastro comum, não deveria
+  depender de uma flag de uma feature diferente (cadência de recompra).
+- Testado no Browser pane (sessão fake, `dbOk=false`): abrir Equipamentos →
+  buscar cliente (sugestão e lupa) → seletor de piscina habilita → "+
+  Cadastrar nova piscina…" abre o formulário inline → preencher (incluindo
+  o campo condicional "Banhistas/dia", que só aparece pra uso
+  "Condomínio") → salvar → piscina aparece selecionada no dropdown + botão
+  ✏️ aparece → editar reabre pré-preenchido → salvar equipamento grava
+  `cliente_id`/`piscina_id` corretos. Depois, Vistoria pro MESMO cliente já
+  lista a piscina recém-criada no seletor, e `piscina_id` chega certo no
+  registro salvo (`_montarRecVistoria()`).
+- **Não testado**: sincronização real com Supabase (`dbInsert`/`dbUpdate`
+  contra `piscinas`/`equipamentos`), filtro por `local_id` (não tinha um
+  plano de vistoria de teste fácil de montar no ambiente offline).
+- **Achado, fora de escopo, sinalizado à parte** (task separada
+  `task_b9a11d35`): erro de boot pré-existente, sem relação com piscina —
+  `todosFornecedores` é referenciado no boot do app antes da própria
+  declaração `let` (TDZ), gera um "Cannot access before initialization"
+  não capturado logo no carregamento da página, reproduz do zero sem
+  nenhuma interação.

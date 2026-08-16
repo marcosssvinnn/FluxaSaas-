@@ -1205,8 +1205,12 @@
       <div class="ct">Novo Equipamento <button onclick="fecharFormEq()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;line-height:1">×</button></div>
       <div class="row">
         <div class="fl"><label>Cliente</label>
-          <input type="text" id="eq-cli-nome" placeholder="Nome do cliente" list="eq-cli-list" oninput="filtrarClientesEq(this.value)">
-          <datalist id="eq-cli-list"></datalist>
+          <div class="cli-input-wrap">
+            <input type="text" id="eq-cli-nome" placeholder="Nome do cliente" oninput="mostrarSugestoesCliEq(this.value)" autocomplete="off" name="cli_nofill_eq" data-lpignore="true" data-form-type="other" readonly onfocus="this.removeAttribute('readonly')" onblur="setTimeout(()=>hideSugCliEq(),200)">
+            <input type="hidden" id="eq-cli-id">
+            <button type="button" class="cli-search-btn" onclick="abrirBuscaCli('eq')" title="Buscar cliente na base">🔍</button>
+            <div class="cli-suggestions" id="eq-cli-suggestions" style="display:none"></div>
+          </div>
         </div>
         <div class="fl"><label>Tipo de Equipamento</label>
           <select id="eq-tipo">
@@ -1215,6 +1219,62 @@
             <option>Gerador de Cloro</option><option>LED Subaquático</option>
             <option>Spa / Hidro</option><option>Sauna</option><option>Automação</option><option>Outro</option>
           </select>
+        </div>
+      </div>
+      <!-- Piscina (17/08, portado do fluxa-app v1) — só lista/permite cadastrar
+           quando o cliente foi ESCOLHIDO (pela lupa ou sugestão), não só
+           digitado: precisa do cliente_id real pra vincular a piscina a ele. -->
+      <div class="row f1">
+        <div class="fl">
+          <label>Piscina <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--gray)">(opcional — escolha o cliente pela lupa 🔍 pra listar/cadastrar)</span></label>
+          <div style="display:flex;gap:6px;align-items:flex-end">
+            <select id="eq-piscina" onchange="_eqPiscinaSelect(this.value)" disabled style="flex:1">
+              <option value="">Selecione o cliente primeiro</option>
+            </select>
+            <button type="button" id="eq-piscina-editar-btn" class="tb" style="display:none;padding:9px 10px;flex-shrink:0" onclick="_eqPiscinaEditar()" title="Editar detalhes desta piscina (capa, exposição, banhistas...)">✏️</button>
+          </div>
+          <div id="eq-piscina-novo" style="display:none;margin-top:8px;padding:10px;border:1px solid var(--line,#e5e7eb);border-radius:8px">
+            <div class="row f3" style="margin-bottom:8px">
+              <div class="fl"><label>Nome</label><input type="text" id="eq-piscina-nome" placeholder="Ex: Piscina Adulto"></div>
+              <div class="fl"><label>Volume (m³)</label><input type="text" inputmode="decimal" id="eq-piscina-vol" placeholder="Ex: 45"></div>
+              <div class="fl"><label>Tratamento</label>
+                <select id="eq-piscina-trat">
+                  <option value="">Não sei / outro</option>
+                  <option value="dicloro_granulado">Cloro granulado (dicloro)</option>
+                  <option value="hipoclorito_calcio">Hipoclorito de cálcio</option>
+                  <option value="cloro_liquido_10">Cloro líquido</option>
+                  <option value="pastilha_tricloro">Pastilha / multiação (tricloro)</option>
+                  <option value="sal_salino">Gerador de cloro salino</option>
+                  <option value="bromo">Bromo</option>
+                  <option value="peroxido">Peróxido de hidrogênio</option>
+                </select>
+              </div>
+            </div>
+            <div class="row f3" style="margin-bottom:8px">
+              <div class="fl"><label>Exposição solar</label>
+                <select id="eq-piscina-exposicao">
+                  <option value="pleno">Sol pleno</option>
+                  <option value="parcial">Parcial / coberta</option>
+                </select>
+              </div>
+              <div class="fl"><label>Uso</label>
+                <select id="eq-piscina-uso" onchange="_eqPiscinaAtualizarUso()">
+                  <option value="residencial">Residencial</option>
+                  <option value="condominio">Condomínio</option>
+                </select>
+              </div>
+              <div class="fl" id="eq-piscina-banhistas-wrap" style="display:none">
+                <label>Banhistas/dia (verão)</label>
+                <input type="text" inputmode="numeric" id="eq-piscina-banhistas" placeholder="Ex: 40">
+              </div>
+            </div>
+            <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px;font-size:12.5px">
+              <label style="display:flex;align-items:center;gap:5px;font-weight:400;text-transform:none;letter-spacing:0"><input type="checkbox" id="eq-piscina-capa" style="width:auto"> Tem capa térmica</label>
+              <label style="display:flex;align-items:center;gap:5px;font-weight:400;text-transform:none;letter-spacing:0"><input type="checkbox" id="eq-piscina-aquecida" style="width:auto"> Piscina aquecida</label>
+              <label style="display:flex;align-items:center;gap:5px;font-weight:400;text-transform:none;letter-spacing:0"><input type="checkbox" id="eq-piscina-estabilizante" checked style="width:auto"> Tem estabilizante</label>
+            </div>
+            <button type="button" class="tb" onclick="_eqPiscinaCriar()">✅ Salvar piscina</button>
+          </div>
         </div>
       </div>
       <div class="row f3">
@@ -2382,6 +2442,17 @@
             </div>
           </div>
           <div class="fl"><label>Local / Endereço</label><input type="text" id="vis-loc" placeholder="Endereço do local"></div>
+        </div>
+        <!-- Piscina (17/08, portado do fluxa-app v1) — só SELECIONA uma
+             piscina já cadastrada (cadastro fica em Equipamentos, igual v1);
+             opcional, cliente sem piscina cadastrada continua vistoriando
+             normalmente. -->
+        <div class="row" id="vis-piscina-row">
+          <div class="fl"><label>Piscina <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--gray)">(opcional — cadastrada em Equipamentos)</span></label>
+            <select id="vis-piscina" onchange="_visPiscinaSelect(this.value)" disabled>
+              <option value="">Selecione o cliente primeiro</option>
+            </select>
+          </div>
         </div>
         <div class="row f4">
           <div class="fl"><label>Data da Vistoria</label><input type="date" id="vis-data"></div>
