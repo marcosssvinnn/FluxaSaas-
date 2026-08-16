@@ -257,28 +257,102 @@
 
 <!-- ══ SIDEBAR ══ -->
 <aside class="sidebar s-hidden" id="sidebar" role="navigation" aria-label="Menu principal">
+  <!-- Redesign 15/08 — portado do fluxa-app v1 (handoff design_handoff_fluxa_redesign).
+       IDs snb-* mantidos iguais aos de antes (snbRules em app.js não mudou). -->
+  <div class="snav-brand">
+    <div class="snav-logo" id="snav-logo">F</div>
+    <div class="snav-brand-tx">
+      <span class="snav-brand-nome" id="snav-brand-nome">Fluxa</span>
+      <span class="snav-brand-sub" id="snav-brand-sub">Sistema de gestão</span>
+    </div>
+  </div>
+
+  <!-- Ação primária — único destino de "criar" que fica fixo em qualquer
+       tela. Substitui o antigo snb-form (mesmo onclick); visibilidade
+       controlada em aplicarPermissoesPerfil() (app.js, snbRules). -->
+  <div class="snav-primary" id="snav-primary-wrap">
+    <button class="snav-primary-btn" onclick="novoOrc();go('form')" title="Novo orçamento">
+      <svg class="sicon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
+      <span class="snav-primary-label">Novo orçamento</span>
+    </button>
+  </div>
+
   <nav class="snav">
-    <!-- Ordem por frequência de uso real (pedido do Marcos): painel primeiro,
-         depois funil/histórico/estoque/orçamento/OS — o resto vai pra "Mais opções". -->
-    <button class="snb on" id="snb-painel" onclick="go('painel')"><span class="sicon">🏠</span><span class="slabel">Painel</span></button>
-    <button class="snb" id="snb-crm" onclick="go('crm')"><span class="sicon">🎯</span><span class="slabel">Funil</span></button>
-    <button class="snb" id="snb-history" onclick="go('history')"><span class="sicon">📊</span><span class="slabel">Histórico</span></button>
-    <button class="snb" id="snb-estoque" onclick="go('estoque')"><span class="sicon">📦</span><span class="slabel">Estoque</span></button>
-    <button class="snb" id="snb-form" onclick="go('form')"><span class="sicon">＋</span><span class="slabel">Orçamento</span></button>
-    <button class="snb" id="snb-os" onclick="novaOS();go('os')"><span class="sicon">📋</span><span class="slabel">OS</span></button>
-    <button class="snb" id="snb-agendamentos" onclick="go('agendamentos')"><span class="sicon">📅</span><span class="slabel">Agenda</span></button>
-    <button class="snb" id="snb-visitas" onclick="go('visitas')"><span class="sicon">🔍</span><span class="slabel">Vistorias</span></button>
-    <button class="snb" id="snb-minhas-os" onclick="go('minhas-os')" style="display:none"><span class="sicon">📋</span><span class="slabel">Minhas OS</span></button>
-    <div class="snav-div"></div>
-    <span class="snav-section-label">Mais opções</span>
-    <button class="snb" id="snb-clientes" onclick="go('clientes')"><span class="sicon">👥</span><span class="slabel">Clientes</span></button>
-    <button class="snb" id="snb-os-history" onclick="go('os-history')"><span class="sicon">📄</span><span class="slabel">Hist. OS</span></button>
-    <button class="snb" id="snb-equipamentos" onclick="go('equipamentos')"><span class="sicon">🔧</span><span class="slabel">Equipamentos</span></button>
-    <button class="snb" id="snb-despesas" onclick="go('despesas')"><span class="sicon">💸</span><span class="slabel">Despesas</span></button>
-    <button class="snb" id="snb-produtividade" onclick="go('produtividade')"><span class="sicon">📈</span><span class="slabel">Produtividade</span></button>
-    <div class="snav-div"></div>
-    <button class="snb" id="snb-logout" onclick="closeSidebar();fazerLogout()" style="color:#ef4444"><span class="sicon">🔓</span><span class="slabel">Trocar usuário</span></button>
+    <div class="snav-group" id="snav-group-diaadia">
+      <span class="snav-group-lbl">Dia a dia</span>
+      <button class="snb on" id="snb-painel" onclick="go('painel')">
+        <svg class="sicon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13h4l3-7 4 14 3-7h4"></path></svg>
+        <span class="slabel">Painel</span>
+      </button>
+      <button class="snb" id="snb-crm" onclick="go('crm')">
+        <svg class="sicon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16l-6.5 8v6l-3 2v-8z"></path></svg>
+        <span class="slabel">Funil</span>
+      </button>
+      <button class="snb" id="snb-history" onclick="go('history')">
+        <svg class="sicon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6zM15 3v4h4M9 13h6M9 17h4"></path></svg>
+        <span class="slabel">Histórico</span>
+      </button>
+      <button class="snb" id="snb-estoque" onclick="go('estoque')">
+        <svg class="sicon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8l8-4 8 4v8l-8 4-8-4zM4 8l8 4 8-4M12 12v8"></path></svg>
+        <span class="slabel">Estoque</span>
+      </button>
+    </div>
+
+    <div class="snav-group" id="snav-group-operacao">
+      <span class="snav-group-lbl">Operação</span>
+      <button class="snb" id="snb-os" onclick="novaOS();go('os')">
+        <svg class="sicon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"></path></svg>
+        <span class="slabel">OS</span>
+      </button>
+      <button class="snb" id="snb-agendamentos" onclick="go('agendamentos')">
+        <svg class="sicon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v15H4zM8 3v4M16 3v4M4 10h16"></path></svg>
+        <span class="slabel">Agenda</span>
+      </button>
+      <button class="snb" id="snb-visitas" onclick="go('visitas')">
+        <svg class="sicon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14M16.5 16.5L21 21"></path></svg>
+        <span class="slabel">Vistorias</span>
+      </button>
+      <button class="snb" id="snb-minhas-os" onclick="go('minhas-os')" style="display:none">
+        <svg class="sicon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"></path></svg>
+        <span class="slabel">Minhas OS</span>
+      </button>
+    </div>
+
+    <div class="snav-group" id="snav-group-cadastros">
+      <span class="snav-group-lbl">Cadastros e análise</span>
+      <button class="snb" id="snb-clientes" onclick="go('clientes')">
+        <svg class="sicon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20c0-3.3 3.6-5 8-5s8 1.7 8 5M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8"></path></svg>
+        <span class="slabel">Clientes</span>
+      </button>
+      <button class="snb" id="snb-os-history" onclick="go('os-history')">
+        <svg class="sicon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6zM15 3v4h4M9 13h6M9 17h4"></path></svg>
+        <span class="slabel">Hist. OS</span>
+      </button>
+      <button class="snb" id="snb-equipamentos" onclick="go('equipamentos')">
+        <svg class="sicon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M12 2v3M12 19v3M4 12H2M22 12h-2M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"></path></svg>
+        <span class="slabel">Equipamentos</span>
+      </button>
+      <button class="snb" id="snb-despesas" onclick="go('despesas')">
+        <svg class="sicon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M16.5 7.5C16.5 5.8 14.5 4.7 12 4.7S7.5 5.8 7.5 7.5s2 2.9 4.5 3.4 4.5 1.7 4.5 3.4-2 2.9-4.5 2.9-4.5-1.1-4.5-2.9"></path></svg>
+        <span class="slabel">Despesas</span>
+      </button>
+      <button class="snb" id="snb-produtividade" onclick="go('produtividade')">
+        <svg class="sicon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20V10M12 20V4M19 20v-7"></path></svg>
+        <span class="slabel">Produtividade</span>
+      </button>
+    </div>
   </nav>
+
+  <div class="snav-footer">
+    <button class="snb snav-foot-item" onclick="toggleGear()">
+      <svg class="sicon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M12 2v3M12 19v3M4 12H2M22 12h-2M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"></path></svg>
+      <span class="slabel">Configurações</span>
+    </button>
+    <button class="snb snav-foot-item" id="snb-logout" onclick="closeSidebar();fazerLogout()" style="color:var(--bad)">
+      <svg class="sicon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"></path></svg>
+      <span class="slabel">Trocar usuário</span>
+    </button>
+  </div>
 </aside>
 
 <!-- ══ BOTTOM NAV (mobile) ══ -->

@@ -95,7 +95,7 @@ function aplicarPermissoesPerfil(){
   // ── Sidebar nav ──
   const snbRules = {
     'snb-painel'       : gestor,
-    'snb-form'         : gestor||vendas,
+    'snav-primary-wrap': gestor||vendas, // era 'snb-form' — botão virou CTA fixo (redesign 15/08)
     'snb-history'      : gestor||vendas,
     'snb-crm'          : (gestor||vendas)&&_crmAtivo(),
     'snb-clientes'     : gestor||vendas,
@@ -854,6 +854,14 @@ function atualizarHeaderLoja(){
     if(LC.logoB64){ img.src=LC.logoB64; img.classList.add('has-logo'); }
     else { img.classList.remove('has-logo'); }
   }
+  // Sidebar (redesign 15/08) — mesmo nome/sub do header; logo só iniciais
+  // (sidebar não tem espaço pra imagem de logo, diferente do header).
+  const snNome=document.getElementById('snav-brand-nome');
+  const snSub =document.getElementById('snav-brand-sub');
+  const snLogo=document.getElementById('snav-logo');
+  if(snNome) snNome.textContent = LC.nome||CFG.nome||'';
+  if(snSub)  snSub.textContent  = LC.sub ||CFG.sub ||'Serviços';
+  if(snLogo) snLogo.textContent = (LC.nome||CFG.nome||'F').charAt(0).toUpperCase();
   document.title=(LC.nome||CFG.nome||'Fluxa')+' — Orçamentos';
 }
 
@@ -1673,6 +1681,13 @@ function aplicarCFG(){
   img.alt = CFG.nome || 'Logo';
   if(CFG.logoB64){ img.src=CFG.logoB64; img.classList.add('has-logo'); }
   else { img.classList.remove('has-logo'); }
+  // Sidebar (redesign 15/08) — mesmo texto do header
+  const snNomeB=document.getElementById('snav-brand-nome');
+  const snSubB =document.getElementById('snav-brand-sub');
+  const snLogoB=document.getElementById('snav-logo');
+  if(snNomeB) snNomeB.textContent = CFG.nome || '';
+  if(snSubB)  snSubB.textContent  = CFG.sub || 'Serviços';
+  if(snLogoB) snLogoB.textContent = (CFG.nome||'F').charAt(0).toUpperCase();
   // Brand da tela de login: pré-login fica neutro (resetMarcaSaaS acima); pós-login
   // (conta autenticada) mostra a marca da empresa.
   if(!preLogin){
