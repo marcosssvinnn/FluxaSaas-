@@ -2693,7 +2693,7 @@ async function salvarApenas(){
   try{
     const now=new Date().toISOString();
     const camposBase={
-      cliente:dados.cli, cliente_id:dados.cliId||_autoSalvarCliente(dados.cli,dados.tel,dados.loc,dados.cnpj,dados.loja_id)||null, local_servico:dados.loc, tel_cliente:dados.tel, cnpj:dados.cnpj||null,
+      cliente:dados.cli, cliente_id:dados.cliId||await _autoSalvarCliente(dados.cli,dados.tel,dados.loc,dados.cnpj,dados.loja_id)||null, local_servico:dados.loc, tel_cliente:dados.tel, cnpj:dados.cnpj||null,
       loja_id:dados.loja_id||LOJA_PADRAO_ID,
       origem_cliente:dados.origem||null,
       servicos:dados.svcs, subtotal:dados.sub, desconto:dados.desc, total:dados.tot,
@@ -2726,14 +2726,14 @@ async function salvarApenas(){
           }catch(e){ console.warn('[salvarApenas] update erro:', e?.message||e); }
         })();
       }
-      _autoSalvarCliente(dados.cli, dados.tel, dados.loc, dados.cnpj, dados.loja_id);
+      await _autoSalvarCliente(dados.cli, dados.tel, dados.loc, dados.cnpj, dados.loja_id);
       toast('✅ Orçamento atualizado!');
     } else {
       // ── NOVO ──
       const tempId='local_'+Date.now();
       const num=lsOrcProxNum(); savedNum=num;
       const rec={...camposBase, id:tempId, numero:num, status:'pendente', data_criacao:now};
-      _autoSalvarCliente(dados.cli, dados.tel, dados.loc, dados.cnpj, dados.loja_id);
+      await _autoSalvarCliente(dados.cli, dados.tel, dados.loc, dados.cnpj, dados.loja_id);
       // 1. Salva local IMEDIATAMENTE
       lsOrcUpsert(rec);
       todosOrc.unshift(rec);
@@ -2790,7 +2790,7 @@ async function gerarPDF(){
   const dados=dadosPre;
   const now=new Date().toISOString();
   const camposBase={
-    cliente:dados.cli, cliente_id:dados.cliId||_autoSalvarCliente(dados.cli,dados.tel,dados.loc,dados.cnpj,dados.loja_id)||null, local_servico:dados.loc, tel_cliente:dados.tel, cnpj:dados.cnpj||null,
+    cliente:dados.cli, cliente_id:dados.cliId||await _autoSalvarCliente(dados.cli,dados.tel,dados.loc,dados.cnpj,dados.loja_id)||null, local_servico:dados.loc, tel_cliente:dados.tel, cnpj:dados.cnpj||null,
     loja_id:dados.loja_id||LOJA_PADRAO_ID,
     origem_cliente:dados.origem||null,
     servicos:dados.svcs, subtotal:dados.sub, desconto:dados.desc, total:dados.tot,
@@ -2801,7 +2801,7 @@ async function gerarPDF(){
     foto_base64:fotosB64.filter(Boolean).length?JSON.stringify(fotosB64.filter(Boolean)):null, nota_interna:gV('nota-interna')||null
   };
   let num=null;
-  _autoSalvarCliente(dados.cli, dados.tel, dados.loc, dados.cnpj, dados.loja_id);
+  await _autoSalvarCliente(dados.cli, dados.tel, dados.loc, dados.cnpj, dados.loja_id);
 
   if(editId){
     // Editando: mantém número existente
@@ -3079,7 +3079,7 @@ async function gerarOSPDF(modo='os'){
   let numStr='???';
   const orcId=osOrcId||null;
   const lojaIdOS=gV('os-loja')||LOJA_PADRAO_ID;
-  const camposBase={orcamento_id:orcId,loja_id:lojaIdOS,cliente:dados.cli,cliente_id:gV('os-cli-id')||_autoSalvarCliente(dados.cli,null,dados.loc,dados.cnpj,lojaIdOS)||null,local_servico:dados.loc,cnpj:dados.cnpj||null,data_servico:dados.data,hora:dados.hora,tecnico:dados.tec,servicos:dados.svcs,materiais:dados.mat,obs_tecnica:dados.obs,total:dados.tot,fotos:dados.fotos,video_link:dados.videoLink||null,checklist:dados.checklist.length?JSON.stringify(dados.checklist):null};
+  const camposBase={orcamento_id:orcId,loja_id:lojaIdOS,cliente:dados.cli,cliente_id:gV('os-cli-id')||await _autoSalvarCliente(dados.cli,null,dados.loc,dados.cnpj,lojaIdOS)||null,local_servico:dados.loc,cnpj:dados.cnpj||null,data_servico:dados.data,hora:dados.hora,tecnico:dados.tec,servicos:dados.svcs,materiais:dados.mat,obs_tecnica:dados.obs,total:dados.tot,fotos:dados.fotos,video_link:dados.videoLink||null,checklist:dados.checklist.length?JSON.stringify(dados.checklist):null};
   if(dbOk&&db){
     try{
       // Sobe fotos pro Storage antes de gravar — a linha no banco fica leve (URL, não
@@ -4700,15 +4700,57 @@ function editarCliente(id){
   if(titulo) titulo.textContent='Editar Cliente';
 }
 
-// Auto-cadastra cliente ao gerar orçamento/OS.
-// Auto-cadastra cliente ao salvar orçamento. v2: a base já é escopada por empresa
-// (RLS + empresa_id), então dedup é por nome.
-function _autoSalvarCliente(nome, tel, end, cnpj, lojaId){
+// Auto-cadastra cliente ao gerar orçamento/OS/vistoria.
+// v2: a base já é escopada por empresa (RLS + empresa_id), então dedup é
+// por nome (não precisa do agrupamento aquamotor/fortemp que o v1 tinha —
+// aqui cada empresa já não vê a base da outra).
+//
+// Checa o SERVIDOR antes de criar (adaptado do v1, 16/08) — antes só olhava
+// o cache local do aparelho (lsCliLer()): cada aparelho que "descobria" o
+// mesmo cliente pela primeira vez criava sua própria cópia (achado real do
+// v1, 16 grupos/19 fichas duplicadas em produção lá por causa disso). Agora,
+// quando não acha localmente, consulta o servidor pelo nome antes de
+// decidir criar. Achou lá -> usa o id real, só atualiza o cache local. Não
+// achou ou deu erro de rede -> cai no fluxo de sempre (cria local-first),
+// sem travar o salvamento.
+//
+// Virou ASYNC (era síncrona) — revisão de código confirmou que os 3
+// chamadores (salvarApenas/gerarPDF/gerarOSPDF) já eram async, e
+// _montarRecVistoria() (só chamadora que não era) também virou async por
+// causa disso — seus 2 chamadores (salvarVistoria/gerarRelatorioVistoria)
+// já eram async também. Todo o caminho já suportava await sem precisar
+// tocar em mais nada.
+async function _autoSalvarCliente(nome, tel, end, cnpj, lojaId){
   if(!nome||nome==='—') return null;
   const nomeL=nome.toLowerCase();
   const lista=lsCliLer();
   const idx=lista.findIndex(c=>(c.nome||'').toLowerCase()===nomeL);
-  if(idx>=0) return lista[idx].id; // já existe
+  if(idx>=0) return lista[idx].id; // já existe no cache deste aparelho
+
+  if(dbOk&&db&&EMPRESA_ID){
+    try{
+      // ilike sem % é match exato case-insensitive (mesmo critério do
+      // check local acima, só perguntando ao servidor em vez do cache).
+      const {data:remoto,error}=await db.from('clientes')
+        .select('id,nome').eq('empresa_id',EMPRESA_ID).ilike('nome', nome.trim()).limit(20);
+      if(error) throw error;
+      const achou=(remoto||[]).find(c=>(c.nome||'').toLowerCase()===nomeL);
+      if(achou){
+        // Existe no servidor — só não estava no cache deste aparelho ainda.
+        const listaAgora=lsCliLer();
+        if(!listaAgora.some(c=>c.id===achou.id)){
+          listaAgora.unshift({id:achou.id, nome:achou.nome, tel:tel||'', end:end||'', cnpj:cnpj||'', email_responsavel:'', tipo:'', loja_id:lojaId||null});
+          lsCliSalvar(listaAgora);
+        }
+        return achou.id;
+      }
+    }catch(e){
+      // Rede/erro na checagem: segue pro fallback local-first abaixo —
+      // melhor arriscar 1 duplicata rara do que travar o salvamento.
+      console.warn('[_autoSalvarCliente check]', e?.message||e);
+    }
+  }
+
   const novo={id:'cli_'+Date.now(),nome,tel:tel||'',end:end||'',cnpj:cnpj||'',email_responsavel:'',tipo:'',portal_token:crypto.randomUUID(),loja_id:lojaId||null};
   lista.unshift(novo); lsCliSalvar(lista);
   if(dbOk&&db) dbInsert('clientes',{id:novo.id,nome,telefone:tel||null,endereco:end||null,cnpj:cnpj||null,loja_id:novo.loja_id,portal_token:novo.portal_token}).catch(()=>{});
@@ -8730,7 +8772,7 @@ function _lojaDaVistoria(loc){
   if(loc && loc.loja_id && loc.loja_id!=='default') return loc.loja_id;
   return s?.loja_id||lojaAtiva||LOJA_PADRAO_ID;
 }
-function _montarRecVistoria(){
+async function _montarRecVistoria(){
   const s=getSessao();
   const _nw=new Date(); const _nm=`${_nw.getFullYear()}-${String(_nw.getMonth()+1).padStart(2,'0')}`;
   const mesRef=document.getElementById('vis-mes-ref')?.value||_nm;
@@ -8754,7 +8796,7 @@ function _montarRecVistoria(){
     loja_id: _lojaRec,
     local_id: window._visLocalId||'',
     cliente:_clienteVis,
-    cliente_id:(document.getElementById('vis-cli-id')?.value||null)||_autoSalvarCliente(_clienteVis,null,_localVis,null,_lojaRec)||null,
+    cliente_id:(document.getElementById('vis-cli-id')?.value||null)||await _autoSalvarCliente(_clienteVis,null,_localVis,null,_lojaRec)||null,
     local:_localVis,
     data: document.getElementById('vis-data')?.value||_hojeLocal(),
     hora,
@@ -8825,7 +8867,7 @@ async function salvarVistoria(){
 
   try{
     const veioDoPlano = !!(window._visLocalId); // lido ANTES de zerar
-    const rec = _montarRecVistoria();
+    const rec = await _montarRecVistoria();
     _persistVistoria(rec);          // local imediato + nuvem em background
     window._visLocalId = null;
 
@@ -9200,7 +9242,7 @@ async function gerarRelatorioVistoria(){
   if(!cli){ toast('⚠️ Informe o cliente antes de gerar o relatório'); return; }
 
   const veioDoPlano=!!(window._visLocalId);
-  const rec=_montarRecVistoria();
+  const rec=await _montarRecVistoria();
   _persistVistoria(rec);
   window._visLocalId=null;
   const planoBanner=document.getElementById('vis-plano-banner');
