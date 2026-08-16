@@ -1998,6 +1998,11 @@ function go(p){
     document.getElementById('painel-mes-label').textContent='Como está '+_renderOrcMesLabelStr();
     setTimeout(renderGraficoDash,200);
     setTimeout(renderPainelCRM,250);
+    // Cadência de recompra — atrás de flag (ver comentário em renderPainelCadencia).
+    // Só carrega piscinas se a flag estiver ligada, pra não gastar query à toa.
+    if(flagAtiva('crm_cadencia')){
+      Promise.resolve(loadPiscinas()).then(renderPainelCadencia).catch(e=>console.warn('[painel-cadencia]', e?.message||e));
+    }
   }
   if(p==='history'){ initOrcMes(); loadHist(); }
   if(p==='crm'){ if(!_crmAtivo()){ toast('Funil desativado para esta empresa.'); go('painel'); return; } loadOSHist(); renderCRM(); }
@@ -6844,6 +6849,19 @@ function consumoTeoricoDias(tipoTratamento, volumeM3, d, exposicaoSolar){
   return {dias:Math.round(dias), embalagemLabel:ref.embalagemLabel};
 }
 
+// Carregamento simples (sem cache local ainda — não há UI de criar/editar
+// piscina no v2 por enquanto, task própria pra isso). Só leitura, usada pela
+// análise de cadência de recompra abaixo.
+let todasPiscinas = [];
+async function loadPiscinas(){
+  if(!(dbOk&&db&&EMPRESA_ID)) return;
+  try{
+    const {data,error}=await db.from('piscinas').select('*').eq('empresa_id',EMPRESA_ID).eq('ativo',true);
+    if(error) throw error;
+    todasPiscinas=data||[];
+  }catch(e){ console.warn('[loadPiscinas]', e?.message||e); }
+}
+
 // ══════════════════════════════════════════════════
 //  MÓDULO 2 — EQUIPAMENTOS + QR CODE
 // ══════════════════════════════════════════════════
@@ -11469,6 +11487,148 @@ function renderPainelCRM(){
       <div class="painel-crm-stat"><div class="pcs-v" style="color:${esfriandoQtd?'var(--red)':'inherit'}">${esfriandoQtd}</div><div class="pcs-l">esfriando</div></div>
     </div>
     ${atrasados.length?`<div class="painel-crm-alerta" onclick="go('crm')">⚠️ ${atrasados.length} follow-up${atrasados.length===1?'':'s'} atrasado${atrasados.length===1?'':'s'} — <u>ver no funil</u></div>`:''}`;
+}
+
+// ══════════════════════════════════════════════════
+//  CADÊNCIA DE RECOMPRA — portado do fluxa-app v1 (16/08), adaptado.
+//
+//  Achado ao portar: o motor de priorização do v1 (crmCandidatos, fora
+//  desta seção) é calibrado com números medidos no histórico de vendas DA
+//  FORTHEMP (taxa de conversão 6,8%/39,8% por "trilho equipamento/serviço",
+//  regex de produto tipo /trocador|fromtherm|jelly/i — nomes de produto da
+//  Forthemp, sem sentido nenhum pra manutenção de piscina). O Marcos
+//  confirmou (2026-08-16): construir mesmo assim, mas com número neutro em
+//  vez de copiar a calibração de outro negócio, e atrás de flag até ter
+//  dado real pra calibrar de verdade. Por isso NÃO portei crmCandidatos()
+//  nem a divisão em dois trilhos — o v2 já tem sua própria priorização de
+//  follow-up (_crmComputarStats, sem calibração nenhuma, só data/dias).
+//
+//  O que ESTE bloco porta é analiseClientes()/cadenciaCandidatos()/
+//  cadenciaProximos() — o ritmo de recompra é auto-referente (compara o
+//  cliente com o HISTÓRICO DELE MESMO, não com uma taxa externa), então não
+//  carrega nenhum número de outro negócio. Com banco zerado (nenhum
+//  aprovado ainda) devolve listas vazias — comportamento correto, não bug.
+//
+//  Ativar: `flagAtiva('crm_cadencia')` — desligado por padrão (ver
+//  admin_set_flag_empresa ou empresas.config.flags direto no banco).
+// ══════════════════════════════════════════════════
+function _cliChave(o){
+  return o.cliente_id ? 'id:'+o.cliente_id : 'nome:'+String(o.cliente||'').trim().toLowerCase();
+}
+
+// Ritmo de compra por cliente: intervalo OBSERVADO entre aprovações reais
+// (2+ compras), ou previsão TEÓRICA por volume de piscina (1 compra, com
+// piscina cadastrada — usa demandaDiaria()/consumoTeoricoDias(), task CRM
+// anterior). O intervalo observado sempre tem prioridade sobre o teórico.
+function analiseClientes(){
+  const orcs=filtrarPorLoja(todosOrc||[]).filter(o=>(o.cliente||'').trim());
+  const aprov=orcs.filter(o=>o.status==='aprovado');
+  const map=new Map();
+  aprov.forEach(o=>{
+    const k=_cliChave(o);
+    if(!map.has(k)) map.set(k,{chave:k, nome:o.cliente, porId:!!o.cliente_id, orcs:[], valor:0});
+    const g=map.get(k); g.orcs.push(o); g.valor+=parseFloat(o.total)||0;
+    if(o.cliente_id) g.porId=true;
+  });
+  const lista=[...map.values()].map(g=>{
+    const datas=g.orcs.map(o=>{ const ap=o.data_aprovacao?new Date(o.data_aprovacao):null;
+      return (ap&&!isNaN(ap))?ap:_orcData(o); }).filter(d=>d&&!isNaN(d)).sort((a,b)=>a-b);
+    const primeiro=datas[0], ultimo=datas[datas.length-1];
+    let intervaloMedioDias=null;
+    if(datas.length>=2){
+      const intervalos=[];
+      for(let i=1;i<datas.length;i++) intervalos.push((datas[i]-datas[i-1])/86400000);
+      intervaloMedioDias=Math.round(intervalos.reduce((a,b)=>a+b,0)/intervalos.length);
+    }
+    const diasDesdeUltima = ultimo ? Math.round((new Date(_hojeLocal()+'T12:00:00')-ultimo)/86400000) : null;
+    // Multiplicadores são heurística de bucket sobre dado real (não são
+    // fato) — 1.3x/2.5x dão folga contra variação natural de agenda antes
+    // de soar alarme.
+    let ritmo=null;
+    if(intervaloMedioDias && diasDesdeUltima!=null){
+      ritmo = diasDesdeUltima<=intervaloMedioDias*1.3 ? 'em_dia'
+            : diasDesdeUltima<=intervaloMedioDias*2.5 ? 'reduziu' : 'parou';
+    }
+    // Só pra quem comprou 1 vez e tem piscina com volume conhecido — some
+    // sozinho assim que houver 2ª compra (o observado acima tem prioridade).
+    let previsaoTeorica=null;
+    if(g.porId && g.orcs.length===1 && !intervaloMedioDias && diasDesdeUltima!=null){
+      const cid=g.chave.startsWith('id:')?g.chave.slice(3):null;
+      const piscina=cid && (todasPiscinas||[]).find(p=>p.cliente_id===cid && p.ativo!==false && p.volume_m3);
+      if(piscina){
+        const calc=consumoTeoricoDias(piscina.tipo_tratamento, piscina.volume_m3, demandaDiaria(piscina), piscina.exposicao_solar);
+        if(calc) previsaoTeorica={...calc, piscinaNome:piscina.nome, diasAte:calc.dias-diasDesdeUltima};
+      }
+    }
+    return {...g, compras:g.orcs.length, ticket:g.valor/g.orcs.length,
+      primeiro, ultimo, recompra:g.orcs.length>1,
+      diasDesdeUltima, intervaloMedioDias, ritmo, previsaoTeorica};
+  }).sort((a,b)=>b.valor-a.valor);
+  return {lista};
+}
+
+const LS_CAD_FB='fluxa_cadencia_feedback';
+function _cadFbLer(){ try{ return JSON.parse(localStorage.getItem(LS_CAD_FB)||'{}'); }catch(e){ return {}; } }
+function _cadFbSalvar(m){ try{ localStorage.setItem(LS_CAD_FB, JSON.stringify(m)); }catch(e){ console.warn('[cadFb]', e?.message||e); } }
+// 14 dias, não os poucos dias de um follow-up de orçamento — ciclo de
+// recompra é de semanas/meses, cobrar de novo tão cedo seria chatice.
+function _cadFbOculto(cid){
+  const f=_cadFbLer()[cid]; if(!f) return false;
+  return (Date.now()-f.dispensado_em) < 14*86400000;
+}
+function cadenciaDispensar(cid){
+  const m=_cadFbLer(); m[cid]={dispensado_em:Date.now()}; _cadFbSalvar(m);
+  toast('Ok, não aviso de novo por 14 dias');
+  renderPainelCadencia();
+}
+
+// Já passou do próprio ritmo (ou da previsão teórica) — hora de avisar.
+function cadenciaCandidatos(){
+  const {lista}=analiseClientes();
+  const observado=lista
+    .filter(c=>c.porId && (c.ritmo==='reduziu'||c.ritmo==='parou') && !_cadFbOculto(c.chave.slice(3)))
+    .map(c=>({...c, origem:'observado', atraso:c.diasDesdeUltima-c.intervaloMedioDias}));
+  const teorico=lista
+    .filter(c=>c.porId && c.previsaoTeorica && c.previsaoTeorica.diasAte<0 && !_cadFbOculto(c.chave.slice(3)))
+    .map(c=>({...c, origem:'teorico', atraso:-c.previsaoTeorica.diasAte}));
+  return [...observado, ...teorico].sort((a,b)=>b.atraso-a.atraso);
+}
+// Avisa ~7 dias ANTES de vencer o próprio ritmo — dá tempo de se antecipar.
+const CADENCIA_JANELA_PROXIMOS=7;
+function cadenciaProximos(){
+  const {lista}=analiseClientes();
+  const observado=lista
+    .filter(c=>c.porId && c.ritmo==='em_dia' && c.intervaloMedioDias
+      && (c.intervaloMedioDias-c.diasDesdeUltima)>=0
+      && (c.intervaloMedioDias-c.diasDesdeUltima)<=CADENCIA_JANELA_PROXIMOS
+      && !_cadFbOculto(c.chave.slice(3)))
+    .map(c=>({...c, origem:'observado', faltam:c.intervaloMedioDias-c.diasDesdeUltima}));
+  const teorico=lista
+    .filter(c=>c.porId && c.previsaoTeorica
+      && c.previsaoTeorica.diasAte>=0 && c.previsaoTeorica.diasAte<=CADENCIA_JANELA_PROXIMOS
+      && !_cadFbOculto(c.chave.slice(3)))
+    .map(c=>({...c, origem:'teorico', faltam:c.previsaoTeorica.diasAte}));
+  return [...observado, ...teorico].sort((a,b)=>a.faltam-b.faltam);
+}
+
+// Card do Painel — mesmo padrão visual do painel-crm-card, atrás da flag
+// 'crm_cadencia' (desligada por padrão). Chamado de dentro de
+// renderPainelCRM()'s vizinho no boot da tela (ver go('painel')).
+function renderPainelCadencia(){
+  const card=document.getElementById('painel-cadencia-card'); if(!card) return;
+  if(!flagAtiva('crm_cadencia')){ card.style.display='none'; return; }
+  const atrasados=cadenciaCandidatos();
+  const proximos=cadenciaProximos();
+  if(!atrasados.length && !proximos.length){ card.style.display='none'; return; }
+  card.style.display='';
+  const body=document.getElementById('painel-cadencia-body'); if(!body) return;
+  const linha=c=>`<div class="painel-crm-alerta" style="cursor:default;display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px">
+    <span>${esc(c.nome||'—')} — ${c.origem==='teorico'?'previsão por volume':'costuma comprar a cada '+c.intervaloMedioDias+'d'}</span>
+    <button type="button" class="tb" onclick="cadenciaDispensar('${c.chave.slice(3)}')" title="Não avisar de novo por 14 dias">✕</button>
+  </div>`;
+  body.innerHTML =
+    (atrasados.length?`<div class="painel-crm-stat" style="text-align:left;padding:0 0 4px"><b>${atrasados.length}</b> cliente${atrasados.length!==1?'s':''} atrasado${atrasados.length!==1?'s':''} na recompra</div>${atrasados.slice(0,5).map(linha).join('')}`:'') +
+    (proximos.length?`<div class="painel-crm-stat" style="text-align:left;padding:8px 0 4px"><b>${proximos.length}</b> vai${proximos.length!==1?'ão':''} precisar em breve</div>${proximos.slice(0,5).map(linha).join('')}`:'');
 }
 
 function renderCRM(){
