@@ -3652,26 +3652,29 @@ function renderOrcMiniKpis(lista){
   const rec=lista.filter(o=>o.status==='recusado').length;
   const venc=lista.filter(o=>o.status==='vencido').length;
   const tick=total>0?soma/total:0;
+  // Padrão .rd-card/.rd-kpi-* (portado do v1, 16/08) — mesmos cálculos de
+  // sempre, só o container mudou. rd-badge-* dá a cor por estado em vez de
+  // background/border-left inline.
   el.innerHTML=`
-    <div class="orc-mini-kpi" style="background:#fff7ed;border-left-color:var(--c1)">
-      <div class="orc-mini-kpi-lbl">Total emitido</div>
-      <div class="orc-mini-kpi-val">${ocultarFin?total+' orç.':brl(soma)}</div>
-      <div class="orc-mini-kpi-sub">${total} orçamento${total!==1?'s':''}</div>
+    <div class="rd-card rd-card-dense rd-card-dark">
+      <div class="rd-kpi-lbl">Total emitido</div>
+      <div class="rd-kpi-num rd-kpi-num-sm">${ocultarFin?total+' orç.':brl(soma)}</div>
+      <div class="rd-kpi-apoio">${total} orçamento${total!==1?'s':''}</div>
     </div>
-    <div class="orc-mini-kpi" style="background:#f0fdf4;border-left-color:var(--green)">
-      <div class="orc-mini-kpi-lbl">✅ Aprovados</div>
-      <div class="orc-mini-kpi-val" style="color:var(--green)">${ocultarFin?aprov.length:brl(somaA)}</div>
-      <div class="orc-mini-kpi-sub">${aprov.length} aprovado${aprov.length!==1?'s':''}</div>
+    <div class="rd-card rd-card-dense">
+      <div class="rd-kpi-lbl"><span class="rd-badge rd-badge-ok">Aprovados</span></div>
+      <div class="rd-kpi-num rd-kpi-num-sm" style="color:var(--ok)">${ocultarFin?aprov.length:brl(somaA)}</div>
+      <div class="rd-kpi-apoio">${aprov.length} aprovado${aprov.length!==1?'s':''}</div>
     </div>
-    <div class="orc-mini-kpi" style="background:#fffbeb;border-left-color:var(--yellow)">
-      <div class="orc-mini-kpi-lbl">⏳ Pendentes</div>
-      <div class="orc-mini-kpi-val" style="color:var(--yellow)">${pend}</div>
-      <div class="orc-mini-kpi-sub">${ocultarFin?'':tick>0?'Ticket: '+brl(tick):''}</div>
+    <div class="rd-card rd-card-dense">
+      <div class="rd-kpi-lbl"><span class="rd-badge rd-badge-warn">Pendentes</span></div>
+      <div class="rd-kpi-num rd-kpi-num-sm" style="color:var(--warn)">${pend}</div>
+      <div class="rd-kpi-apoio">${ocultarFin?'':tick>0?'Ticket: '+brl(tick):''}</div>
     </div>
-    <div class="orc-mini-kpi" style="background:#fef2f2;border-left-color:var(--red)">
-      <div class="orc-mini-kpi-lbl">❌ Recusados/Vencidos</div>
-      <div class="orc-mini-kpi-val" style="color:var(--red)">${rec+venc}</div>
-      <div class="orc-mini-kpi-sub">${rec} recusado${rec!==1?'s':''} · ${venc} vencido${venc!==1?'s':''}</div>
+    <div class="rd-card rd-card-dense">
+      <div class="rd-kpi-lbl"><span class="rd-badge rd-badge-bad">Recusados/Vencidos</span></div>
+      <div class="rd-kpi-num rd-kpi-num-sm" style="color:var(--bad)">${rec+venc}</div>
+      <div class="rd-kpi-apoio">${rec} recusado${rec!==1?'s':''} · ${venc} vencido${venc!==1?'s':''}</div>
     </div>`;
 }
 
