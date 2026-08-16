@@ -1149,25 +1149,33 @@
     .notif-vars{font-size:11px;color:var(--gray);margin-top:6px}
     .notif-vars code{background:white;border:1px solid var(--gray-mid);border-radius:4px;padding:1px 5px;font-size:11px;color:var(--c1)}
 
-    /* ── NOVO LOGIN ── */
-    /* ══ LOGIN ══ */
-    /* ══ LOGIN OVERLAY ══ */
-    .login-overlay{position:fixed;inset:0;z-index:9000;display:flex;align-items:stretch;overflow:hidden;background:var(--c2)}
-    /* Painel esquerdo — branding */
-    .login-left{flex:0 0 300px;background:linear-gradient(160deg,var(--c2) 0%,color-mix(in srgb,var(--c2) 80%,black) 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 32px;position:relative;overflow:hidden}
-    .login-left::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 30% 30%,rgba(255,255,255,.07) 0%,transparent 60%)}
-    .login-left::after{content:'';position:absolute;bottom:-80px;right:-80px;width:260px;height:260px;border-radius:50%;background:rgba(255,255,255,.04)}
-    .login-brand{text-align:center;position:relative;z-index:1;display:flex;flex-direction:column;align-items:center}
-    .login-brand-logo{width:80px;height:80px;border-radius:22px;object-fit:cover;margin:0 0 16px;display:block;box-shadow:0 12px 32px rgba(0,0,0,.4)}
-    .login-brand-initials{width:80px;height:80px;border-radius:22px;background:rgba(255,255,255,.13);margin:0 0 16px;display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:900;color:white;border:1.5px solid rgba(255,255,255,.18)}
-    .login-brand-name{font-size:20px;font-weight:800;color:white;letter-spacing:-.3px;line-height:1.2}
-    .login-brand-sub{font-size:12px;color:rgba(255,255,255,.4);margin-top:6px;font-weight:500}
-    .login-brand-tagline{font-size:11px;color:rgba(255,255,255,.25);margin-top:28px;line-height:1.6;font-style:italic;text-align:center;position:relative;z-index:1}
+    /* ── LOGIN — portado do fluxa-app v1 (15/08, handoff
+       design_handoff_fluxa_redesign). Escopo desta rodada: só o painel
+       esquerdo e o cartão/botão base — a lógica de autenticação (steps de
+       conta/PIN/recuperação/empresa) não foi tocada, só o CSS ao redor
+       dela. Achado do v1 corrigido aqui também: a tagline em itálico a
+       baixa opacidade não passava em nenhum critério de contraste de
+       acessibilidade — vira um headline legível. ── */
+    .login-overlay{position:fixed;inset:0;z-index:9000;display:flex;align-items:stretch;overflow:hidden;background:#0D131B}
+    /* Painel esquerdo — mesmo #0D131B da sidebar (fixo, não var(--c2), que
+       muda por empresa e podia brigar com a cor de marca). */
+    .login-left{flex:0 0 400px;background:#0D131B;display:flex;flex-direction:column;padding:40px 44px;position:relative;overflow:hidden}
+    .login-brand{display:flex;align-items:center;gap:12px;position:relative;z-index:1}
+    .login-brand-logo{width:40px;height:40px;border-radius:12px;object-fit:cover;display:block;flex-shrink:0}
+    .login-brand-initials{width:40px;height:40px;border-radius:12px;background:var(--c1);display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:700;color:#fff;flex-shrink:0}
+    .login-brand-tx{display:flex;flex-direction:column;min-width:0}
+    .login-brand-name{font-size:17px;font-weight:600;color:#F2F6FB;letter-spacing:-.01em;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .login-brand-sub{font-size:12px;color:#93A1B3;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .login-left-foot{margin-top:auto;display:flex;flex-direction:column;gap:22px;position:relative;z-index:1}
+    .login-brand-tagline{font-size:26px;font-weight:600;color:#F2F6FB;letter-spacing:-.02em;line-height:1.25}
+    .login-left-feats{display:flex;flex-direction:column;gap:11px}
+    .login-left-feat{display:flex;align-items:center;gap:11px}
+    .login-left-feat span{font-size:13px;color:#B4C1D1}
     /* Painel direito — form */
-    .login-right{flex:1;overflow-y:auto;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:40px 28px;background:#f4f5f7}
-    .login-card{background:white;border-radius:18px;padding:28px;width:100%;max-width:400px;box-shadow:0 4px 24px rgba(0,0,0,.08);border:1px solid #e9ecef}
-    .login-card-title{font-size:18px;font-weight:800;color:var(--c2);margin-bottom:4px}
-    .login-card-sub{font-size:13px;color:var(--gray);margin-bottom:22px;font-weight:400}
+    .login-right{flex:1;overflow-y:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 28px;background:var(--bg-app)}
+    .login-card{background:#fff;border-radius:var(--r-lg);padding:28px;width:100%;max-width:400px;box-shadow:0 20px 44px -28px rgba(16,28,48,.22);border:1px solid var(--line)}
+    .login-card-title{font-size:20px;font-weight:600;color:var(--c2);letter-spacing:-.02em;margin-bottom:4px}
+    .login-card-sub{font-size:13px;color:var(--tx2);margin-bottom:0;font-weight:400}
     /* Seção de usuários */
     .login-section{margin-bottom:16px}
     .login-section:last-child{margin-bottom:0}
@@ -1212,9 +1220,9 @@
     .login-pin-tap{width:100%;padding:14px;background:#f8f9fc;border:2px solid #e5e7eb;border-radius:12px;font-size:15px;font-weight:700;color:var(--c2);text-align:center;cursor:text;margin-bottom:12px;letter-spacing:10px;font-family:monospace;transition:border-color .15s}
     .login-pin-tap:focus{border-color:var(--c1);outline:none;background:var(--c1-light)}
     .login-err{font-size:12px;color:var(--red);font-weight:600;min-height:18px;margin-bottom:10px;text-align:center}
-    .login-btn{width:100%;padding:14px;background:var(--c1);color:white;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;transition:opacity .15s;letter-spacing:.2px}
-    .login-btn:hover{opacity:.88}
-    .login-btn:disabled{opacity:.4;cursor:default}
+    .login-btn{width:100%;padding:14px;background:var(--c1);color:white;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;font-family:'Instrument Sans',sans-serif;transition:background .12s;letter-spacing:.2px}
+    .login-btn:hover{background:var(--c1-hover)}
+    .login-btn:disabled{background:var(--c1-hover);opacity:.6;cursor:default}
     /* Picker empresa */
     .login-loja-step{display:none}
     .login-loja-step.show{display:block}
@@ -1224,16 +1232,16 @@
     .login-loja-circle{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;color:white;flex-shrink:0}
     .login-loja-info-nome{font-size:13px;font-weight:700;color:var(--c2)}
     .login-loja-info-sub{font-size:11px;color:var(--gray);margin-top:1px}
-    /* Mobile: empilha */
+    /* Mobile: empilha, painel escuro vira topo compacto */
     @media(max-width:620px){
       .login-overlay{flex-direction:column}
-      .login-left{flex:0 0 auto;padding:28px 24px 24px;flex-direction:row;gap:16px;justify-content:flex-start}
-      .login-brand{display:flex;flex-direction:row;align-items:center;gap:14px;text-align:left}
-      .login-brand-logo,.login-brand-initials{width:52px;height:52px;border-radius:14px;margin:0;font-size:22px}
-      .login-brand-name{font-size:16px}
-      .login-brand-sub{font-size:11px;margin-top:2px}
-      .login-brand-tagline{display:none}
-      .login-right{padding:20px 16px 40px;justify-content:flex-start}
+      .login-left{flex:0 0 auto;padding:16px 24px 22px}
+      .login-left-foot{display:none}
+      .login-brand-logo,.login-brand-initials{width:36px;height:36px;border-radius:11px;font-size:17px}
+      .login-brand-name{font-size:15px}
+      .login-right{padding:22px 20px;justify-content:flex-start}
+      .login-card{border:none;box-shadow:none;padding:0;max-width:none}
+      .login-btn{padding:16px;font-size:16px;border-radius:12px}
     }
 
     /* ── HEADER USER BADGE ── */

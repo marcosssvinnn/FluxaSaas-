@@ -33,17 +33,32 @@
 <!-- ══ LOGIN OVERLAY ══ -->
 <div class="login-overlay" id="login-overlay">
 
-  <!-- Esquerda: branding -->
+  <!-- Esquerda: branding — portado do v1 (15/08). Mesmo #0D131B da sidebar,
+       frase legível no lugar da tagline em itálico a baixa opacidade que
+       tinha aqui antes (achado do v1: não passa em nenhum critério de
+       contraste de acessibilidade). -->
   <div class="login-left">
     <div class="login-brand">
       <img id="login-logo-img" class="login-brand-logo" alt="" style="display:none">
       <div class="login-brand-initials" id="login-brand-initials">F</div>
-      <div>
-        <div class="login-brand-name" id="login-brand-name">Fluxa</div>
-        <div class="login-brand-sub">Sistema de gestão</div>
+      <div class="login-brand-tx">
+        <span class="login-brand-name" id="login-brand-name">Fluxa</span>
+        <span class="login-brand-sub" id="login-brand-sub">Sistema de gestão</span>
       </div>
     </div>
-    <div class="login-brand-tagline" id="login-brand-tagline"></div>
+    <div class="login-left-foot">
+      <div class="login-brand-tagline" id="login-brand-tagline">Orçamento, ordem de serviço e vistoria no mesmo lugar.</div>
+      <div class="login-left-feats">
+        <div class="login-left-feat">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6FA8E8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>
+          <span>Funciona offline e sincroniza sozinho</span>
+        </div>
+        <div class="login-left-feat">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6FA8E8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>
+          <span>PDF e cobrança direto do celular</span>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Direita: form -->
