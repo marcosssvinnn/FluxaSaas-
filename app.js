@@ -6760,6 +6760,91 @@ function _fazerCheckoutConfirmado(){
 }
 
 // ══════════════════════════════════════════════════
+//  MÓDULO 1b — PISCINAS (ficha técnica + consumo teórico de químicos)
+//  Portado do fluxa-app v1 (16/08) — setup-v2-delta29.sql cria a tabela.
+//  Só o cálculo puro entra aqui por enquanto; a UI de cadastrar/editar
+//  piscina dentro de Equipamentos/Vistoria fica pra outra rodada (task
+//  #37) — é mudança de interação real em 2 telas, não matemática.
+// ══════════════════════════════════════════════════
+
+// Estação do ano no Brasil (hemisfério sul).
+function _estacaoAtual(){
+  const mes=new Date().getMonth()+1;
+  if([12,1,2,3].includes(mes)) return 'verao';
+  if([6,7,8].includes(mes)) return 'inverno';
+  return 'meia_estacao';
+}
+
+const D_REF_CLORO=2.0; // g Cl2/m3/dia — referência verão/externa/moderado/estabilizada
+
+// Demanda diária de cloro ajustada pelos fatores da piscina. Coeficientes
+// multiplicam (ponto médio de cada faixa da referência técnica); banhistas
+// de condomínio SOMA, não multiplica. Só entram os fatores que a ficha da
+// piscina já captura (setup-v2-delta29.sql) — a referência lista mais
+// (chuva, ozônio/UV, filtragem ruim) que exigiriam campos que não existem
+// no cadastro ainda.
+function demandaDiaria(piscina){
+  let d=D_REF_CLORO;
+  const estacao=_estacaoAtual();
+  d *= estacao==='verao' ? 1.0 : estacao==='meia_estacao' ? 0.70 : 0.45;
+  if(piscina.capa_termica) d *= 0.50;
+  if(piscina.exposicao_solar==='parcial') d *= 0.70;
+  if(piscina.aquecida) d *= 1.30;
+  if(piscina.estabilizante===false) d *= 2.15;
+  if(piscina.tipo_uso==='condominio' && piscina.banhistas_dia && piscina.volume_m3){
+    d += (piscina.banhistas_dia*4)/piscina.volume_m3;
+  }
+  return d;
+}
+
+// A = teor ativo (fração). Embalagem de referência = a mais comum pra esse
+// tipo — não tenta casar com a embalagem exata que o cliente comprou (isso
+// exigiria rastrear produto_id por venda, fora do escopo desta 1ª versão).
+const CONSUMO_QUIMICO_REF={
+  dicloro_granulado:  {A:0.58, embalagemG:10000, embalagemLabel:'um balde de 10kg'},
+  hipoclorito_calcio: {A:0.65, embalagemG:10000, embalagemLabel:'um balde de 10kg'},
+  pastilha_tricloro:  {A:0.90, embalagemG:5000,  embalagemLabel:'um balde de 5kg (25 pastilhas)'}
+};
+// `d` já vem calculado (demandaDiaria(piscina)) — quem chama decide os
+// fatores. Retorna {dias, embalagemLabel} ou null se não tiver cálculo pro
+// tipo, ou faltar volume.
+function consumoTeoricoDias(tipoTratamento, volumeM3, d, exposicaoSolar){
+  if(!volumeM3 || volumeM3<=0) return null;
+  d = d==null ? D_REF_CLORO : d;
+  if(tipoTratamento==='cloro_liquido_10'){
+    // A = 100 g Cl2 por litro de produto (concentração 10%)
+    const qLm3dia=d/100;
+    const dias=20000/(qLm3dia*1000*volumeM3); // bombona 20L = 20.000mL
+    return {dias:Math.round(dias), embalagemLabel:'uma bombona de 20L'};
+  }
+  if(tipoTratamento==='sal_salino'){
+    // Sal não segue a demanda de cloro — usa a taxa de perda de água (r),
+    // não `d`.
+    const r=0.0035; // perda residencial default (0,2–0,5%/dia)
+    const dias=25/(3.2*volumeM3*r);
+    return {dias:Math.round(dias), embalagemLabel:'um saco de 25kg de sal'};
+  }
+  if(tipoTratamento==='bromo'){
+    // d_Br NÃO deriva do `d` do cloro (que mistura estação/capa/aquecida —
+    // usar isso aqui confundiria uma piscina exposta no inverno com uma
+    // protegida no verão). 2 pontos de referência fixos por contexto, usa
+    // exposicao_solar da piscina diretamente.
+    const dBr = exposicaoSolar==='parcial' ? 2.5 : 7.0;
+    const dias=3050/(dBr*volumeM3); // balde 5kg, 250un, 3.050g halogênio
+    return {dias:Math.round(dias), embalagemLabel:'um balde de 5kg de pastilhas (250 un)'};
+  }
+  if(tipoTratamento==='peroxido'){
+    // Dose fixa de rótulo, não deriva da demanda de cloro.
+    const dias=20000/(7.5*volumeM3); // bombona 20L
+    return {dias:Math.round(dias), embalagemLabel:'uma bombona de 20L'};
+  }
+  const ref=CONSUMO_QUIMICO_REF[tipoTratamento]; if(!ref) return null;
+  const q=d/ref.A; // g de produto por m3 por dia
+  const dias=ref.embalagemG/(q*volumeM3);
+  return {dias:Math.round(dias), embalagemLabel:ref.embalagemLabel};
+}
+
+// ══════════════════════════════════════════════════
 //  MÓDULO 2 — EQUIPAMENTOS + QR CODE
 // ══════════════════════════════════════════════════
 let todosEq = [], eqFotoB64 = '', eqEditId = null;
