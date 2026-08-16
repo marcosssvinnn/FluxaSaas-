@@ -2841,3 +2841,56 @@ navegador — não sobrou fallback legado nenhum pra decidir sobre).
   empresa, e que o primeiro serviço do orçamento sai como "Manutenção mensal"
   em vez de "Serviço 1". CNPJ/Focus NFe da Fortemp e Aquamotor ficaram pra
   outro momento, a pedido do Marcos.
+
+## Sessão 2026-08-15 — trazendo o redesign do fluxa-app (v1) pro v2
+
+O Marcos pediu pra trazer funcionalidades do `fluxa-app` (v1 — repo separado,
+github.com/marcosssvinnn/fluxa-app, da empresa onde ele trabalha) pro v2, pra
+"equiparar o nível" ("faça tudo, toca fixa"). O v1 está bem mais evoluído:
+redesign visual completo (`.rd-*`, handoff `design_handoff_fluxa_redesign`),
+CRM com 8 etapas, central de notificações, dedup de clientes, POS "Venda
+Rápida", insights de IA. **Escopo real: ~15 partes** (roadmap completo nas
+tasks #30-44 desta sessão) — não dá pra portar tudo de uma vez, indo fase por
+fase, testando e commitando cada uma (mesmo princípio que o v1 usou pra
+construir o redesign original: "implementado fase por fase com aprovação
+entre cada uma").
+
+**Achado no caminho, corrigido antes de continuar:** comparando os dois
+repos, achei que `portal_dados()` do v2 tinha o mesmo tipo de vazamento que
+uma auditoria de segurança já tinha corrigido no v1 — ver seção "Portal do
+cliente" mais acima (`setup-v2-delta28.sql`).
+
+### Fases 1-3 do redesign — fundação visual ✅ feito (commits `51d00e5`/`0343e6d`)
+- **Fase 1**: fonte Instrument Sans (Inter fica de fallback pras telas ainda
+  não migradas), tokens novos aditivos no `:root` (hierarquia de texto,
+  superfícies, navegação, status, raios) — não substituem os tokens antigos.
+  **Adaptação pro v2**: `--c1-hover`/`--c1-press`/`--c1-border` usam
+  `color-mix()` em vez de hex fixo (v1 tem cor fixa por deploy; v2 troca
+  `--c1` em runtime por empresa via `CFG.cor`/`LC.cor`, então as sombras
+  precisam seguir dinamicamente).
+- **Fase 2**: sidebar reescrita — fundo escuro fixo (`--nav-bg`), ícones SVG
+  de traço, 3 grupos (Dia a dia/Operação/Cadastros e análise), botão CTA fixo
+  "Novo orçamento" (substitui o antigo `snb-form`). IDs `snb-*` mantidos —
+  `snbRules` (app.js) não mudou de lógica, só ganhou `snav-primary-wrap` no
+  lugar de `snb-form`. **Recorte de escopo deliberado**: NÃO movi o seletor
+  de loja/usuário pro rodapé da sidebar (ficou no header, como já estava) —
+  o v1 faz isso, mas juntar a reestruturação do header nesta mudança
+  aumentava o raio de risco sem necessidade; fica pra um refinamento futuro
+  se fizer sentido.
+- **Fase 3**: componentes base `.rd-*` (botão, campo, badge, chip, pílula,
+  cartão sem sombra, tabela densa, estado vazio, skeleton) — copiados quase
+  1:1 do v1 (mesmos nomes de token). Nenhuma tela usa ainda, zero risco;
+  entram conforme cada tela for redesenhada (tasks #33+).
+- Testado no Browser pane (sem login real disponível neste ambiente — forcei
+  o estado via JS pra visualizar): sidebar expandida/colapsada, cor da
+  empresa preservada, sem regressão na tela de login, sem erro novo no
+  console. Sintaxe do app.js validada via JXA (mesmo método de sempre, sem
+  Node neste ambiente).
+
+### Próximos passos (roadmap completo nas tasks desta sessão)
+Ícones SVG na nav mobile → sistema de modais unificado → login → Insights →
+Orçamentos → Estoque/OS/Financeiro → telas restantes → CRM (ficha técnica de
+piscina, captura de contato, dedup) → aplicar `setup-v2-delta27.sql`
+(insights de IA, já escrito por outra sessão, não aplicado) → Venda Rápida
+(POS) → central de notificações (comparar com o que o v2 já tem do Sprint 4
+PWA). Ver task list da sessão pra status atualizado.
