@@ -6482,13 +6482,35 @@ async function salvarDespesa(){
   const rec={...dados, id:'desp_'+Date.now(), data_criacao:new Date().toISOString()};
   todasDesp.unshift(rec); lsDespSalvar(todasDesp);
   if(dbOk&&db){
+    _despSyncInFlight.add(rec.id); // trava reenvio concorrente (sync periódico) até terminar
     (async()=>{
       try{ const {data:ins}=await dbInsert('despesas', dados);
         if(ins){ todasDesp=todasDesp.filter(x=>x.id!==rec.id); todasDesp.unshift(ins); lsDespSalvar(todasDesp); }
       }catch(e){ console.warn('desp sync:',e.message); }
+      finally{ _despSyncInFlight.delete(rec.id); }
     })();
   }
   fecharFormDesp(); renderDespesas(); toast('✅ Despesa registrada!');
+}
+
+// Reenvia despesas presas só no aparelho (insert em background falhou uma vez e
+// nunca mais tentou de novo — achado numa varredura por bugs, 17/08: só orçamento/OS
+// tinham esse reenvio). Mesmo padrão de _reenviarOSLocais.
+const _despSyncInFlight = new Set();
+async function _reenviarDespesasLocais(soLocal){
+  if(!dbOk||!db||!soLocal||!soLocal.length) return false;
+  let mudou=false;
+  for(const rec of soLocal){
+    if(_despSyncInFlight.has(rec.id)) continue;
+    try{
+      const payload={...rec}; delete payload.id; // banco gera o id definitivo
+      const {data:ins,error}=await dbInsert('despesas', payload);
+      if(error){ console.warn('[reenvioDespLocal] falhou:', error.message); continue; }
+      if(ins){ todasDesp=todasDesp.filter(x=>x.id!==rec.id); todasDesp.unshift(ins); mudou=true; }
+    }catch(e){ console.warn('[reenvioDespLocal] erro:', e?.message||e); }
+  }
+  if(mudou) lsDespSalvar(todasDesp);
+  return mudou;
 }
 
 async function reembolsarDesp(id){
@@ -6512,7 +6534,19 @@ async function loadDespesas(){
       let q=db.from('despesas').select('*').eq('empresa_id',EMPRESA_ID).order('data_criacao',{ascending:false});
       if(lojaAtiva) q=q.eq('loja_id',lojaAtiva);
       const {data}=await q;
-      if(data){ todasDesp=data; lsDespSalvar(todasDesp); renderDespesas(); }
+      if(data){
+        // MERGE (não sobrescreve) — achado numa varredura por bugs (17/08): antes,
+        // esta linha trocava a lista inteira pelo retorno do banco, apagando em
+        // silêncio qualquer despesa salva local ("desp_...") cujo insert em
+        // background ainda não tivesse voltado (ou tivesse falhado uma vez).
+        // Mesmo padrão que loadAgendamentos/loadHist/loadOSHist já usam.
+        const idsDb=new Set(data.map(x=>x.id));
+        const soLocal=todasDesp.filter(x=>String(x.id).startsWith('desp_')&&!idsDb.has(x.id)&&!_despSyncInFlight.has(x.id));
+        todasDesp=[...data,...soLocal];
+        lsDespSalvar(todasDesp); renderDespesas();
+        if(soLocal.length) await _reenviarDespesasLocais(soLocal);
+        renderDespesas();
+      }
     }catch(e){ console.warn('[loadDespesas]', e?.message||e); }
   }
 }
@@ -6652,16 +6686,24 @@ async function salvarAgendamento(){
   // Gera as OS futuras (próximas 6 ocorrências)
   await gerarOSdoAgendamento(rec, rec.id);
   if(dbOk&&db){
+    _agSyncInFlight.add(rec.id); // trava reenvio concorrente (sync periódico) até terminar
     (async()=>{
       try{
         const {data:ins}=await dbInsert('agendamentos', dados);
         if(ins){ todosAg=todosAg.filter(x=>x.id!==rec.id); todosAg.unshift(ins); lsAgSalvar(todosAg); }
       }catch(e){ console.warn('ag sync:',e.message); }
+      finally{ _agSyncInFlight.delete(rec.id); }
     })();
   }
   fecharFormAg(); renderAgLista(); renderCal();
   toast('✅ Agendamento salvo! OS geradas automaticamente.');
 }
+
+// loadAgendamentos() (mais abaixo) já faz merge + reenvio dos "ag_*" presos só no
+// aparelho — travamos aqui só pra ele não correr concorrente com o insert em
+// background acima e reenviar 2x o mesmo agendamento (achado numa varredura por
+// bugs, 17/08 — mesma classe do que já tinha acontecido com orçamento).
+const _agSyncInFlight = new Set();
 
 function proximasOcorrencias(ag, qtd=6){
   const datas=[];
@@ -6817,7 +6859,7 @@ async function loadAgendamentos(){
         // não subiram ao banco (id 'ag_...' ausente no retorno). Antes, esta linha
         // trocava a lista inteira e podia apagar um agendamento feito sem conexão.
         const idAg=new Set(data.map(x=>x.id));
-        const soLocalAg=todosAg.filter(x=>String(x.id).startsWith('ag_')&&!idAg.has(x.id));
+        const soLocalAg=todosAg.filter(x=>String(x.id).startsWith('ag_')&&!idAg.has(x.id)&&!_agSyncInFlight.has(x.id));
         todosAg=[...data,...soLocalAg];
         lsAgSalvar(todosAg);
         // Reenvia ao banco os que ficaram presos só no aparelho
@@ -7441,17 +7483,37 @@ async function salvarEquipamento(){
     todosEq.unshift(rec);
     lsEqSalvar(todosEq);
     if(dbOk&&db){
+      _eqSyncInFlight.add(tempId); // trava reenvio concorrente (sync periódico) até terminar
       (async()=>{
         try{
           const {data:ins}=await dbInsert('equipamentos', dados);
           if(ins){ todosEq=todosEq.filter(x=>x.id!==tempId); todosEq.unshift(ins); lsEqSalvar(todosEq); renderEqGrid(); }
         }catch(e){ console.warn('eq sync falhou:',e.message); }
+        finally{ _eqSyncInFlight.delete(tempId); }
       })();
     }
     toast('✅ Equipamento salvo!');
   }
   if(_btnEq){ _btnEq.disabled=false; _btnEq.textContent='💾 Salvar Equipamento'; }
   fecharFormEq(); renderEqGrid(); verificarAlertasGarantia();
+}
+
+// Reenvia equipamentos presos só no aparelho — mesmo padrão de _reenviarDespesasLocais.
+const _eqSyncInFlight = new Set();
+async function _reenviarEquipamentosLocais(soLocal){
+  if(!dbOk||!db||!soLocal||!soLocal.length) return false;
+  let mudou=false;
+  for(const rec of soLocal){
+    if(_eqSyncInFlight.has(rec.id)) continue;
+    try{
+      const payload={...rec}; delete payload.id;
+      const {data:ins,error}=await dbInsert('equipamentos', payload);
+      if(error){ console.warn('[reenvioEqLocal] falhou:', error.message); continue; }
+      if(ins){ todosEq=todosEq.filter(x=>x.id!==rec.id); todosEq.unshift(ins); mudou=true; }
+    }catch(e){ console.warn('[reenvioEqLocal] erro:', e?.message||e); }
+  }
+  if(mudou){ lsEqSalvar(todosEq); renderEqGrid(); }
+  return mudou;
 }
 
 function excluirEq(id){
@@ -7471,7 +7533,14 @@ async function loadEquipamentos(){
       if(lojaAtiva) qEq=qEq.eq('loja_id',lojaAtiva);
       const {data,error}=await qEq;
       if(error) throw error;
-      todosEq=data; lsEqSalvar(todosEq); renderEqGrid(); verificarAlertasGarantia();
+      // MERGE (não sobrescreve) — mesmo achado do loadDespesas (17/08): a troca
+      // direta apagava em silêncio qualquer equipamento salvo local ("eq_...")
+      // ainda não sincronizado.
+      const idsDb=new Set((data||[]).map(x=>x.id));
+      const soLocal=todosEq.filter(x=>String(x.id).startsWith('eq_')&&!idsDb.has(x.id)&&!_eqSyncInFlight.has(x.id));
+      todosEq=[...(data||[]),...soLocal];
+      lsEqSalvar(todosEq); renderEqGrid(); verificarAlertasGarantia();
+      if(soLocal.length) await _reenviarEquipamentosLocais(soLocal);
     }catch(e){ console.warn('loadEquipamentos falhou:',e.message); }
   }
 }
@@ -10900,6 +10969,24 @@ async function confirmarVendaBalcao(){
   if(typeof renderEstoque==='function' && document.getElementById('page-estoque')?.classList.contains('on')) renderEstoque();
   _vbAbrir(); // limpa o carrinho e mantém na tela — o próximo cliente já está esperando
 }
+
+// Reenvia vendas de balcão presas só no aparelho — mesmo padrão de
+// _reenviarDespesasLocais. Sem trava de "em voo": confirmarVendaBalcao() já faz
+// o insert com await direto (não é fire-and-forget).
+async function _reenviarVendasBalcaoLocais(soLocal){
+  if(!dbOk||!db||!soLocal||!soLocal.length) return false;
+  let mudou=false;
+  for(const rec of soLocal){
+    try{
+      const payload={...rec}; delete payload.id;
+      const {data:ins,error}=await dbInsert('vendas_balcao', payload);
+      if(error){ console.warn('[reenvioVendaLocal] falhou:', error.message); continue; }
+      if(ins){ todasVendasBalcao=todasVendasBalcao.filter(x=>x.id!==rec.id); todasVendasBalcao.unshift(ins); mudou=true; }
+    }catch(e){ console.warn('[reenvioVendaLocal] erro:', e?.message||e); }
+  }
+  if(mudou) lsVendaSalvar(todasVendasBalcao);
+  return mudou;
+}
 // "Salvar" NÃO é sinônimo de "Finalizar venda". Não existe no schema um
 // conceito de venda pendente/rascunho, então "Salvar" não pode gravar em
 // `vendas_balcao` nem dar baixa de estoque — isso é o que "Finalizar venda"
@@ -10944,7 +11031,16 @@ async function loadVendasBalcao(){
   if(!dbOk||!db) return;
   try{
     const {data}=await db.from('vendas_balcao').select('*').order('data_criacao',{ascending:false}).limit(3000);
-    if(data){ todasVendasBalcao=data; lsVendaSalvar(todasVendasBalcao); }
+    if(data){
+      // MERGE (não sobrescreve) — mesmo achado do loadDespesas/loadEquipamentos
+      // (17/08): a troca direta apagava em silêncio qualquer venda salva local
+      // ("venda_...") ainda não sincronizada.
+      const idsDb=new Set(data.map(x=>x.id));
+      const soLocal=todasVendasBalcao.filter(x=>String(x.id).startsWith('venda_')&&!idsDb.has(x.id));
+      todasVendasBalcao=[...data,...soLocal];
+      lsVendaSalvar(todasVendasBalcao);
+      if(soLocal.length) await _reenviarVendasBalcaoLocais(soLocal);
+    }
   }catch(e){ console.warn('[loadVendasBalcao]', e?.message||e); }
 }
 
