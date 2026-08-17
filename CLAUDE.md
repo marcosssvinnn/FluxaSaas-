@@ -3159,3 +3159,34 @@ eram 3 tratamentos mobile BEM diferentes lá, não a mesma ideia repetida:
   (passo a passo, validação, reset ao reabrir, comportamento desktop
   inalterado), progresso de Vistoria (contagem, barra fixa não sobrepõe a
   nav inferior do app, escondido corretamente em desktop após o fix).
+
+### Continuação (17/08) — Painel: fila unificada "Precisa de você hoje" (task #45)
+
+Última pendência do roadmap desta rodada. Junta follow-up do funil +
+cadência de recompra (atrás de flag) + estoque a comprar numa lista só,
+ranqueada por urgência — exatamente o que ficou registrado como pendente
+desde a task #40 ("hoje são dois cards separados no Painel... juntar isso
+é decisão de design de tela").
+
+- `_filaHojeItens()`/`renderPainelFilaHoje()`: **não recalcula nada** — só
+  lê o que `_crmComputarStats()`/`cadenciaCandidatos()`/`listaEncomendas()`
+  já calculam em outro lugar (cada um continua sendo a fonte de verdade do
+  próprio número) e ordena junto por peso de urgência: follow-up atrasado
+  (0) → estoque a comprar (1) → follow-up hoje (2) → cadência atrasada (3,
+  só se a flag `crm_cadencia` estiver ligada).
+- Card novo `#painel-fila-card` ("🎯 Precisa de você hoje"), adicionado
+  ANTES do card de Funil de Vendas — decisão consciente de deixá-lo mais
+  em destaque que o resumo do funil, já que é a lista acionável.
+- **Decisão consciente de não remover os cards antigos** (`#painel-crm-card`
+  com os KPIs do funil, `#painel-cadencia-card` atrás da flag): o card do
+  funil tem números que valem por si (negociação R$, conversão%), não só
+  alertas; o de cadência já é condicional à flag (desligada por padrão) e
+  tem o próprio botão de "dispensar por 14 dias" que a lista unificada não
+  reproduz — mexer nisso é escopo de redesenho de tela por si só. Quando a
+  flag estiver ligada, o cliente atrasado aparece nos dois lugares (fila +
+  card de cadência) — redundância pequena e aceitável, não um bug.
+- Estoque "a comprar" só entra pra `eGestor()` (mesmo critério de acesso
+  que a tela de Estoque já usa).
+- Testado no Browser pane com dado fake nas 3 fontes: ranking correto
+  (atrasado → estoque → hoje), card some sozinho quando não há nada
+  urgente, sem erros novos no console.

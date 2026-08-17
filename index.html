@@ -442,6 +442,19 @@
       </div>
     </div>
 
+    <!-- ── Fila unificada "Precisa de você hoje" (17/08) — junta follow-up
+         do funil + cadência de recompra (atrás de flag) + estoque a
+         comprar numa lista só, ranqueada por urgência. Portado só a
+         PARTIR de dados que o v2 já calcula em outro lugar (_crmComputarStats,
+         cadenciaCandidatos, listaEncomendas) — nenhum cálculo novo, só
+         junção + ranking. Some sozinho quando não há nada urgente. ── -->
+    <div class="dash-chart-card" id="painel-fila-card" style="display:none">
+      <div class="dash-chart-hdr">
+        <div class="dash-chart-titulo">🎯 Precisa de você hoje</div>
+      </div>
+      <div id="painel-fila-body"></div>
+    </div>
+
     <!-- ── Resumo do Funil de Vendas ── -->
     <div class="dash-chart-card" id="painel-crm-card">
       <div class="dash-chart-hdr">

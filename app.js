@@ -2018,10 +2018,11 @@ function go(p){
     document.getElementById('painel-mes-label').textContent='Como está '+_renderOrcMesLabelStr();
     setTimeout(renderGraficoDash,200);
     setTimeout(renderPainelCRM,250);
+    setTimeout(renderPainelFilaHoje,250); // task #45 — junta funil+estoque; roda de novo abaixo se a cadência ligar depois
     // Cadência de recompra — atrás de flag (ver comentário em renderPainelCadencia).
     // Só carrega piscinas se a flag estiver ligada, pra não gastar query à toa.
     if(flagAtiva('crm_cadencia')){
-      Promise.resolve(loadPiscinas()).then(renderPainelCadencia).catch(e=>console.warn('[painel-cadencia]', e?.message||e));
+      Promise.resolve(loadPiscinas()).then(()=>{ renderPainelCadencia(); renderPainelFilaHoje(); }).catch(e=>console.warn('[painel-cadencia]', e?.message||e));
     }
   }
   if(p==='history'){ initOrcMes(); loadHist(); }
@@ -12389,6 +12390,7 @@ function cadenciaDispensar(cid){
   const m=_cadFbLer(); m[cid]={dispensado_em:Date.now()}; _cadFbSalvar(m);
   toast('Ok, não aviso de novo por 14 dias');
   renderPainelCadencia();
+  if(typeof renderPainelFilaHoje==='function') renderPainelFilaHoje();
 }
 
 // Já passou do próprio ritmo (ou da previsão teórica) — hora de avisar.
@@ -12438,6 +12440,68 @@ function renderPainelCadencia(){
   body.innerHTML =
     (atrasados.length?`<div class="painel-crm-stat" style="text-align:left;padding:0 0 4px"><b>${atrasados.length}</b> cliente${atrasados.length!==1?'s':''} atrasado${atrasados.length!==1?'s':''} na recompra</div>${atrasados.slice(0,5).map(linha).join('')}`:'') +
     (proximos.length?`<div class="painel-crm-stat" style="text-align:left;padding:8px 0 4px"><b>${proximos.length}</b> vai${proximos.length!==1?'ão':''} precisar em breve</div>${proximos.slice(0,5).map(linha).join('')}`:'');
+}
+
+// ══════════════════════════════════════════════════
+//  FILA UNIFICADA "PRECISA DE VOCÊ HOJE" (17/08, task #45)
+//  Junta follow-up do funil + cadência de recompra (atrás de flag) +
+//  estoque a comprar numa lista só, ranqueada por urgência. Não calcula
+//  nada novo — só lê o que _crmComputarStats()/cadenciaCandidatos()/
+//  listaEncomendas() já calculam em outro lugar (cada um continua sendo a
+//  fonte de verdade do próprio número) e ordena junto.
+// ══════════════════════════════════════════════════
+function _filaHojeItens(){
+  const itens=[];
+  if(_crmAtivo()){
+    const {fuDue}=_crmComputarStats();
+    fuDue.forEach(o=>{
+      const atrasado=_crmFuStatus(o)==='atrasado';
+      itens.push({
+        peso: atrasado?0:2,
+        icone: atrasado?'🔴':'🟡',
+        titulo: o.cliente||'—',
+        sub: `${atrasado?'follow-up atrasado':'follow-up hoje'} · #${String(o.numero||'').padStart(3,'0')} · ${brl(parseFloat(o.total)||0)}`,
+        onclick: `abrirCrmCard('${o.id}')`
+      });
+    });
+  }
+  if(eGestor() && typeof listaEncomendas==='function'){
+    listaEncomendas().slice(0,5).forEach(({p,falta})=>{
+      itens.push({
+        peso:1, icone:'📦',
+        titulo: p.nome,
+        sub: `faltam ${fmtQtd(falta)} ${p.unidade||'un'} — comprar`,
+        onclick: `go('estoque')`
+      });
+    });
+  }
+  if(flagAtiva('crm_cadencia')){
+    cadenciaCandidatos().slice(0,5).forEach(c=>{
+      itens.push({
+        peso:3, icone:'🔁',
+        titulo: c.nome||'—',
+        sub: c.origem==='teorico'?'previsão por volume — recompra atrasada':`costuma comprar a cada ${c.intervaloMedioDias}d — atrasado`,
+        onclick: `go('painel')` // cadência já tem o próprio card com dispensar; aqui só sinaliza e leva pro painel
+      });
+    });
+  }
+  itens.sort((a,b)=>a.peso-b.peso);
+  return itens;
+}
+function renderPainelFilaHoje(){
+  const card=document.getElementById('painel-fila-card'); if(!card) return;
+  const body=document.getElementById('painel-fila-body'); if(!body) return;
+  const itens=_filaHojeItens();
+  if(!itens.length){ card.style.display='none'; return; }
+  card.style.display='';
+  const total=itens.length;
+  const mostrar=itens.slice(0,8);
+  body.innerHTML =
+    mostrar.map(it=>`<div class="fila-hoje-item" onclick="${it.onclick}">
+      <span class="fila-hoje-ico">${it.icone}</span>
+      <div class="fila-hoje-tx"><div class="fila-hoje-tit">${esc(it.titulo)}</div><div class="fila-hoje-sub">${esc(it.sub)}</div></div>
+    </div>`).join('')
+    + (total>mostrar.length?`<div class="fila-hoje-mais">+ ${total-mostrar.length} outro${total-mostrar.length!==1?'s':''} item${total-mostrar.length!==1?'s':''}</div>`:'');
 }
 
 function renderCRM(){
