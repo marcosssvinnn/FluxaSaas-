@@ -812,9 +812,10 @@
         </div>
         <div class="fl"><label>Local / Endereço</label><input type="text" id="loc" placeholder="Rua das Flores, 123 — Camboriú" oninput="upd()"></div>
       </div>
-      <div class="row">
+      <div class="row f3">
         <div class="fl"><label>Telefone do Cliente</label><input type="tel" id="tel-cli" placeholder="(47) 99999-9999" oninput="upd()"></div>
-        <div class="fl"><label>CNPJ (opcional)</label><input type="text" id="cnpj-cli" placeholder="00.000.000/0001-00" oninput="upd()"></div>
+        <div class="fl"><label>CPF (pessoa física)</label><input type="text" id="cpf-cli" placeholder="000.000.000-00" inputmode="numeric" oninput="upd()"></div>
+        <div class="fl"><label>CNPJ (pessoa jurídica)</label><input type="text" id="cnpj-cli" placeholder="00.000.000/0001-00" oninput="upd()"></div>
       </div>
       <div class="row f4">
         <div class="fl">
@@ -1031,12 +1032,13 @@
         </div>
         <div class="fl"><label>Local / Endereço</label><input type="text" id="os-loc" placeholder="Endereço do serviço"></div>
       </div>
-      <div class="row">
+      <div class="row f3">
         <div class="fl">
           <label>Empresa</label>
           <select id="os-loja"></select>
         </div>
-        <div class="fl"><label>CNPJ (opcional)</label><input type="text" id="os-cnpj" placeholder="00.000.000/0001-00"></div>
+        <div class="fl"><label>CPF (pessoa física)</label><input type="text" id="os-cpf" placeholder="000.000.000-00" inputmode="numeric"></div>
+        <div class="fl"><label>CNPJ (pessoa jurídica)</label><input type="text" id="os-cnpj" placeholder="00.000.000/0001-00"></div>
       </div>
       <div class="row f4">
         <div class="fl"><label>Data do Serviço</label><input type="date" id="os-data"></div>
@@ -1771,8 +1773,11 @@
           <div class="fl"><label>Telefone</label><input type="tel" id="cli-new-tel" placeholder="(47) 99999-9999"></div>
         </div>
         <div class="row" style="margin-bottom:12px">
-          <div class="fl"><label>Endereço</label><input type="text" id="cli-new-end" placeholder="Rua, número, bairro, cidade"></div>
-          <div class="fl"><label>CNPJ (opcional)</label><input type="text" id="cli-new-cnpj" placeholder="00.000.000/0001-00" inputmode="numeric"></div>
+          <div class="fl" style="grid-column:1/-1"><label>Endereço</label><input type="text" id="cli-new-end" placeholder="Rua, número, bairro, cidade"></div>
+        </div>
+        <div class="row" style="margin-bottom:12px">
+          <div class="fl"><label>CPF (pessoa física)</label><input type="text" id="cli-new-cpf" placeholder="000.000.000-00" inputmode="numeric"></div>
+          <div class="fl"><label>CNPJ (pessoa jurídica)</label><input type="text" id="cli-new-cnpj" placeholder="00.000.000/0001-00" inputmode="numeric"></div>
         </div>
         <div class="row" style="margin-bottom:12px">
           <div class="fl"><label>E-mail do Responsável / Síndico <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--gray)">(para relatórios automáticos)</span></label><input type="email" id="cli-new-email" placeholder="sindico@condominio.com.br"></div>

@@ -80,21 +80,15 @@ app.post("/emitir", async (req, res) => {
       return res.status(400).json({ erro: "OS sem loja vinculada — não dá pra saber qual CNPJ emite a nota." });
     }
 
-    // ⚠️ Achado ao ligar isto na OS (17/08): não existe coluna de CPF em
-    // NENHUMA tabela do schema (nem orcamentos, nem ordens_servico) — só
-    // CNPJ. Pra cliente pessoa física (que o Marcos confirmou ser parte
-    // real do negócio: "casas e residências de veraneio"), a nota de
-    // serviço EXIGE um documento do tomador (CPF ou CNPJ) — sem isso a
-    // SEFIN Nacional rejeita. Bloqueia aqui, cedo, com mensagem clara, em
-    // vez de deixar montarXmlDPS() quebrar tentando formatar `undefined`.
-    // Resolver de vez precisa de uma coluna nova (orcamentos.cpf_cliente
-    // e/ou ordens_servico.cpf_cliente) + campo no formulário — não fiz
-    // isso agora pra não misturar esquema fiscal com schema de cadastro
-    // sem o Marcos decidir onde esse campo deveria morar (no cliente? no
-    // orçamento? nos dois?).
-    if (!os.cnpj) {
+    // Nota fiscal de serviço exige documento do tomador (CPF ou CNPJ) —
+    // resolvido em 17/08 (setup-v2-delta31.sql adiciona ordens_servico.
+    // cpf_cliente/orcamentos.cpf_cliente/clientes.cpf, espelhando o mesmo
+    // padrão já usado pro CNPJ). Continua bloqueando se os dois estiverem
+    // vazios, em vez de deixar montarXmlDPS() quebrar tentando formatar
+    // um documento vazio.
+    if (!os.cnpj && !os.cpf_cliente) {
       return res.status(400).json({
-        erro: "OS sem CNPJ do cliente e sem campo de CPF no sistema (ainda não existe coluna de CPF no schema). Nota fiscal de serviço exige documento do tomador — não dá pra emitir pra cliente pessoa física até isso ser resolvido no cadastro.",
+        erro: "OS sem CPF nem CNPJ do cliente. Nota fiscal de serviço exige documento do tomador — preencha o CPF ou CNPJ do cliente antes de emitir.",
       });
     }
 
@@ -157,9 +151,12 @@ app.post("/emitir", async (req, res) => {
         municipioPrestacaoIbge: dadosFiscaisLoja.codigo_ibge,
         prestadorCnpj: dadosFiscaisLoja.cnpj.replace(/\D/g, ""),
         prestadorNome: dadosFiscaisLoja.razao_social || dadosFiscaisLoja.cnpj,
-        // Só CNPJ por enquanto — ver bloqueio de "!os.cnpj" acima (não há
-        // coluna de CPF no schema ainda).
-        tomadorDoc: { tipo: "CNPJ", valor: os.cnpj.replace(/\D/g, "") },
+        // CNPJ tem prioridade quando os dois estiverem preenchidos (ex.:
+        // cliente PJ com CPF do responsável também cadastrado) — o
+        // bloqueio acima já garante que pelo menos um dos dois existe.
+        tomadorDoc: os.cnpj
+          ? { tipo: "CNPJ", valor: os.cnpj.replace(/\D/g, "") }
+          : { tipo: "CPF", valor: os.cpf_cliente.replace(/\D/g, "") },
         tomadorNome: os.cliente,
         codigoTributacaoNacional,
         regimeTributario: dadosFiscaisLoja.regime_tributario,

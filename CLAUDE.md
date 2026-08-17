@@ -3260,3 +3260,34 @@ desde a task #40 ("hoje são dois cards separados no Painel... juntar isso
 - Testado no Browser pane com dado fake nas 3 fontes: ranking correto
   (atrasado → estoque → hoje), card some sozinho quando não há nada
   urgente, sem erros novos no console.
+
+### Continuação (17/08) — CPF do cliente (pessoa física), resolve o bloqueio da NFS-e
+
+Fechado o gap encontrado ao ligar a emissão na OS: não existia coluna de
+CPF em lugar nenhum do schema, e cliente pessoa física é parte real do
+negócio ("casas e residências de veraneio"). `setup-v2-delta31.sql`
+(aplicado e verificado) adiciona `clientes.cpf`, `orcamentos.cpf_cliente`,
+`ordens_servico.cpf_cliente` — espelhando exatamente o padrão já usado
+pro CNPJ (coluna fonte em `clientes`, copiada pro orçamento/OS no momento
+em que é criado).
+
+- **UI:** campo "CPF (pessoa física)" ao lado de "CNPJ (pessoa jurídica)"
+  nos 3 formulários (Cadastro de Cliente, Novo Orçamento, Nova OS).
+- **JS:** todo ponto que já lia/gravava `cnpj` ganhou o espelho de `cpf` —
+  `coletarForm()`, `camposBase` de `salvarApenas()`/`gerarPDF()`/
+  `gerarOSPDF()`, `_autoSalvarCliente()` (ganhou um 6º parâmetro `cpf`, no
+  fim da lista de propósito — quem já chamava sem ele continua
+  funcionando igual), `selecionarCliModal()`/`filtrarListaCli()` (busca de
+  cliente), `novoOrcParaCliente()`/`novaOSParaCliente()`,
+  `editarCliente()`/`salvarNovoCliente()`, `importarClientesDeOrcamentos()`/
+  `autoSalvarClienteDoOrc()`/`_migrarClientesDeOrcamentos()` (dedup/import
+  em massa), e os cards de exibição (`renderClientes()`,
+  `verHistoricoCliente()`).
+- **`fiscal-service/src/server.js`:** o bloqueio de emissão virou
+  `!os.cnpj && !os.cpf_cliente` (antes só checava CNPJ). `tomadorDoc` usa
+  CNPJ quando presente, senão CPF — o bloqueio acima garante que pelo
+  menos um dos dois existe antes de chegar lá.
+- Testado no Browser pane: CPF salvo no cadastro de cliente, pré-preenche
+  em "+ Orç." e "+ OS" a partir do cliente, `coletarForm()` captura
+  corretamente, `_autoSalvarCliente()` grava CPF em cliente novo criado a
+  partir de um orçamento/OS.

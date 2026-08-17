@@ -2230,7 +2230,7 @@ async function criarOSdeAprovacao(){
 function _limparCamposOrc(){
   editId=null; fotosB64=[];
   svcs=[{id:Date.now(),d:'',p:''}];
-  ['cli','cli-id','loc','tel-cli','cnpj-cli','obs','escopo','data-svc','data-orc','nota-interna','origem-cli','origem-cli-outro','pag-parcelas','pag-entrada'].forEach(id=>setV(id,''));
+  ['cli','cli-id','loc','tel-cli','cpf-cli','cnpj-cli','obs','escopo','data-svc','data-orc','nota-interna','origem-cli','origem-cli-outro','pag-parcelas','pag-entrada'].forEach(id=>setV(id,''));
   updOrigemCli();
   setV('pag','A combinar'); setV('val','5'); setV('disc-v',''); setV('disc-t','R$');
   setV('orc-loja', lojaAtiva||LOJA_PADRAO_ID);
@@ -2768,7 +2768,7 @@ async function salvarApenas(){
   try{
     const now=new Date().toISOString();
     const camposBase={
-      cliente:dados.cli, cliente_id:dados.cliId||await _autoSalvarCliente(dados.cli,dados.tel,dados.loc,dados.cnpj,dados.loja_id)||null, local_servico:dados.loc, tel_cliente:dados.tel, cnpj:dados.cnpj||null,
+      cliente:dados.cli, cliente_id:dados.cliId||await _autoSalvarCliente(dados.cli,dados.tel,dados.loc,dados.cnpj,dados.loja_id,dados.cpf)||null, local_servico:dados.loc, tel_cliente:dados.tel, cnpj:dados.cnpj||null, cpf_cliente:dados.cpf||null,
       loja_id:dados.loja_id||LOJA_PADRAO_ID,
       origem_cliente:dados.origem||null,
       servicos:dados.svcs, subtotal:dados.sub, desconto:dados.desc, total:dados.tot,
@@ -2801,14 +2801,14 @@ async function salvarApenas(){
           }catch(e){ console.warn('[salvarApenas] update erro:', e?.message||e); }
         })();
       }
-      await _autoSalvarCliente(dados.cli, dados.tel, dados.loc, dados.cnpj, dados.loja_id);
+      await _autoSalvarCliente(dados.cli, dados.tel, dados.loc, dados.cnpj, dados.loja_id, dados.cpf);
       toast('✅ Orçamento atualizado!');
     } else {
       // ── NOVO ──
       const tempId='local_'+Date.now();
       const num=lsOrcProxNum(); savedNum=num;
       const rec={...camposBase, id:tempId, numero:num, status:'pendente', data_criacao:now};
-      await _autoSalvarCliente(dados.cli, dados.tel, dados.loc, dados.cnpj, dados.loja_id);
+      await _autoSalvarCliente(dados.cli, dados.tel, dados.loc, dados.cnpj, dados.loja_id, dados.cpf);
       // 1. Salva local IMEDIATAMENTE
       lsOrcUpsert(rec);
       todosOrc.unshift(rec);
@@ -2865,7 +2865,7 @@ async function gerarPDF(){
   const dados=dadosPre;
   const now=new Date().toISOString();
   const camposBase={
-    cliente:dados.cli, cliente_id:dados.cliId||await _autoSalvarCliente(dados.cli,dados.tel,dados.loc,dados.cnpj,dados.loja_id)||null, local_servico:dados.loc, tel_cliente:dados.tel, cnpj:dados.cnpj||null,
+    cliente:dados.cli, cliente_id:dados.cliId||await _autoSalvarCliente(dados.cli,dados.tel,dados.loc,dados.cnpj,dados.loja_id,dados.cpf)||null, local_servico:dados.loc, tel_cliente:dados.tel, cnpj:dados.cnpj||null, cpf_cliente:dados.cpf||null,
     loja_id:dados.loja_id||LOJA_PADRAO_ID,
     origem_cliente:dados.origem||null,
     servicos:dados.svcs, subtotal:dados.sub, desconto:dados.desc, total:dados.tot,
@@ -2876,7 +2876,7 @@ async function gerarPDF(){
     foto_base64:fotosB64.filter(Boolean).length?JSON.stringify(fotosB64.filter(Boolean)):null, nota_interna:gV('nota-interna')||null
   };
   let num=null;
-  await _autoSalvarCliente(dados.cli, dados.tel, dados.loc, dados.cnpj, dados.loja_id);
+  await _autoSalvarCliente(dados.cli, dados.tel, dados.loc, dados.cnpj, dados.loja_id, dados.cpf);
 
   if(editId){
     // Editando: mantém número existente
@@ -2966,7 +2966,7 @@ function coletarForm(){
   const base=gV('data-orc'), dias=parseInt(gV('val'))||5;
   let dataStr=new Date().toLocaleDateString('pt-BR'), vData='';
   if(base){ dataStr=new Date(base+'T12:00:00').toLocaleDateString('pt-BR'); const dv=new Date(base+'T12:00:00'); dv.setDate(dv.getDate()+dias); vData=dv.toLocaleDateString('pt-BR'); }
-  return { cli:gV('cli')||'—', cliId:gV('cli-id')||null, loc:gV('loc'), tel:gV('tel-cli'), cnpj:gV('cnpj-cli'),
+  return { cli:gV('cli')||'—', cliId:gV('cli-id')||null, loc:gV('loc'), tel:gV('tel-cli'), cnpj:gV('cnpj-cli'), cpf:gV('cpf-cli'),
     loja_id:gV('orc-loja')||LOJA_PADRAO_ID,
     origem:getOrigemCli(),
     pag:gV('pag'), pagFormatado:formatPagamento(gV('pag'),tot()),
@@ -3143,7 +3143,7 @@ function _salvarOSLocal(camposBase, tempId, numero){
 
 async function gerarOSPDF(modo='os'){
   const dados={
-    cli:gV('os-cli')||'—', loc:gV('os-loc'), cnpj:gV('os-cnpj')||null, data:gV('os-data'), hora:gV('os-hora'),
+    cli:gV('os-cli')||'—', loc:gV('os-loc'), cnpj:gV('os-cnpj')||null, cpf:gV('os-cpf')||null, data:gV('os-data'), hora:gV('os-hora'),
     tec:gV('os-tec'), tot:parseFloat(gV('os-total'))||0,
     mat:gV('os-mat'), obs:gV('os-obs'),
     svcs:osSvcs.filter(s=>s.d.trim()).map(s=>s.d.trim()),
@@ -3154,7 +3154,7 @@ async function gerarOSPDF(modo='os'){
   let numStr='???';
   const orcId=osOrcId||null;
   const lojaIdOS=gV('os-loja')||LOJA_PADRAO_ID;
-  const camposBase={orcamento_id:orcId,loja_id:lojaIdOS,cliente:dados.cli,cliente_id:gV('os-cli-id')||await _autoSalvarCliente(dados.cli,null,dados.loc,dados.cnpj,lojaIdOS)||null,local_servico:dados.loc,cnpj:dados.cnpj||null,data_servico:dados.data,hora:dados.hora,tecnico:dados.tec,servicos:dados.svcs,materiais:dados.mat,obs_tecnica:dados.obs,total:dados.tot,fotos:dados.fotos,video_link:dados.videoLink||null,checklist:dados.checklist.length?JSON.stringify(dados.checklist):null};
+  const camposBase={orcamento_id:orcId,loja_id:lojaIdOS,cliente:dados.cli,cliente_id:gV('os-cli-id')||await _autoSalvarCliente(dados.cli,null,dados.loc,dados.cnpj,lojaIdOS,dados.cpf)||null,local_servico:dados.loc,cnpj:dados.cnpj||null,cpf_cliente:dados.cpf||null,data_servico:dados.data,hora:dados.hora,tecnico:dados.tec,servicos:dados.svcs,materiais:dados.mat,obs_tecnica:dados.obs,total:dados.tot,fotos:dados.fotos,video_link:dados.videoLink||null,checklist:dados.checklist.length?JSON.stringify(dados.checklist):null};
   if(dbOk&&db){
     try{
       // Sobe fotos pro Storage antes de gravar — a linha no banco fica leve (URL, não
@@ -3227,7 +3227,7 @@ async function gerarOSPDF(modo='os'){
     }
   }
 
-  autoSalvarClienteDoOrc({cli:dados.cli, loc:dados.loc, tel:dados.tel||'', cnpj:dados.cnpj||''});
+  autoSalvarClienteDoOrc({cli:dados.cli, loc:dados.loc, tel:dados.tel||'', cnpj:dados.cnpj||'', cpf:dados.cpf||''});
   const _orcRef=osOrcId?todosOrc.find(x=>x.id===osOrcId):null;
   const _orcNumStr=_orcRef?String(_orcRef.numero||'').padStart(3,'0'):null;
   preencherDocOS({...dados, fotos:dados.fotos, videoLink:dados.videoLink, orcNum:_orcNumStr}, numStr);
@@ -3367,9 +3367,9 @@ function _migrarClientesDeOrcamentos(){
     const lojaId=o.loja_id||null;
     const jaExiste=lista.some(c=>(c.nome||'').toLowerCase()===nome.toLowerCase());
     if(jaExiste) return;
-    const novo={id:'cli_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),nome,tel:o.tel_cliente||'',end:o.local_servico||'',cnpj:o.cnpj||'',email_responsavel:'',tipo:'',portal_token:crypto.randomUUID(),loja_id:lojaId};
+    const novo={id:'cli_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),nome,tel:o.tel_cliente||'',end:o.local_servico||'',cnpj:o.cnpj||'',cpf:o.cpf_cliente||'',email_responsavel:'',tipo:'',portal_token:crypto.randomUUID(),loja_id:lojaId};
     lista.unshift(novo); mudou=true;
-    if(dbOk&&db) dbInsert('clientes',{id:novo.id,nome,telefone:novo.tel||null,endereco:novo.end||null,cnpj:novo.cnpj||null,loja_id:lojaId,portal_token:novo.portal_token}).catch(()=>{});
+    if(dbOk&&db) dbInsert('clientes',{id:novo.id,nome,telefone:novo.tel||null,endereco:novo.end||null,cnpj:novo.cnpj||null,cpf:novo.cpf||null,loja_id:lojaId,portal_token:novo.portal_token}).catch(()=>{});
   });
   if(mudou){ lsCliSalvar(lista); console.log('[migração] base de clientes atualizada'); }
 }
@@ -4052,7 +4052,7 @@ async function _excluirOrcConfirmado(id){
 function abrirOrc(id){
   const o=todosOrc.find(x=>x.id===id); if(!o) return;
   editId=id;
-  setV('cli',o.cliente||''); setV('loc',o.local_servico||''); setV('tel-cli',o.tel_cliente||''); setV('cnpj-cli',o.cnpj||'');
+  setV('cli',o.cliente||''); setV('loc',o.local_servico||''); setV('tel-cli',o.tel_cliente||''); setV('cnpj-cli',o.cnpj||''); setV('cpf-cli',o.cpf_cliente||'');
   setV('cli-id',o.cliente_id||'');
   setV('orc-loja',o.loja_id||lojaAtiva||LOJA_PADRAO_ID); // fix #4: lojaAtiva como fallback para registros antigos
   // Restaura condição de pagamento: pag_cod=código do select; pag_parcelas/pag_entrada=detalhes
@@ -4088,7 +4088,7 @@ function verOrcPDF(id){
   const o=todosOrc.find(x=>x.id===id); if(!o) return;
   const numStr=String(o.numero||'').padStart(3,'0');
   const dadosOrc={
-    cli:o.cliente||'—', loc:o.local_servico||'', tel:o.tel_cliente||'', cnpj:o.cnpj||'',
+    cli:o.cliente||'—', loc:o.local_servico||'', tel:o.tel_cliente||'', cnpj:o.cnpj||'', cpf:o.cpf_cliente||'',
     pag:o.pag_cod||o.pagamento||'A combinar', pagFormatado:o.pagamento||'A combinar',
     dias:o.validade_dias||5, obs:o.obs||'', escopo:o.escopo||'',
     dataSvc:o.data_servico||'', vData:o.validade_data||'',
@@ -4106,7 +4106,7 @@ function verOrcPDF(id){
 function duplicarOrc(id){
   const o=todosOrc.find(x=>x.id===id); if(!o) return;
   editId=null; fotosB64=[];
-  setV('cli',o.cliente||''); setV('cli-id',o.cliente_id||''); setV('loc',o.local_servico||''); setV('tel-cli',o.tel_cliente||''); setV('cnpj-cli',o.cnpj||'');
+  setV('cli',o.cliente||''); setV('cli-id',o.cliente_id||''); setV('loc',o.local_servico||''); setV('tel-cli',o.tel_cliente||''); setV('cnpj-cli',o.cnpj||''); setV('cpf-cli',o.cpf_cliente||'');
   const _PAG_COD2=['boleto-parc','entrada-boleto','entrada-pix','cartao-parc'];
   setV('pag',o.pag_cod||(_PAG_COD2.includes(o.pagamento)?o.pagamento:'A combinar')); updPag();
   if(o.pag_parcelas) setV('pag-parcelas',String(o.pag_parcelas));
@@ -4133,7 +4133,7 @@ function gerarOS_deOrc(id){
   const o=todosOrc.find(x=>x.id===id); if(!o) return;
   osEditId = null;
   osOrcId = id;
-  setV('os-cli',o.cliente||''); setV('os-cli-id',o.cliente_id||''); setV('os-loc',o.local_servico||''); setV('os-cnpj',o.cnpj||'');
+  setV('os-cli',o.cliente||''); setV('os-cli-id',o.cliente_id||''); setV('os-loc',o.local_servico||''); setV('os-cnpj',o.cnpj||''); setV('os-cpf',o.cpf_cliente||'');
   setV('os-loja',o.loja_id||lojaAtiva||LOJA_PADRAO_ID);
   setV('os-data',o.data_servico||''); setV('os-total',String(o.total||0));
   osSvcs=(o.servicos||[]).map(s=>({id:Date.now()+Math.random(),d:s.desc}));
@@ -4186,7 +4186,7 @@ function novaOS(){
   osChecklist = OS_CHECKLIST_DEFAULT.map(x=>({...x}));
   renderOsChecklist();
   // Limpa campos de texto (bug: dados da OS anterior ficavam no formulário)
-  ['os-cli','os-loc','os-cnpj','os-obs','os-mat','os-total','os-tec'].forEach(id=>setV(id,''));
+  ['os-cli','os-loc','os-cnpj','os-cpf','os-obs','os-mat','os-total','os-tec'].forEach(id=>setV(id,''));
   setV('os-data', _hojeLocal());
   setV('os-hora','08:00');
   osSvcs=[{id:Date.now(),d:''}]; renderOSSvcs();
@@ -4425,7 +4425,7 @@ function _abrirOSForm(o){
   go('os');
   // Após go() — aplicar modo técnico (campos do gestor read-only)
   const _tecMode = eTecnico();
-  ['os-cli','os-loc','os-data','os-hora','os-cnpj'].forEach(fid=>{
+  ['os-cli','os-loc','os-data','os-hora','os-cnpj','os-cpf'].forEach(fid=>{
     const el=document.getElementById(fid);
     if(!el) return;
     if(_tecMode){ el.setAttribute('readonly',''); el.style.background='var(--gray-light)'; el.style.color='var(--gray)'; }
@@ -4707,7 +4707,7 @@ function renderClientes(){
     <div class="cli-card">
       <div class="cli-card-info">
         <div class="cli-card-nome">${esc(c.nome)}${fat>0?` <span style="font-size:10px;background:var(--green-bg);color:var(--green);padding:1px 7px;border-radius:50px;font-weight:700">${brl(fat)}</span>`:''}</div>
-        <div class="cli-card-det">${[c.tel||c.telefone,c.cnpj,c.end||c.endereco].filter(Boolean).map(x=>esc(x)).join(' · ')||'—'}${c.email_responsavel?' · ✉️ '+esc(c.email_responsavel):''}</div>
+        <div class="cli-card-det">${[c.tel||c.telefone,c.cnpj||c.cpf,c.end||c.endereco].filter(Boolean).map(x=>esc(x)).join(' · ')||'—'}${c.email_responsavel?' · ✉️ '+esc(c.email_responsavel):''}</div>
         ${lojasBadges?`<div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">${lojasBadges}</div>`:''}
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap">
@@ -4732,6 +4732,7 @@ function novoOrcParaCliente(id){
     if(c.end)  setV('loc', c.end);
     if(c.tel)  setV('tel-cli', c.tel);
     if(c.cnpj) setV('cnpj-cli', c.cnpj);
+    if(c.cpf)  setV('cpf-cli', c.cpf);
     setOrigemCli('Já é cliente');
     upd();
   }, 50);
@@ -4744,6 +4745,7 @@ function novaOSParaCliente(id){
     if(document.getElementById('os-cli'))  setV('os-cli',  c.nome);
     if(document.getElementById('os-loc'))  setV('os-loc',  c.end||'');
     if(document.getElementById('os-cnpj')) setV('os-cnpj', c.cnpj||'');
+    if(document.getElementById('os-cpf'))  setV('os-cpf', c.cpf||'');
     go('os');
   }, 50);
 }
@@ -4819,10 +4821,11 @@ function verHistoricoCliente(cliId){
       <button class="cli-hist-close" onclick="document.getElementById('modal-hist-cli').remove()">×</button>
     </div>
     <div class="cli-hist-body">
-      ${cli.tel||cli.email_responsavel||cli.cnpj?`<div class="chi-contato">
+      ${cli.tel||cli.email_responsavel||cli.cnpj||cli.cpf?`<div class="chi-contato">
         ${cli.tel?`<span>📞 ${esc(cli.tel)}</span>`:''}
         ${cli.email_responsavel?`<span>✉ ${esc(cli.email_responsavel)}</span>`:''}
         ${cli.cnpj?`<span>🏢 ${esc(cli.cnpj)}</span>`:''}
+        ${cli.cpf?`<span>🪪 ${esc(cli.cpf)}</span>`:''}
       </div>`:''}
       <div class="cli-hist-resumo">
         <div class="chr-item"><span class="chr-val">${orcCli.length}</span><div class="chr-label">Orçamentos</div></div>
@@ -4861,6 +4864,7 @@ function editarCliente(id){
   setV('cli-new-tel',c.tel||'');
   setV('cli-new-end',c.end||'');
   setV('cli-new-cnpj',c.cnpj||'');
+  setV('cli-new-cpf',c.cpf||'');
   setV('cli-new-email',c.email_responsavel||'');
   const tipoEl=document.getElementById('cli-new-tipo'); if(tipoEl) tipoEl.value=c.tipo||'';
   const wrap=document.getElementById('cli-form-wrap');
@@ -4892,7 +4896,11 @@ function editarCliente(id){
 // causa disso — seus 2 chamadores (salvarVistoria/gerarRelatorioVistoria)
 // já eram async também. Todo o caminho já suportava await sem precisar
 // tocar em mais nada.
-async function _autoSalvarCliente(nome, tel, end, cnpj, lojaId){
+// `cpf` é o último parâmetro (não no meio) de propósito — quem já chamava
+// esta função sem ele continua funcionando igual (undefined, campo
+// opcional), só os 2 call sites que realmente têm CPF em mãos
+// (salvarApenas/gerarPDF do orçamento) precisaram passar o 6º argumento.
+async function _autoSalvarCliente(nome, tel, end, cnpj, lojaId, cpf){
   if(!nome||nome==='—') return null;
   const nomeL=nome.toLowerCase();
   const lista=lsCliLer();
@@ -4911,7 +4919,7 @@ async function _autoSalvarCliente(nome, tel, end, cnpj, lojaId){
         // Existe no servidor — só não estava no cache deste aparelho ainda.
         const listaAgora=lsCliLer();
         if(!listaAgora.some(c=>c.id===achou.id)){
-          listaAgora.unshift({id:achou.id, nome:achou.nome, tel:tel||'', end:end||'', cnpj:cnpj||'', email_responsavel:'', tipo:'', loja_id:lojaId||null});
+          listaAgora.unshift({id:achou.id, nome:achou.nome, tel:tel||'', end:end||'', cnpj:cnpj||'', cpf:cpf||'', email_responsavel:'', tipo:'', loja_id:lojaId||null});
           lsCliSalvar(listaAgora);
         }
         return achou.id;
@@ -4923,9 +4931,9 @@ async function _autoSalvarCliente(nome, tel, end, cnpj, lojaId){
     }
   }
 
-  const novo={id:'cli_'+Date.now(),nome,tel:tel||'',end:end||'',cnpj:cnpj||'',email_responsavel:'',tipo:'',portal_token:crypto.randomUUID(),loja_id:lojaId||null};
+  const novo={id:'cli_'+Date.now(),nome,tel:tel||'',end:end||'',cnpj:cnpj||'',cpf:cpf||'',email_responsavel:'',tipo:'',portal_token:crypto.randomUUID(),loja_id:lojaId||null};
   lista.unshift(novo); lsCliSalvar(lista);
-  if(dbOk&&db) dbInsert('clientes',{id:novo.id,nome,telefone:tel||null,endereco:end||null,cnpj:cnpj||null,loja_id:novo.loja_id,portal_token:novo.portal_token}).catch(()=>{});
+  if(dbOk&&db) dbInsert('clientes',{id:novo.id,nome,telefone:tel||null,endereco:end||null,cnpj:cnpj||null,cpf:cpf||null,loja_id:novo.loja_id,portal_token:novo.portal_token}).catch(()=>{});
   return novo.id;
 }
 
@@ -4937,19 +4945,19 @@ async function salvarNovoCliente(){
     const lista=lsCliLer();
     const idx=lista.findIndex(x=>x.id===_cliEditId);
     if(idx>=0){
-      lista[idx]={...lista[idx], nome, tel:gV('cli-new-tel').trim(), end:gV('cli-new-end').trim(), cnpj:gV('cli-new-cnpj').trim(), email_responsavel:gV('cli-new-email').trim(), tipo:document.getElementById('cli-new-tipo')?.value||''};
+      lista[idx]={...lista[idx], nome, tel:gV('cli-new-tel').trim(), end:gV('cli-new-end').trim(), cnpj:gV('cli-new-cnpj').trim(), cpf:gV('cli-new-cpf').trim(), email_responsavel:gV('cli-new-email').trim(), tipo:document.getElementById('cli-new-tipo')?.value||''};
       lsCliSalvar(lista);
-      if(dbOk&&db&&!String(_cliEditId).startsWith('cli_')){ dbUpdate('clientes',{nome,telefone:lista[idx].tel,endereco:lista[idx].end,cnpj:lista[idx].cnpj||null,email_responsavel:lista[idx].email_responsavel||null,tipo:lista[idx].tipo||null},'id',_cliEditId).catch(e=>console.warn('cli update sync:',e?.message||e)); }
+      if(dbOk&&db&&!String(_cliEditId).startsWith('cli_')){ dbUpdate('clientes',{nome,telefone:lista[idx].tel,endereco:lista[idx].end,cnpj:lista[idx].cnpj||null,cpf:lista[idx].cpf||null,email_responsavel:lista[idx].email_responsavel||null,tipo:lista[idx].tipo||null},'id',_cliEditId).catch(e=>console.warn('cli update sync:',e?.message||e)); }
     }
     _cliEditId=null;
     document.getElementById('cli-form-wrap').style.display='none';
     renderClientes(); toast('✅ Cliente atualizado!'); return;
   }
   // modo novo
-  const novo={id:'cli_'+Date.now(), nome, tel:gV('cli-new-tel').trim(), end:gV('cli-new-end').trim(), cnpj:gV('cli-new-cnpj').trim(), email_responsavel:gV('cli-new-email').trim(), tipo:document.getElementById('cli-new-tipo')?.value||'', portal_token:crypto.randomUUID(), loja_id:lojaAtiva||LOJA_PADRAO_ID};
+  const novo={id:'cli_'+Date.now(), nome, tel:gV('cli-new-tel').trim(), end:gV('cli-new-end').trim(), cnpj:gV('cli-new-cnpj').trim(), cpf:gV('cli-new-cpf').trim(), email_responsavel:gV('cli-new-email').trim(), tipo:document.getElementById('cli-new-tipo')?.value||'', portal_token:crypto.randomUUID(), loja_id:lojaAtiva||LOJA_PADRAO_ID};
   const lista=lsCliLer(); lista.unshift(novo); lsCliSalvar(lista);
   if(dbOk&&db){
-    dbInsert('clientes',{id:novo.id,nome:novo.nome,telefone:novo.tel,endereco:novo.end,cnpj:novo.cnpj||null,email_responsavel:novo.email_responsavel||null,tipo:novo.tipo||null,loja_id:novo.loja_id,portal_token:novo.portal_token}).catch(e=>console.warn('cli sync:',e?.message||e));
+    dbInsert('clientes',{id:novo.id,nome:novo.nome,telefone:novo.tel,endereco:novo.end,cnpj:novo.cnpj||null,cpf:novo.cpf||null,email_responsavel:novo.email_responsavel||null,tipo:novo.tipo||null,loja_id:novo.loja_id,portal_token:novo.portal_token}).catch(e=>console.warn('cli sync:',e?.message||e));
   }
   document.getElementById('cli-form-wrap').style.display='none';
   renderClientes(); toast('✅ Cliente salvo!');
@@ -4958,7 +4966,7 @@ async function salvarNovoCliente(){
 function mostrarFormCliente(){
   _cliEditId=null;
   const wrap=document.getElementById('cli-form-wrap');
-  ['cli-new-nome','cli-new-tel','cli-new-end','cli-new-cnpj'].forEach(id=>setV(id,''));
+  ['cli-new-nome','cli-new-tel','cli-new-end','cli-new-cnpj','cli-new-cpf'].forEach(id=>setV(id,''));
   const btn=wrap.querySelector('button[onclick="salvarNovoCliente()"]');
   if(btn) btn.textContent='💾 Salvar Cliente';
   const titulo=wrap.querySelector('.ct');
@@ -5053,12 +5061,12 @@ function filtrarListaCli(val){
     return;
   }
   el.innerHTML = lista.slice(0,60).map(c=>`
-    <div class="modal-cli-item" onmousedown="selecionarCliModal('${esc(c.id||'')}','${esc(c.nome)}','${esc(c.end||'')}','${esc(c.tel||'')}','${esc(c.cnpj||'')}')">
+    <div class="modal-cli-item" onmousedown="selecionarCliModal('${esc(c.id||'')}','${esc(c.nome)}','${esc(c.end||'')}','${esc(c.tel||'')}','${esc(c.cnpj||'')}','${esc(c.cpf||'')}')">
       <div class="mcn">${esc(c.nome)}</div>
       <div class="mcd">${[c.end,c.tel,c.cnpj].filter(Boolean).map(x=>esc(x)).join('  ·  ')}</div>
     </div>`).join('');
 }
-function selecionarCliModal(id, nome, end, tel, cnpj){
+function selecionarCliModal(id, nome, end, tel, cnpj, cpf){
   if(_buscaCliCtx === 'venda'){
     setV('venda-cli', nome);
     _vendaClienteSelecionado = id ? {id, nome} : null;
@@ -5067,6 +5075,7 @@ function selecionarCliModal(id, nome, end, tel, cnpj){
     setV('os-cli', nome); setV('os-cli-id', id||'');
     if(end) setV('os-loc', end);
     if(cnpj) setV('os-cnpj', cnpj);
+    if(cpf) setV('os-cpf', cpf);
   } else if(_buscaCliCtx === 'eq'){
     setV('eq-cli-nome', nome); setV('eq-cli-id', id||'');
     _eqClienteSelecionado = id ? {id, nome} : null;
@@ -5090,6 +5099,7 @@ function selecionarCliModal(id, nome, end, tel, cnpj){
     if(end) setV('loc', end);
     if(tel) setV('tel-cli', tel);
     if(cnpj) setV('cnpj-cli', cnpj);
+    if(cpf) setV('cpf-cli', cpf);
     // Cliente da base → pré-sugere origem "Já é cliente" (editável)
     if(!gV('origem-cli')) setOrigemCli('Já é cliente');
     upd();
@@ -5110,11 +5120,12 @@ async function importarClientesDeOrcamentos(){
       if(!existe.tel&&o.tel_cliente){ existe.tel=o.tel_cliente; mudou=true; }
       if(!existe.end&&o.local_servico){ existe.end=o.local_servico; mudou=true; }
       if(!existe.cnpj&&o.cnpj){ existe.cnpj=o.cnpj; mudou=true; }
+      if(!existe.cpf&&o.cpf_cliente){ existe.cpf=o.cpf_cliente; mudou=true; }
       if(mudou){ lsCliSalvar(lista); atualizados++; }
     } else {
-      const novo={id:'cli_'+Date.now()+Math.random(),nome:o.cliente,tel:o.tel_cliente||'',end:o.local_servico||'',cnpj:o.cnpj||'',portal_token:crypto.randomUUID()};
+      const novo={id:'cli_'+Date.now()+Math.random(),nome:o.cliente,tel:o.tel_cliente||'',end:o.local_servico||'',cnpj:o.cnpj||'',cpf:o.cpf_cliente||'',portal_token:crypto.randomUUID()};
       lista.unshift(novo); lsCliSalvar(lista);
-      if(dbOk&&db){ dbInsert('clientes',{id:novo.id,nome:novo.nome,telefone:novo.tel,endereco:novo.end,cnpj:novo.cnpj||null,loja_id:lojaAtiva||LOJA_PADRAO_ID,portal_token:novo.portal_token}).catch(e=>console.warn('[cli:insert]',e?.message||e)); }
+      if(dbOk&&db){ dbInsert('clientes',{id:novo.id,nome:novo.nome,telefone:novo.tel,endereco:novo.end,cnpj:novo.cnpj||null,cpf:novo.cpf||null,loja_id:lojaAtiva||LOJA_PADRAO_ID,portal_token:novo.portal_token}).catch(e=>console.warn('[cli:insert]',e?.message||e)); }
       novos++;
     }
   }
@@ -5132,12 +5143,13 @@ async function autoSalvarClienteDoOrc(dados){
     if(!existe.tel&&dados.tel){ existe.tel=dados.tel; mudou=true; }
     if(!existe.end&&dados.loc){ existe.end=dados.loc; mudou=true; }
     if(!existe.cnpj&&dados.cnpj){ existe.cnpj=dados.cnpj; mudou=true; }
-    if(mudou){ lsCliSalvar(lista); if(dbOk&&db&&!String(existe.id).startsWith('cli_')) { try{ await db.from('clientes').update({telefone:existe.tel,endereco:existe.end,cnpj:existe.cnpj||null}).eq('id',existe.id); }catch(e){ console.warn('[cli:update]', e?.message||e); } } }
+    if(!existe.cpf&&dados.cpf){ existe.cpf=dados.cpf; mudou=true; }
+    if(mudou){ lsCliSalvar(lista); if(dbOk&&db&&!String(existe.id).startsWith('cli_')) { try{ await db.from('clientes').update({telefone:existe.tel,endereco:existe.end,cnpj:existe.cnpj||null,cpf:existe.cpf||null}).eq('id',existe.id); }catch(e){ console.warn('[cli:update]', e?.message||e); } } }
     return;
   }
-  const novo={id:'cli_'+Date.now(),nome:dados.cli,tel:dados.tel||'',end:dados.loc||'',cnpj:dados.cnpj||'',portal_token:crypto.randomUUID()};
+  const novo={id:'cli_'+Date.now(),nome:dados.cli,tel:dados.tel||'',end:dados.loc||'',cnpj:dados.cnpj||'',cpf:dados.cpf||'',portal_token:crypto.randomUUID()};
   lista.unshift(novo); lsCliSalvar(lista);
-  if(dbOk&&db){ dbInsert('clientes',{id:novo.id,nome:novo.nome,telefone:novo.tel,endereco:novo.end,cnpj:novo.cnpj||null,loja_id:novo.loja_id||LOJA_PADRAO_ID,portal_token:novo.portal_token}).catch(e=>console.warn('[cli:auto-insert]',e?.message||e)); }
+  if(dbOk&&db){ dbInsert('clientes',{id:novo.id,nome:novo.nome,telefone:novo.tel,endereco:novo.end,cnpj:novo.cnpj||null,cpf:novo.cpf||null,loja_id:novo.loja_id||LOJA_PADRAO_ID,portal_token:novo.portal_token}).catch(e=>console.warn('[cli:auto-insert]',e?.message||e)); }
 }
 
 // ──────────────────────────────────────────────────
