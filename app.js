@@ -4607,7 +4607,8 @@ function lsCliSalvar(l){ lsSet(LS_CLI_FULL,JSON.stringify(l)); }
 
 function renderClientes(){
   // v2: filtro genérico por unidade/grupo ativo (sem nome de empresa chumbado)
-  let lista=filtrarPorLoja(lsCliLer());
+  const todos=filtrarPorLoja(lsCliLer());
+  let lista=todos;
   const el=document.getElementById('clientes-lista');
   const busca=(document.getElementById('cli-busca')?.value||'').toLowerCase().trim();
   if(busca){
@@ -4621,6 +4622,26 @@ function renderClientes(){
   const fatPorNome={};
   filtrarPorLoja(todosOrc).filter(o=>o.status==='aprovado').forEach(o=>{ const n=(o.cliente||'').toLowerCase(); fatPorNome[n]=(fatPorNome[n]||0)+(o.total||0); });
   lista.sort((a,b)=>(fatPorNome[(b.nome||'').toLowerCase()]||0)-(fatPorNome[(a.nome||'').toLowerCase()]||0) || (a.nome||'').localeCompare(b.nome||''));
+  // Dashboard (16/08, redesign task #37) — sempre sobre a base TOTAL, não o
+  // resultado filtrado pela busca (KPI de conjunto, não de resultado de tela).
+  // Sem coluna data_criacao no cadastro de cliente — deriva do timestamp
+  // embutido no id local ('cli_'+Date.now()); clientes vindos de dedup no
+  // servidor (id não é 'cli_...') não contam, o que é aceitável (subconta,
+  // não erra pra mais).
+  const _ts30=Date.now()-30*86400000;
+  const novos30=todos.filter(c=>{
+    if(!(c.id||'').startsWith('cli_')) return false;
+    const t=parseInt((c.id||'').slice(4),10);
+    return !isNaN(t) && t>=_ts30;
+  }).length;
+  const fatTotal=Object.values(fatPorNome).reduce((a,v)=>a+v,0);
+  let topNome='—', topFat=0;
+  todos.forEach(c=>{ const f=fatPorNome[(c.nome||'').toLowerCase()]||0; if(f>topFat){ topFat=f; topNome=c.nome; } });
+  setV_el('cli-d-total', String(todos.length), 'textContent');
+  setV_el('cli-d-novos', novos30>0?`+${novos30} nos últimos 30 dias`:'nenhum novo em 30 dias', 'textContent');
+  setV_el('cli-d-fat', brl(fatTotal), 'textContent');
+  setV_el('cli-d-top-fat', topFat>0?brl(topFat):'—', 'textContent');
+  setV_el('cli-d-top-nome', topFat>0?topNome:'nenhum cliente com orçamento aprovado', 'textContent');
   if(!lista.length){ el.innerHTML=`<div class="empty-st"><div class="ei">👥</div><p>${busca?'Nenhum cliente encontrado.':'Nenhum cliente cadastrado.'}</p>${busca?'':'<button class="btn-primary" style="margin-top:12px" onclick="mostrarFormCliente()">＋ Cadastrar Cliente</button>'}</div>`; return; }
   el.innerHTML=lista.map(c=>{
     const fat=fatPorNome[(c.nome||'').toLowerCase()]||0;
@@ -6151,10 +6172,20 @@ function renderContasReceber(){
   const totalRecebido=aprov.reduce((a,o)=>a+(o.valor_recebido||0),0);
   const totalAprovado=aprov.reduce((a,o)=>a+(o.total||0),0);
   if(resumo){
-    const chip=(lbl,val,cor)=>`<div style="flex:1;min-width:130px;background:var(--gray-light);border-radius:10px;padding:10px 14px">
-      <div style="font-size:11px;color:var(--gray);font-weight:600;text-transform:uppercase;letter-spacing:.5px">${lbl}</div>
-      <div style="font-size:18px;font-weight:800;color:${cor}">${brl(val)}</div></div>`;
-    resumo.innerHTML=chip('A Receber',totalReceber,'var(--red)')+chip('Já Recebido',totalRecebido,'var(--green)')+chip('Total Aprovado',totalAprovado,'var(--c2)');
+    // Cards .rd-* (redesign task #37, 16/08) — mesmo padrão das outras telas.
+    resumo.innerHTML=`
+      <div class="rd-card rd-card-dense">
+        <div class="rd-kpi-lbl"><span class="rd-badge rd-badge-bad">A receber</span></div>
+        <div class="rd-kpi-num rd-kpi-num-sm" style="color:var(--bad)">${brl(totalReceber)}</div>
+      </div>
+      <div class="rd-card rd-card-dense">
+        <div class="rd-kpi-lbl"><span class="rd-badge rd-badge-ok">Já recebido</span></div>
+        <div class="rd-kpi-num rd-kpi-num-sm" style="color:var(--ok)">${brl(totalRecebido)}</div>
+      </div>
+      <div class="rd-card rd-card-dense rd-card-dark">
+        <div class="rd-kpi-lbl">Total aprovado</div>
+        <div class="rd-kpi-num rd-kpi-num-sm">${brl(totalAprovado)}</div>
+      </div>`;
   }
   if(!comSaldo.length){ tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--gray);padding:18px">✅ Nenhum saldo em aberto — tudo recebido!</td></tr>'; return; }
   tbody.innerHTML=comSaldo.map(({o,saldo})=>{
@@ -6724,8 +6755,32 @@ function agTab(t){
 function initCal(){ const n=new Date(); calAno=n.getFullYear(); calMes=n.getMonth(); }
 function navCal(d){ calMes+=d; if(calMes>11){calMes=0;calAno++;} if(calMes<0){calMes=11;calAno--;} renderCal(); }
 
+function renderAgDashboard(){
+  // Dashboard (16/08, redesign task #37) — contratos ativos + visitas
+  // hoje/semana, calculado sobre os mesmos dados que o calendário usa
+  // (todosOS com data_servico), pra não divergir do que a tela mostra.
+  const ativos=filtrarPorLoja(todosAg.filter(a=>a.ativo!==false));
+  const _osById={};
+  try{ (JSON.parse(ls('fluxa_os_hist')||'[]')||[]).forEach(o=>{ if(o&&o.id) _osById[o.id]=o; }); }catch(e){ console.warn('[renderAgDashboard]',e?.message||e); }
+  (todosOS||[]).forEach(o=>{ if(o&&o.id) _osById[o.id]=o; });
+  let osLocal=filtrarPorLoja(Object.values(_osById)).filter(o=>o.status!=='cancelado');
+  const hoje=new Date(); hoje.setHours(0,0,0,0);
+  const hojeStr=`${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-${String(hoje.getDate()).padStart(2,'0')}`;
+  const em7=new Date(hoje); em7.setDate(em7.getDate()+6);
+  const visitasHoje=osLocal.filter(o=>o.data_servico===hojeStr).length;
+  const visitasSemana=osLocal.filter(o=>{
+    if(!o.data_servico) return false;
+    const d=new Date(o.data_servico+'T12:00:00'); d.setHours(0,0,0,0);
+    return d>=hoje && d<=em7;
+  }).length;
+  setV_el('ag-d-contratos', String(ativos.length), 'textContent');
+  setV_el('ag-d-hoje', String(visitasHoje), 'textContent');
+  setV_el('ag-d-semana', String(visitasSemana), 'textContent');
+}
+
 function renderCal(){
   const el=document.getElementById('cal-tabela'); if(!el) return;
+  renderAgDashboard();
   const filtTec=gV('cal-filtro-tec');
   const meses=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
   document.getElementById('cal-titulo').textContent=meses[calMes]+' '+calAno;
@@ -7322,6 +7377,22 @@ function renderEqGrid(){
   const el=document.getElementById('eq-grid');
   const count=document.getElementById('eq-count');
   if(count) count.textContent=lista.length+' equipamento'+(lista.length!==1?'s':'');
+  // Dashboard (16/08, redesign task #37) — sempre sobre a base TOTAL da
+  // loja ativa, não o resultado filtrado por busca/tipo.
+  const _todosLoja=filtrarPorLoja(todosEq);
+  const _porTipo={}; _todosLoja.forEach(e=>{ const t=e.tipo||'Outro'; _porTipo[t]=(_porTipo[t]||0)+1; });
+  const _tipoTop=Object.entries(_porTipo).sort((a,b)=>b[1]-a[1])[0];
+  const _hojeK=new Date(); _hojeK.setHours(0,0,0,0);
+  const _garVenc=_todosLoja.filter(e=>{
+    if(!e.garantia_vencimento) return false;
+    const venc=new Date(e.garantia_vencimento+'T12:00:00');
+    return Math.ceil((venc-_hojeK)/86400000)<=30;
+  }).length;
+  const _clientesDist=new Set(_todosLoja.map(e=>(e.cliente_nome||'').trim().toLowerCase()).filter(Boolean)).size;
+  setV_el('eq-d-total', String(_todosLoja.length), 'textContent');
+  setV_el('eq-d-tipo', _tipoTop?`mais comum: ${_tipoTop[0]}`:'—', 'textContent');
+  setV_el('eq-d-garantia', String(_garVenc), 'textContent');
+  setV_el('eq-d-clientes', String(_clientesDist), 'textContent');
   if(!lista.length){ el.innerHTML='<div class="empty-st"><div class="ei">🔧</div><p>Nenhum equipamento encontrado.</p><button class="btn-primary" style="margin-top:12px" onclick="abrirFormEq()">＋ Cadastrar Equipamento</button></div>'; return; }
   const hoje=new Date(); hoje.setHours(0,0,0,0);
   el.innerHTML='';
@@ -7365,7 +7436,7 @@ function verificarAlertasGarantia(){
   });
   const el=document.getElementById('eq-alertas'); if(!el) return;
   if(!alertas.length){ el.innerHTML=''; return; }
-  el.innerHTML=`<div style="background:var(--yellow-bg);border:1px solid var(--yellow);border-radius:10px;padding:12px 16px;font-size:13px;color:var(--yellow);font-weight:600">
+  el.innerHTML=`<div class="rd-card rd-card-dense rd-card-warn" style="font-size:13px;color:var(--warn);font-weight:600">
     ⚠️ ${alertas.length} equipamento${alertas.length!==1?'s':''} com garantia vencendo em breve: ${alertas.map(e=>esc(e.marca+' '+e.modelo)).join(', ')}
   </div>`;
 }
@@ -9273,8 +9344,24 @@ function renderVisHistorico(){
       if(equips.some(e=>e.status==='critico')) comCritico++;
       else if(equips.some(e=>e.status==='atencao')) comAtencao++;
     });
-    const statCard=(val,lbl,cor,bg)=>`<div style="background:${bg};border-radius:12px;padding:14px 10px;text-align:center"><div style="font-size:24px;font-weight:800;color:${cor}">${val}</div><div style="font-size:10px;font-weight:600;color:${cor};opacity:.8;text-transform:uppercase;letter-spacing:.5px;margin-top:2px">${lbl}</div></div>`;
-    statsEl.innerHTML=statCard(total,'Vistorias','var(--c2)','var(--white)')+statCard(comAtencao,'c/ Atenção','var(--yellow)','var(--yellow-bg)')+statCard(comCritico,'c/ Crítico','var(--red)','var(--red-bg)');
+    // Cards .rd-* (redesign task #37, 16/08) — mesmo padrão de Despesas/
+    // Equipamentos/Clientes/Agenda.
+    statsEl.innerHTML=`
+      <div class="rd-card rd-card-dense rd-card-dark">
+        <div class="rd-kpi-lbl">Vistorias${mes?' no mês':''}</div>
+        <div class="rd-kpi-num rd-kpi-num-sm">${total}</div>
+        <div class="rd-kpi-apoio">${mes?'no período filtrado':'histórico completo'}</div>
+      </div>
+      <div class="rd-card rd-card-dense">
+        <div class="rd-kpi-lbl"><span class="rd-badge rd-badge-warn">Com atenção</span></div>
+        <div class="rd-kpi-num rd-kpi-num-sm" style="color:var(--warn)">${comAtencao}</div>
+        <div class="rd-kpi-apoio">equipamento pede olhar</div>
+      </div>
+      <div class="rd-card rd-card-dense">
+        <div class="rd-kpi-lbl"><span class="rd-badge rd-badge-bad">Com crítico</span></div>
+        <div class="rd-kpi-num rd-kpi-num-sm" style="color:var(--bad)">${comCritico}</div>
+        <div class="rd-kpi-apoio">precisa de ação</div>
+      </div>`;
   }
 
   // ── Painel de alertas críticos (clientes com ≥1 item crítico, mês atual se sem filtro) ──

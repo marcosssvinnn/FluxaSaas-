@@ -1325,6 +1325,24 @@
       </div>
     </div>
 
+    <div class="desp-dash" id="eq-dash">
+      <div class="rd-card rd-card-dense rd-card-dark">
+        <div class="rd-kpi-lbl">Equipamentos cadastrados</div>
+        <div class="rd-kpi-num rd-kpi-num-sm" id="eq-d-total">—</div>
+        <div class="rd-kpi-apoio" id="eq-d-tipo">—</div>
+      </div>
+      <div class="rd-card rd-card-dense">
+        <div class="rd-kpi-lbl"><span class="rd-badge rd-badge-warn">Garantia vencendo</span></div>
+        <div class="rd-kpi-num rd-kpi-num-sm" style="color:var(--warn)" id="eq-d-garantia">—</div>
+        <div class="rd-kpi-apoio">nos próximos 30 dias</div>
+      </div>
+      <div class="rd-card rd-card-dense">
+        <div class="rd-kpi-lbl">Clientes atendidos</div>
+        <div class="rd-kpi-num rd-kpi-num-sm" id="eq-d-clientes">—</div>
+        <div class="rd-kpi-apoio">com equipamento cadastrado</div>
+      </div>
+    </div>
+
     <!-- Alertas de garantia -->
     <div id="eq-alertas" style="margin-bottom:12px"></div>
 
@@ -1697,6 +1715,23 @@
       <button class="btn-voltar" onclick="voltar()" style="margin-bottom:0">← Voltar</button>
       <span style="font-size:18px;font-weight:800;color:var(--c2)">👥 Clientes</span>
     </div>
+    <div class="desp-dash" id="cli-dash">
+      <div class="rd-card rd-card-dense rd-card-dark">
+        <div class="rd-kpi-lbl">Clientes cadastrados</div>
+        <div class="rd-kpi-num rd-kpi-num-sm" id="cli-d-total">—</div>
+        <div class="rd-kpi-apoio" id="cli-d-novos">—</div>
+      </div>
+      <div class="rd-card rd-card-dense">
+        <div class="rd-kpi-lbl"><span class="rd-badge rd-badge-ok">Faturamento total</span></div>
+        <div class="rd-kpi-num rd-kpi-num-sm" style="color:var(--ok)" id="cli-d-fat">—</div>
+        <div class="rd-kpi-apoio">orçamentos aprovados</div>
+      </div>
+      <div class="rd-card rd-card-dense">
+        <div class="rd-kpi-lbl">Maior cliente</div>
+        <div class="rd-kpi-num rd-kpi-num-sm" id="cli-d-top-fat">—</div>
+        <div class="rd-kpi-apoio" id="cli-d-top-nome">—</div>
+      </div>
+    </div>
     <div id="cli-form-wrap" style="display:none">
       <div class="cli-form-inline">
         <div style="font-size:14px;font-weight:700;color:var(--c2);margin-bottom:14px">＋ Novo Cliente</div>
@@ -1826,7 +1861,7 @@
     <!-- ── Contas a Receber ── -->
     <div class="fin-card" id="cr-card">
       <div class="ct" style="margin:0 0 12px">📥 Contas a Receber</div>
-      <div id="cr-resumo" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"></div>
+      <div id="cr-resumo" class="desp-dash" style="margin-bottom:14px"></div>
       <div class="fin-tabela-wrap">
         <table class="fin-tabela">
           <thead><tr>
@@ -2527,7 +2562,7 @@
     <div id="vis-view-hist" style="display:none">
 
       <!-- Mini-dashboard stats -->
-      <div id="vis-stats-row" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px"></div>
+      <div id="vis-stats-row" class="desp-dash"></div>
 
       <!-- Filtros -->
       <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
@@ -2662,6 +2697,24 @@
         <button class="fb on" id="ag-tab-cal" onclick="agTab('cal')">📆 Calendário</button>
         <button class="fb" id="ag-tab-lista" onclick="agTab('lista')">📋 Contratos</button>
         <button class="btn-primary" style="padding:8px 16px;font-size:13px" onclick="abrirFormAg()">＋ Novo</button>
+      </div>
+    </div>
+
+    <div class="desp-dash" id="ag-dash">
+      <div class="rd-card rd-card-dense rd-card-dark">
+        <div class="rd-kpi-lbl">Contratos ativos</div>
+        <div class="rd-kpi-num rd-kpi-num-sm" id="ag-d-contratos">—</div>
+        <div class="rd-kpi-apoio">recorrentes</div>
+      </div>
+      <div class="rd-card rd-card-dense">
+        <div class="rd-kpi-lbl">Visitas hoje</div>
+        <div class="rd-kpi-num rd-kpi-num-sm" style="color:var(--info)" id="ag-d-hoje">—</div>
+        <div class="rd-kpi-apoio">agendadas</div>
+      </div>
+      <div class="rd-card rd-card-dense">
+        <div class="rd-kpi-lbl">Visitas esta semana</div>
+        <div class="rd-kpi-num rd-kpi-num-sm" id="ag-d-semana">—</div>
+        <div class="rd-kpi-apoio">próximos 7 dias</div>
       </div>
     </div>
 

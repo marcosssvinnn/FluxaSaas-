@@ -3071,3 +3071,49 @@ explicitamente quando fechar o formulário inline.
   declaração `let` (TDZ), gera um "Cannot access before initialization"
   não capturado logo no carregamento da página, reproduz do zero sem
   nenhuma interação.
+
+### Continuação (16/08) — Redesign: Clientes, Equipamentos, Agenda, Produtividade, Vistoria (task #37)
+
+**Escopo real entregue: dashboards `.rd-*` + polimento visual — não uma
+reescrita de listas/formulários.** Mesmo escopo que a rodada de Estoque/OS/
+Despesas (task #36) já tinha estabelecido: o `.rd-card`/`.rd-kpi-*` entra
+como camada de resumo em cima de cada tela; a lista em si (`.cli-card`,
+`.eq-card`, `.agenda-card`, tabelas de Produtividade) continua com as
+classes próprias que já funcionavam — reescrever cada item de lista pro
+grid `.rd-table` (como foi feito em Orçamentos, task #47) é um trabalho
+maior, à parte, não incluído aqui.
+
+- **Clientes**: 3 KPIs (total cadastrado + novos em 30 dias, faturamento
+  total aprovado, maior cliente). "Novos em 30 dias" é derivado do
+  timestamp embutido no id local (`cli_`+Date.now()) — não existe coluna
+  `data_criacao` no cadastro de cliente; clientes vindos de dedup no
+  servidor (id não é `cli_...`) não entram nessa contagem (subconta, não
+  erra pra mais).
+- **Equipamentos**: 3 KPIs (total + tipo mais comum, garantia vencendo em
+  30 dias, clientes distintos atendidos) + banner de alerta de garantia
+  convertido pra `.rd-card.rd-card-warn` (era `<div>` com cor fixa).
+- **Agenda**: 3 KPIs novos (contratos ativos, visitas hoje, visitas nos
+  próximos 7 dias) — `renderAgDashboard()`, calculado sobre os mesmos
+  dados que o calendário já usa (`todosOS` com `data_servico`), pra não
+  divergir do que a tela mostra.
+- **Vistoria**: o mini-dashboard que já existia na aba Histórico
+  (`vis-stats-row`) foi convertido de `<div>` com estilo inline pra
+  `.rd-card`/`.rd-badge`. A aba "Meus Locais" já tinha seu próprio stats
+  bar compacto (`.loc-stat`, pílulas inline ao lado do navegador de mês) —
+  não convertido: o layout compacto não cabe no formato de card cheio do
+  `.rd-*`, forçar quebraria o encaixe ao lado do seletor de mês.
+- **Produtividade**: só o resumo de Contas a Receber (`cr-resumo`, 3
+  chips) virou `.rd-card`. As tabelas (`prod-tabela`, `fin-tabela`,
+  `cr-tabela-body`) e os cards por técnico (`.prod-grid`) continuam no
+  estilo antigo — é a tela mais densa das 5 (múltiplos relatórios
+  financeiros), converter tudo é escopo grande o suficiente pra ser sua
+  própria rodada.
+- Testado no Browser pane: os 5 dashboards renderizados com dado fake e
+  conferidos card a card (Clientes e Produtividade só por inspeção do
+  HTML gerado — a aba do navegador ficou momentaneamente sem repintar
+  durante o teste, sem relação com o código; o padrão é idêntico ao das
+  outras 3 telas já confirmadas visualmente).
+- **Ainda pendente, de propósito** (não incluído nesta rodada): conversão
+  de lista/formulário de nenhuma das 5 telas pro grid `.rd-table`/
+  `.rd-row`; telas mobile específicas (task #38); fila unificada de
+  insights (task #45).
