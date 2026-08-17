@@ -13,6 +13,7 @@ import {
   salvarCertificado,
   obterCertificado,
   buscarOrcamento,
+  buscarOS,
   buscarDadosFiscaisLoja,
   gravarNotaFiscal,
   atualizarNotaFiscal,
@@ -54,47 +55,80 @@ app.post("/certificado/upload", upload.single("pfx"), async (req, res) => {
   }
 });
 
-// ── Emissão de NFS-e a partir de um orçamento aprovado ──────────────────
+// ── Emissão de NFS-e a partir de uma OS concluída ────────────────────────
+// Gatilho mudou de "orçamento aprovado" pra "OS concluída" (17/08) — fato
+// gerador do ISS é o serviço PRESTADO, não o orçamento aceito, confirmado
+// por documento do contador. Nem todo orçamento aprovado vira execução na
+// hora, então emitir na aprovação datava a nota errado.
 app.post("/emitir", async (req, res) => {
   try {
     const authHeader = req.headers.authorization || "";
     const bearerToken = authHeader.replace(/^Bearer\s+/i, "");
-    const { empresaId, orcamentoId, codigoTributacaoNacional, ambiente } = req.body;
+    const { empresaId, osId, codigoTributacaoNacional, ambiente } = req.body;
 
-    if (!empresaId || !orcamentoId) {
-      return res.status(400).json({ erro: "Faltam campos: empresaId, orcamentoId." });
+    if (!empresaId || !osId) {
+      return res.status(400).json({ erro: "Faltam campos: empresaId, osId." });
     }
 
     await exigirGestorDaEmpresa(bearerToken, empresaId);
 
-    const orcamento = await buscarOrcamento(orcamentoId, empresaId);
-    if (orcamento.status !== "aprovado") {
-      return res.status(400).json({ erro: "Só orçamento aprovado pode gerar nota fiscal." });
+    const os = await buscarOS(osId, empresaId);
+    if (os.status !== "concluido") {
+      return res.status(400).json({ erro: "Só OS concluída pode gerar nota fiscal — o fato gerador do ISS é o serviço prestado, não o orçamento aprovado." });
     }
-    if (!orcamento.loja_id) {
-      return res.status(400).json({ erro: "Orçamento sem loja vinculada — não dá pra saber qual CNPJ emite a nota." });
+    if (!os.loja_id) {
+      return res.status(400).json({ erro: "OS sem loja vinculada — não dá pra saber qual CNPJ emite a nota." });
     }
-    // Achado confirmado pelo Marcos (LC 116/2003, art. 3º VII + subitem 7.10):
-    // manutenção/limpeza de piscina tem o ISS devido no MUNICÍPIO ONDE O
-    // SERVIÇO FOI EXECUTADO, não onde a empresa está sediada. Por isso exige
-    // orcamento.municipio_servico_ibge (setup-v2-delta23.sql) — sem isso,
-    // BLOQUEIA a emissão em vez de assumir a cidade da sede (que sairia
-    // errada sempre que o serviço não for na mesma cidade da loja).
-    if (!orcamento.municipio_servico_ibge) {
+
+    // ⚠️ Achado ao ligar isto na OS (17/08): não existe coluna de CPF em
+    // NENHUMA tabela do schema (nem orcamentos, nem ordens_servico) — só
+    // CNPJ. Pra cliente pessoa física (que o Marcos confirmou ser parte
+    // real do negócio: "casas e residências de veraneio"), a nota de
+    // serviço EXIGE um documento do tomador (CPF ou CNPJ) — sem isso a
+    // SEFIN Nacional rejeita. Bloqueia aqui, cedo, com mensagem clara, em
+    // vez de deixar montarXmlDPS() quebrar tentando formatar `undefined`.
+    // Resolver de vez precisa de uma coluna nova (orcamentos.cpf_cliente
+    // e/ou ordens_servico.cpf_cliente) + campo no formulário — não fiz
+    // isso agora pra não misturar esquema fiscal com schema de cadastro
+    // sem o Marcos decidir onde esse campo deveria morar (no cliente? no
+    // orçamento? nos dois?).
+    if (!os.cnpj) {
       return res.status(400).json({
-        erro: "Orçamento sem cidade do serviço definida — obrigatório pra manutenção/limpeza de piscina (ISS é devido onde o serviço foi prestado, não na sede da empresa). Selecione a cidade no orçamento antes de emitir.",
+        erro: "OS sem CNPJ do cliente e sem campo de CPF no sistema (ainda não existe coluna de CPF no schema). Nota fiscal de serviço exige documento do tomador — não dá pra emitir pra cliente pessoa física até isso ser resolvido no cadastro.",
       });
     }
-    const dadosFiscaisLoja = await buscarDadosFiscaisLoja(orcamento.loja_id);
 
-    const referencia = `ORC-${orcamento.numero}-${Date.now()}`;
+    const dadosFiscaisLoja = await buscarDadosFiscaisLoja(os.loja_id);
+
+    // Ambiente de produção fica bloqueado até o bloco de tributação (ISS
+    // fixo do MEI) ser validado contra a SEFIN Nacional de verdade — ver
+    // comentário em dps.js. Homologação continua liberada (é exatamente
+    // onde essa validação precisa acontecer, com o Marcos presente e o
+    // certificado real — Marco 0, passo 4 do plano).
+    if (ambiente === "producao") {
+      return res.status(400).json({
+        erro: "Emissão em produção ainda bloqueada — a declaração de tributação (ISS fixo do MEI) não foi validada contra a SEFIN Nacional real. Use homologação primeiro.",
+      });
+    }
+
+    // A discriminação/valores da DPS continuam vindo do ORÇAMENTO de
+    // origem (tem subtotal/desconto detalhados; a OS só guarda o total já
+    // líquido) quando existir um; OS avulsa (sem orçamento por trás) usa os
+    // próprios servicos/total dela, sem desconto — end-to-end nunca foi
+    // testado com esse caminho ainda (ver CLAUDE.md).
+    const origemValores = os.orcamento_id
+      ? await buscarOrcamento(os.orcamento_id, empresaId)
+      : { servicos: os.servicos, subtotal: os.total, desconto: 0, total: os.total };
+
+    const referencia = `OS-${os.numero}-${Date.now()}`;
 
     // registro 'pendente' ANTES de tentar emitir — se der erro no meio, fica
     // registrado que a tentativa aconteceu (auditoria), não desaparece.
     const notaPendente = await gravarNotaFiscal({
       empresa_id: empresaId,
-      loja_id: orcamento.loja_id || null,
-      orcamento_id: orcamentoId,
+      loja_id: os.loja_id || null,
+      orcamento_id: os.orcamento_id || null,
+      os_id: osId,
       tipo: "nfse",
       referencia,
       status: "pendente",
@@ -104,30 +138,29 @@ app.post("/emitir", async (req, res) => {
       const { pfxBase64, senha } = await obterCertificado(empresaId);
       const { keyPem, certPem } = extrairChaveECertificado(Buffer.from(pfxBase64, "base64"), senha);
 
-      // Código IBGE agora vem de lojas.codigo_ibge (setup-v2-delta22.sql) —
-      // gap fechado. Antes exigia isso explicitamente no corpo da requisição
-      // pra evitar mandar um código adivinhado; agora vem de um cadastro real,
-      // verificado contra a API oficial do IBGE (achado: o código antigo do
-      // código morto do v1 pra Itapema estava ERRADO — era o de Itapoá).
-
+      // Código IBGE vem de lojas.codigo_ibge (setup-v2-delta22.sql),
+      // verificado contra a API oficial do IBGE. município de emissão E de
+      // prestação usam o MESMO valor — ver comentário em dps.js sobre o
+      // subitem 14.01 não ser exceção de local (achado do contador, 17/08).
       const idDPS = `DPS${randomUUID().replace(/-/g, "")}`;
       const xmlSemAssinar = montarXmlDPS({
         idDPS,
         ambiente: ambiente === "producao" ? "1" : "2",
         dataEmissao: new Date().toISOString(),
         serie: "00001",
-        numeroDPS: String(orcamento.numero),
+        numeroDPS: String(os.numero),
         competencia: new Date().toISOString().slice(0, 10),
         municipioEmissaoIbge: dadosFiscaisLoja.codigo_ibge,
-        municipioPrestacaoIbge: orcamento.municipio_servico_ibge,
+        municipioPrestacaoIbge: dadosFiscaisLoja.codigo_ibge,
         prestadorCnpj: dadosFiscaisLoja.cnpj.replace(/\D/g, ""),
         prestadorNome: dadosFiscaisLoja.razao_social || dadosFiscaisLoja.cnpj,
-        tomadorDoc: orcamento.cnpj
-          ? { tipo: "CNPJ", valor: orcamento.cnpj.replace(/\D/g, "") }
-          : { tipo: "CPF", valor: (orcamento.cpf_cliente || "").replace(/\D/g, "") },
-        tomadorNome: orcamento.cliente,
+        // Só CNPJ por enquanto — ver bloqueio de "!os.cnpj" acima (não há
+        // coluna de CPF no schema ainda).
+        tomadorDoc: { tipo: "CNPJ", valor: os.cnpj.replace(/\D/g, "") },
+        tomadorNome: os.cliente,
         codigoTributacaoNacional,
-        orcamento,
+        regimeTributario: dadosFiscaisLoja.regime_tributario,
+        orcamento: origemValores,
       });
 
       const xmlAssinado = assinarDPS(xmlSemAssinar, idDPS, keyPem, certPem);

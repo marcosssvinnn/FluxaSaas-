@@ -76,6 +76,12 @@ export function construirDiscriminacaoEValores(orcamento) {
  * elemento que carrega o Id assinado (infDPS), não herdado de um ancestral —
  * senão a verificação da assinatura falha.
  */
+// Regimes tributários já suportados pela declaração de tributação abaixo.
+// Qualquer outro valor BLOQUEIA a emissão de propósito — ver comentário em
+// montarXmlDPS(). Lista fecha aqui até o dia em que a Fluxa (ou outra
+// empresa do SaaS) sair do MEI e este arquivo ganhar o bloco de ME/Simples.
+const REGIMES_SUPORTADOS = ["mei"];
+
 export function montarXmlDPS({
   idDPS,
   ambiente, // '1' produção | '2' homologação
@@ -84,19 +90,40 @@ export function montarXmlDPS({
   numeroDPS,
   competencia, // 'YYYY-MM-DD'
   municipioEmissaoIbge, // cLocEmi — cidade da SEDE da empresa (lojas.codigo_ibge)
-  municipioPrestacaoIbge, // cLocPrestacao — cidade onde o SERVIÇO foi executado
-  // (podem ser diferentes! achado confirmado pelo Marcos: manutenção/limpeza
-  // de piscina é subitem 7.10 da LC 116/2003, uma das exceções do art. 3º
-  // VII em que o ISS é devido no município da EXECUÇÃO, não da sede da
-  // empresa — por isso os dois códigos são parâmetros separados, nunca o
-  // mesmo valor assumido por padrão)
+  municipioPrestacaoIbge, // cLocPrestacao — sempre o MESMO valor que
+  // municipioEmissaoIbge nesta versão. Achado confirmado por documento do
+  // contador (17/08): o serviço real da Fluxa piscinas — substituição de
+  // motobomba/aquecedor/filtro/areia, manutenção de equipamento — é o
+  // subitem 14.01 da lista da LC 116/2003 ("manutenção e conservação de
+  // máquinas, equipamentos... exceto peças, que ficam sujeitas ao ICMS"),
+  // NÃO o 7.10 (limpeza/manutenção de piscinas propriamente, que teria sido
+  // a leitura anterior deste código). O art. 3º da LC 116/2003 só manda o
+  // ISS pro município da EXECUÇÃO nos incisos de exceção (7.10 é um deles);
+  // 14.01 não está na lista de exceções, então o ISS é sempre devido no
+  // município da SEDE do prestador — os dois parâmetros continuam
+  // separados aqui só porque são elementos XML distintos no schema
+  // (cLocEmi/cLocPrestacao), não porque o valor deles deva divergir na
+  // prática da Fluxa hoje. Se a empresa um dia também prestar serviço de
+  // limpeza/tratamento químico (aí sim 7.10), municipioPrestacaoIbge
+  // precisaria vir do endereço do cliente de novo — mas isso é uma
+  // pergunta de produto nova, não a regra atual.
   prestadorCnpj,
   prestadorNome,
   tomadorDoc, // { tipo: 'CNPJ'|'CPF', valor }
   tomadorNome,
   codigoTributacaoNacional,
+  regimeTributario, // 'mei' — ver REGIMES_SUPORTADOS acima
   orcamento,
 }) {
+  if (!REGIMES_SUPORTADOS.includes(regimeTributario)) {
+    throw new Error(
+      `Regime tributário "${regimeTributario}" não suportado por este emissor. ` +
+        `Só "mei" está implementado (ISS fixo no DAS, sem alíquota na nota — ` +
+        `Resolução CGSN 140/2018 art. 103 IV). Bloqueado de propósito: declarar ` +
+        `tributação errada numa nota real é pior que não emitir.`
+    );
+  }
+
   const { xDescServ, vServ, vDescIncond } = construirDiscriminacaoEValores(orcamento);
   const escapeXml = (s) =>
     String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -105,6 +132,22 @@ export function montarXmlDPS({
     ? `<vDescCondIncond><vDescIncond>${vDescIncond}</vDescIncond></vDescCondIncond>`
     : "";
 
+  // ⚠️ NÃO IMPLEMENTADO DE PROPÓSITO: o bloco <trib> (tributação/ISS) da DPS.
+  // MEI paga ISS fixo dentro do DAS — a nota deveria sair sem alíquota/valor
+  // de ISS destacado, mas a forma EXATA de declarar isso no XML da DPS
+  // (nome dos elementos dentro de <trib>, se existe uma flag específica de
+  // "optante MEI" tipo <regTrib>/<opSimpNac>, etc.) eu não tenho como
+  // confirmar sem consultar o XSD oficial de novo ou testar contra a SEFIN
+  // Nacional de verdade — e adivinhar campo de schema de governo é
+  // exatamente o erro que este arquivo já corrigiu uma vez (ver comentário
+  // no topo do arquivo sobre o código morto do v1). Por isso:
+  // 1) esta função ainda NÃO monta <trib> nenhum;
+  // 2) enviarDPS() (sefinClient.js)/server.js devem continuar recusando
+  //    ambiente:'producao' até isso ser resolvido;
+  // 3) resolver isso é o próximo passo real do Marco 0 (teste contra
+  //    homologação com o certificado de verdade do Marcos) — a resposta do
+  //    governo (aceita/rejeita/pede campo faltando) é a forma confiável de
+  //    descobrir o formato certo, não uma segunda tentativa de adivinhação.
   return (
     `<DPS>` +
     `<infDPS xmlns="http://www.sped.fazenda.gov.br/nfse" Id="${idDPS}">` +

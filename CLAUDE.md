@@ -141,49 +141,107 @@ com uma query de leitura (não confie só em "não deu erro").
 > - **Código do microsserviço nunca rodou** (ambiente de dev sem Node.js) —
 >   sintaxe validada por fora, lógica de payload testada e idêntica ao spike
 >   Python, mas precisa de smoke test real antes de confiar.
-> - **Ponto em aberto, não decidido por engenharia:** emitir ao aprovar o
->   orçamento (como está hoje) ou ao concluir a OS? É pergunta pro contador
->   do Marcos (fato gerador do ISS = serviço realizado, não orçamento aceito).
->   `notas_fiscais.os_id` já existe no schema pra não precisar migrar de novo
->   depois, mas o gatilho ainda não mudou.
-> - **Achado crítico confirmado pelo Marcos (2026-07-20, LC 116/2003, art. 3º
->   VII + subitem 7.10):** manutenção/limpeza de piscina é uma das exceções
->   em que o **ISS é devido no município onde o SERVIÇO FOI EXECUTADO**, não
->   onde a empresa está sediada. A Fluxa piscinas atende Itapema, Camboriú,
->   Balneário Camboriú, Itajaí e Porto Belo (varia por cliente) — então
->   `lojas.codigo_ibge` (sede) sozinho NÃO basta. `setup-v2-delta23.sql`
->   adiciona `orcamentos.municipio_servico_ibge` (cidade do serviço, por
->   orçamento) + tabela `municipios_fiscais` (municípios atendidos por
->   empresa, com `iss_aliquota` **NULL de propósito** — 2% a 5% conforme o
->   Marcos, mas nenhum valor foi inventado; só o contador confirma). `dps.js`
->   agora recebe `municipioEmissaoIbge` (cLocEmi, sede) e
->   `municipioPrestacaoIbge` (cLocPrestacao, execução) como parâmetros
->   SEPARADOS — nunca assuma que são o mesmo valor. `/emitir` BLOQUEIA a
->   emissão se o orçamento não tiver `municipio_servico_ibge` definido. UI:
->   dropdown "Cidade do serviço (fiscal)" no form de orçamento
->   (`index.html`/`app.js`, `carregarMunicipiosFiscais()`), opcional por
->   enquanto (emissão ainda não religada — Marco 4).
->   **`iss_aliquota`/`obs_retencao` preenchidos em 2026-07-21**
->   (`setup-v2-delta26.sql`, dados de pesquisa feita por outra IA a pedido do
->   Marcos via leis.org — não é fonte oficial primária pra todas as 5
->   cidades, só Itajaí teve o PDF localizado no portal oficial da
->   prefeitura): Itapema 5%, Camboriú 3% (⚠️ menor confiança — não achou lei
->   2025/2026 confirmando o subitem 7.10), Balneário Camboriú 2,5%, Itajaí
->   2%, Porto Belo 5% (⚠️ menor confiança — lei-base de 2014, difícil de
->   rastrear online). Nenhuma das 5 tem exigência formal de CPOM; em
->   Itapema/Itajaí/Porto Belo a retenção só é obrigatória se o prestador não
->   emitir nota fiscal autorizada, já em Camboriú/Balneário Camboriú a
->   retenção do subitem 7.10 é obrigatória por lei independente de cadastro
->   (detalhes em `municipios_fiscais.obs_retencao` de cada linha). **Isso NÃO
->   é usado em nenhum cálculo automático hoje** (a DPS não tem campo de
->   alíquota — é só referência/exibição futura), mas **confirmar com a
->   Fazenda de cada prefeitura ou o contador do Marcos antes de religar a
->   emissão de verdade** (Marco 4) — a pesquisa foi feita por uma IA
->   pesquisando na web, não é aconselhamento fiscal profissional.
->   Editável a qualquer momento via `UPDATE municipios_fiscais` — não
->   precisa mexer em código.
->   Venda de produtos/químicos separada (não dentro do serviço) é **ICMS**,
->   sistema diferente (NFe), fora do escopo desta fase.
+> ---
+> ### ⚠️ CORREÇÃO CRÍTICA (2026-08-17) — o achado de 2026-07-20 acima estava
+> ### ERRADO. Documento do contador do Marcos corrigiu a base inteira.
+>
+> O achado anterior (bloco preservado abaixo só por histórico, NÃO USAR)
+> assumia que a Fluxa presta serviço do **subitem 7.10** da LC 116/2003
+> (limpeza/manutenção de piscina) — que É exceção de local no art. 3º. Mas o
+> contador confirmou, em documento com fontes primárias citadas, que a
+> empresa **não faz limpeza/aspiração/tratamento químico de água** — faz
+> **substituição de motobomba, aquecedor, filtro e areia** (manutenção de
+> EQUIPAMENTO). Isso é **subitem 14.01** ("manutenção... de máquinas,
+> aparelhos, equipamentos... exceto peças, que ficam sujeitas ao ICMS"), que
+> **NÃO está na lista de exceções do art. 3º** — o ISS é devido sempre no
+> município da SEDE (Itapema), não importa onde o atendimento aconteça.
+> Toda a lógica de `municipio_servico_ibge`/`municipios_fiscais.iss_aliquota`
+> por cidade resolvia um problema que a empresa não tem.
+>
+> **Corrigido em 17/08** (commit deste dia): `dps.js` agora sempre manda
+> `municipioPrestacaoIbge === municipioEmissaoIbge` (o código IBGE da loja,
+> os dois parâmetros continuam existindo separados só porque são elementos
+> XML distintos no schema — `cLocEmi`/`cLocPrestacao` — não porque devam
+> divergir). `/emitir` não exige mais `municipio_servico_ibge`. O
+> dropdown "Cidade do serviço (fiscal)" no form de orçamento e a tabela
+> `municipios_fiscais` continuam no schema/UI (não removidos — ficam
+> prontos pro dia em que a empresa também prestar serviço de limpeza, aí
+> sim 7.10 de verdade), mas **não são mais lidos por `/emitir`**.
+>
+> **Outros fatos novos do documento do contador, todos já aplicados:**
+> - **Regime é MEI (SIMEI)**, não uma empresa comum. ISS é **valor fixo
+>   dentro do DAS** — a nota sai com ISS zerado, não há alíquota percentual
+>   a calcular. Retenção de ISS na fonte é **vedada** pro MEI, sem exceção
+>   (Resolução CGSN 140/2018, art. 103 IV) — se uma administradora tentar
+>   reter alegando falta de cadastro (CPOM), é inconstitucional (STF Tema
+>   1020) e a Fluxa tem base pra contestar.
+>   `dps.js` agora recebe `regimeTributario` e **bloqueia a emissão** (erro
+>   explícito) se não for `'mei'` — a lista de regimes suportados é
+>   fechada de propósito, cresce só quando o bloco de ME/Simples for
+>   implementado de verdade.
+> - **Gatilho mudou de "orçamento aprovado" pra "OS concluída"** — o
+>   ponto em aberto do achado anterior está resolvido: fato gerador do ISS
+>   é o serviço prestado. `/emitir` agora recebe `osId` (não mais
+>   `orcamentoId`), busca a OS, exige `status==='concluido'`, e usa o
+>   orçamento de origem (`os.orcamento_id`) só pra pegar subtotal/desconto
+>   detalhados quando existir um.
+> - **NÃO implementado, bloqueado de propósito:** o bloco `<trib>`
+>   (tributação/ISS) da DPS em si. MEI deveria sair sem alíquota/valor de
+>   ISS destacado, mas a forma EXATA de declarar isso no XML (nome dos
+>   elementos, se existe flag de "optante MEI") eu não tenho como confirmar
+>   sem consultar o XSD oficial de novo ou testar contra a SEFIN Nacional —
+>   e adivinhar campo de schema de governo é exatamente o erro que este
+>   arquivo já cometeu uma vez (o achado de 2026-07-20 acima). Por isso
+>   `/emitir` **recusa `ambiente:'producao'` explicitamente** até isso ser
+>   validado — só homologação fica liberada, que é onde essa validação
+>   precisa acontecer (Marco 0, passo 4, com o Marcos presente e o
+>   certificado real).
+> - **Achado novo, também bloqueando:** não existe coluna de CPF em
+>   NENHUMA tabela (nem `orcamentos`, nem `ordens_servico`) — só CNPJ. Pra
+>   cliente pessoa física (parte real do negócio: "casas e residências de
+>   veraneio", confirmado pelo Marcos), a nota de serviço exige documento
+>   do tomador. `/emitir` bloqueia com mensagem clara em vez de tentar
+>   emitir com documento vazio. **Resolver de vez precisa de uma coluna
+>   nova + campo no formulário** — não fiz isso agora pra não decidir
+>   sozinho onde esse campo deveria morar (no cliente? no orçamento? nos
+>   dois?) sem o Marcos.
+> - **Documento fiscal sempre separado:** quando há equipamento +
+>   mão de obra no mesmo atendimento (o modelo comercial normal da
+>   empresa — margem relevante vem da REVENDA do equipamento, não só da
+>   mão de obra), são dois documentos: NFA-e/NF-e pro equipamento (ICMS,
+>   já existe — S@T da SEF/SC) e NFS-e pra mão de obra (ISS, é o que este
+>   módulo emite). **Não verificado ainda:** se o orçamento hoje separa
+>   valor de material e valor de mão de obra por item de forma
+>   estruturada, ou se isso é texto livre — sem essa separação a NFS-e não
+>   sabe quanto do valor é peça (não deveria entrar na base do ISS) e
+>   quanto é serviço.
+> - **Cuidado operacional, não é código:** como a empresa tem CNAE de
+>   "instalação hidráulica"/"elétrica" registrados, descrever o serviço
+>   nesses termos na nota (em vez de "manutenção de equipamento") pode
+>   gerar a obrigação do tomador PJ reter 20% de CPP (LC 123/2006, art.
+>   18-B) — mesmo a atividade real não estando nesse rol. `xDescServ` vem
+>   do texto livre que o Marcos digita no item do orçamento/OS; o sistema
+>   não controla isso, é orientação pra como ele descreve o serviço.
+> - **Se migrar pra ME** (ultrapassar teto do MEI): tributação muda
+>   inteira — mercadoria no Anexo I do Simples, serviço no Anexo III (ISS aí
+>   sim vira percentual, calculado sobre receita dos últimos 12 meses,
+>   início de atividade usa 1ª faixa = ISS 2%). Município da execução só
+>   passa a importar de verdade se a empresa também passar a prestar
+>   serviço do subitem 7.10. Nada disso está implementado — é o próximo
+>   degrau depois do MEI, não uma branch condicional hoje.
+>
+> <details><summary>Achado anterior (2026-07-20), preservado só por
+> histórico — NÃO é mais a base usada pelo código, ver correção acima</summary>
+>
+> Achado confirmado pelo Marcos (2026-07-20, LC 116/2003, art. 3º VII +
+> subitem 7.10): manutenção/limpeza de piscina é uma das exceções em que o
+> ISS é devido no município onde o SERVIÇO FOI EXECUTADO, não onde a
+> empresa está sediada. `setup-v2-delta23.sql` adicionou
+> `orcamentos.municipio_servico_ibge` + tabela `municipios_fiscais`
+> (`iss_aliquota` preenchida em `setup-v2-delta26.sql`, dados de pesquisa
+> por IA via leis.org, não fonte oficial primária). Tudo isso ficou errado
+> porque a empresa presta 14.01, não 7.10 — ver correção acima.
+> </details>
 
 ### Versionamento e rollback (deploy único = bug atinge todas as empresas)
 - **Branches:** trabalhe sempre em `dev`. `main` é produção (sai o deploy); só recebe merge validado. Rollback = reverter o merge na `main`.

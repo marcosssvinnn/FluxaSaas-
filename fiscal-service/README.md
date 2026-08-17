@@ -73,8 +73,13 @@ troca de não ter custo de hospedagem nenhum. Ver decisão completa no plano.
   (obtido via RPC `iniciar_upload_certificado` no app principal). Retorna
   `{ok, cn, validoAte}` — nunca o arquivo/senha de volta.
 - `POST /emitir` — `Authorization: Bearer <jwt do usuário>`, body
-  `{empresaId, orcamentoId, municipioIbge, codigoTributacaoNacional, ambiente}`.
-  Valida que quem chama é gestor da empresa (via `meu_perfil()`, mesma função
-  que o resto do app usa), busca o orçamento e os dados fiscais da loja,
-  monta/assina/envia a DPS, grava o resultado em `notas_fiscais`.
+  `{empresaId, osId, codigoTributacaoNacional, ambiente}`. Gatilho é a **OS
+  concluída** (não o orçamento aprovado — mudou em 17/08, fato gerador do
+  ISS é o serviço prestado). Valida que quem chama é gestor da empresa (via
+  `meu_perfil()`, mesma função que o resto do app usa), busca a OS (e o
+  orçamento de origem, se houver, pra pegar subtotal/desconto) e os dados
+  fiscais da loja, monta/assina/envia a DPS, grava o resultado em
+  `notas_fiscais`. `ambiente:'producao'` fica bloqueado até o bloco de
+  tributação em `dps.js` ser validado contra a SEFIN Nacional real
+  (homologação sempre liberada).
 - `GET /saude` — healthcheck simples.

@@ -65,6 +65,21 @@ export async function buscarOrcamento(orcamentoId, empresaId) {
   return data;
 }
 
+// Fato gerador do ISS é o serviço PRESTADO, não o orçamento aprovado (nem
+// todo aprovado vira execução na hora) — confirmado por documento do
+// contador (17/08). A emissão passa a gatilhar na OS concluída, não no
+// orçamento; ver uso em server.js.
+export async function buscarOS(osId, empresaId) {
+  const { data, error } = await supabaseAdmin
+    .from("ordens_servico")
+    .select("*")
+    .eq("id", osId)
+    .eq("empresa_id", empresaId)
+    .single();
+  if (error) throw new Error(`OS não encontrada: ${error.message}`);
+  return data;
+}
+
 // O CNPJ/razão social do PRESTADOR (a empresa que emite a nota) vive em
 // `lojas`, não no orçamento — schema já tem esses campos fiscais (cnpj,
 // razao_social, inscricao_municipal, regime_tributario, codigo_servico_municipal,
