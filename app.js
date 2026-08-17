@@ -2141,26 +2141,46 @@ async function criarOSjunto(dados, orcNum){
   const tec=document.getElementById('os-inline-tec')?.value||CFG.nome;
   // Preserva produto_id para que a entrega de estoque via OS funcione corretamente
   const osSvcsData=dados.svcs.map(s=>({desc:s.desc||s.d||'',produto_id:s.produto_id||null,qty:s.qty||1,precoUnit:parseFloat(s.p||s.preco||0)||0}));
+  const camposBase={
+    orcamento_id:editId||null, cliente:dados.cli, cliente_id:dados.cliId||null,
+    local_servico:dados.loc, data_servico:data, hora, tecnico:tec,
+    servicos:osSvcsData, materiais:'', obs_tecnica:'', total:dados.tot, status:'agendado',
+    loja_id:dados.loja_id||LOJA_PADRAO_ID // faltava — OS ficava sem loja (as outras 2 rotas de criação de OS já mandam isso)
+  };
   let numStr='???';
+  let osSalvouOffline=false;
   try{
     if(dbOk&&db){
-      const {data:insOS}=await dbInsertNumerado('ordens_servico',{
-        orcamento_id:editId||null, cliente:dados.cli, cliente_id:dados.cliId||null,
-        local_servico:dados.loc, data_servico:data, hora, tecnico:tec,
-        servicos:osSvcsData, materiais:'', obs_tecnica:'', total:dados.tot, status:'agendado'
-      });
+      // Achado (17/08): o código antigo ignorava `error` e, quando o insert falhava,
+      // seguia em frente com numOS=1 por padrão — imprimia "OS #001" pro cliente como
+      // se tivesse dado certo, mas NADA tinha sido gravado no banco (perda silenciosa,
+      // mesma classe de bug do gerarOSPDF/criarOSdeAprovacao, que já tratam isso certo).
+      const {data:insOS,error}=await dbInsertNumerado('ordens_servico',camposBase);
+      if(error) throw error;
       const num=insOS?.numero||1;
       numStr=String(num).padStart(3,'0');
+      if(insOS) todosOS.unshift(insOS); // faltava — OS não aparecia no Histórico até um reload
     }else{
-      const n=(parseInt(ls('fluxa_os_num')||'0'))+1; lsSet('fluxa_os_num',n); numStr=String(n).padStart(3,'0');
+      const n=(parseInt(ls('fluxa_os_num')||'0'))+1; lsSet('fluxa_os_num',String(n));
+      _salvarOSLocal(camposBase, 'local_'+Date.now(), n);
+      numStr=String(n).padStart(3,'0'); osSalvouOffline=true;
     }
-    // Preenche ambos docs e imprime juntos
+  }catch(e){
+    console.warn('[criarOSjunto] falha ao salvar OS no banco — salvando local:', e?.message||e);
+    const n=(parseInt(ls('fluxa_os_num')||'0'))+1; lsSet('fluxa_os_num',String(n));
+    _salvarOSLocal(camposBase, 'local_'+Date.now(), n);
+    numStr=String(n).padStart(3,'0'); osSalvouOffline=true;
+  }
+  // O orçamento já foi salvo pelo chamador antes de chegar aqui — a impressão não
+  // pode ficar refém de uma falha só na parte da OS.
+  try{
     const numOrcStr=String(orcNum||0).padStart(3,'0');
     preencherDocOrc(dados, numOrcStr);
     const osDados={ cli:dados.cli, loc:dados.loc, data, hora, tec, tot:dados.tot, mat:'', obs:'', svcs:osSvcsData, loja_id:dados.loja_id||LOJA_PADRAO_ID };
     preencherDocOS(osDados, numStr);
     imprimirDoc('both');
-  }catch(e){ console.error('criarOSjunto:',e); toast('⚠️ Erro ao gerar OS: '+e.message); }
+    if(osSalvouOffline) toast('⚠️ OS #'+numStr+' salva só neste aparelho — sincroniza quando reconectar');
+  }catch(e){ console.error('criarOSjunto:',e); toast('⚠️ Erro ao gerar o documento: '+e.message); }
 }
 
 // ── Modal: Criar OS a partir da aprovação do orçamento ──
