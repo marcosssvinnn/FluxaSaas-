@@ -2913,6 +2913,7 @@ async function gerarPDF(){
     editId=tempId;
     logAcao('orcamento_criado', `#${num} ${camposBase.cliente||''} · R$ ${(camposBase.total||0).toFixed(2)}`);
     if(dbOk&&db){
+      _orcSyncInFlight.add(tempId); // trava reenvio concorrente (loadHist) até terminar — mesma trava do salvarApenas, faltava aqui (causava duplicata)
       (async()=>{
         try{
           const fotosUp = await _fotosParaStorage(camposBase.foto_base64, tempId, 'orcamentos-fotos');
@@ -2922,13 +2923,14 @@ async function gerarPDF(){
           if(ins){
             lsOrcRemover(tempId);
             lsOrcUpsert(ins);
-            todosOrc=todosOrc.filter(x=>x.id!==tempId);
+            todosOrc=todosOrc.filter(x=>x.id!==tempId&&x.id!==ins.id); // remove tempId + eventual cópia já trazida pelo Realtime, antes de reinserir
             todosOrc.unshift(ins);
             if(editId===tempId) editId=ins.id; // só atualiza se AINDA estiver neste orçamento
             num=ins.numero;
             atualizarDash(); renderTabela();
           }
         }catch(e){ console.warn('gerarPDF: sync BD falhou:', e?.message||e); }
+        finally{ _orcSyncInFlight.delete(tempId); }
       })();
     }
   }
