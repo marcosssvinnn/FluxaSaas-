@@ -769,8 +769,23 @@
       <button onclick="go('history')" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:13px;font-weight:600;font-family:'Inter',sans-serif;display:flex;align-items:center;gap:5px">← Voltar ao Histórico</button>
       <span id="form-back-label" style="font-size:12px;color:var(--gray)"></span>
     </div>
+
+    <!-- Wizard mobile (17/08, portado do fluxa-app v1) — abaixo de 900px,
+         só um dos 3 passos fica visível por vez (_orcApplyMobileStep
+         esconde os outros via style.display, nunca tira do DOM — o
+         rascunho automático e a prévia de WhatsApp leem os campos direto,
+         não a visibilidade, então continuam funcionando iguais em
+         qualquer passo). Some no desktop (os cards sempre ficam visíveis,
+         como antes). -->
+    <div class="novo-orc-steps" id="novo-orc-steps">
+      <button type="button" onclick="_orcIrParaPasso(1)"><span></span>Cliente</button>
+      <button type="button" onclick="_orcIrParaPasso(2)"><span></span>Serviços</button>
+      <button type="button" onclick="_orcIrParaPasso(3)"><span></span>Finalizar</button>
+    </div>
+    <div class="novo-orc-nav" id="novo-orc-nav" style="display:flex;gap:8px"></div>
+
     <!-- CLIENTE -->
-    <div class="card">
+    <div class="card" id="orc-step-cliente">
       <div class="ct">Dados do Cliente</div>
       <div class="row">
         <div class="fl">
@@ -875,7 +890,7 @@
     </div>
 
     <!-- SERVIÇOS -->
-    <div class="card">
+    <div class="card" id="orc-step-servicos-card">
       <div class="ct">Serviços</div>
       <div class="presets-hd">Adicionar rápido:</div>
       <div class="presets" id="presets"></div>
@@ -893,6 +908,8 @@
       </div>
     </div>
 
+    <!-- FINALIZAR (Escopo/Obs/Fotos + Prévia + OS + Ações) — passo 3 do wizard mobile -->
+    <div id="orc-step-final">
     <!-- ESCOPO + OBS + FOTO -->
     <div class="card">
       <div class="ct">Descrição e Observações</div>
@@ -965,6 +982,7 @@
         Gerar PDF
       </button>
     </div>
+    </div><!-- /orc-step-final -->
   </div>
 </div>
 
@@ -2538,6 +2556,14 @@
       <!-- Vistoria por equipamento -->
       <div class="card" id="vis-equip-card" style="display:none">
         <div class="ct">🔧 Vistoria dos Equipamentos</div>
+        <!-- Mobile (17/08, portado do fluxa-app v1) — barra de progresso
+             "N de M vistoriados". Some no desktop; os cards de equipamento
+             em si (status Bom/Atenção/Crítico, observação, fotos) não
+             mudam nada. -->
+        <div class="vis-progresso-mobile" id="vis-progresso-mobile" style="display:none">
+          <div class="vis-progresso-hdr"><span>Equipamentos</span><span id="vis-progresso-txt">0 de 0 vistoriados</span></div>
+          <div class="vis-progresso-barra"><div id="vis-progresso-fill" style="width:0%"></div></div>
+        </div>
         <div class="vis-equip-grid" id="vis-equip-grid"></div>
       </div>
 
@@ -2549,8 +2575,9 @@
         </div>
       </div>
 
-      <!-- Ações -->
-      <div class="acts" style="grid-template-columns:1fr">
+      <!-- Ações — vira barra fixa no rodapé abaixo de 680px (17/08),
+           mesmo botão/função de sempre, só reposicionado. -->
+      <div class="acts" id="vis-acts-bottom" style="grid-template-columns:1fr">
         <button class="btn-primary" style="font-size:15px;padding:14px" onclick="finalizarVistoria()">
           ✅ Finalizar Vistoria
         </button>

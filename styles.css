@@ -1502,3 +1502,47 @@
       .vb-topbar-titulo{display:none}
       .vb-topbar-loja{display:none}
     }
+
+    /* ══════════════════════════════════════════════════════════════════
+       WIZARD MOBILE — NOVO ORÇAMENTO (17/08, portado do fluxa-app v1)
+       Abaixo de 900px, só um dos 3 passos (Cliente/Serviços/Finalizar)
+       fica visível por vez — ver _orcApplyMobileStep()/_orcIrParaPasso()
+       em app.js. Some no desktop (os 3 cards ficam sempre visíveis, como
+       antes do wizard existir).
+       ── */
+    .novo-orc-steps{display:none}
+    .novo-orc-nav{display:none}
+    @media(max-width:900px){
+      .novo-orc-steps{display:flex;gap:6px;margin-bottom:10px}
+      .novo-orc-steps button{flex:1;background:none;border:none;padding:0;cursor:pointer;display:flex;flex-direction:column;gap:5px;font-family:'Instrument Sans',sans-serif}
+      .novo-orc-steps button span{height:3px;border-radius:2px;background:var(--line)}
+      .novo-orc-steps button{font-size:11px;font-weight:500;color:var(--tx3)}
+      .novo-orc-steps button.done span{background:var(--c1)}
+      .novo-orc-steps button.on span{background:var(--c1)}
+      .novo-orc-steps button.on{color:var(--c1);font-weight:600}
+      .novo-orc-nav{display:flex;gap:8px;position:sticky;top:8px;z-index:20;margin-bottom:14px}
+      .novo-orc-nav button{font-family:'Instrument Sans',sans-serif;font-size:13px;font-weight:600;border-radius:10px;padding:11px;cursor:pointer;border:none;box-shadow:0 4px 14px -6px rgba(16,28,48,.28)}
+      .novo-orc-nav .orc-nav-voltar{flex:1;background:#fff;color:#333C4A;border:1px solid var(--line)!important}
+      .novo-orc-nav .orc-nav-prox{flex:1.6;background:var(--c1);color:#fff}
+    }
+
+    /* Vistoria mobile (17/08, portado do fluxa-app v1) — barra de
+       progresso "N de M vistoriados" + ações fixas no rodapé, abaixo de
+       680px (mesmo corte da nav inferior).
+       ⚠️ Achado ao testar: o v1 original não tem uma regra BASE de
+       display:none pra `.vis-progresso-mobile` fora da media query — só o
+       atributo inline `style="display:none"` do HTML, que o JS
+       (renderVisEquipGrid) limpa (`prog.style.display=''`) assim que há
+       equipamento selecionado. Sem uma regra de classe cobrindo desktop,
+       isso vaza a barra pra tela grande depois da primeira renderização.
+       Aqui a classe cobre os dois estados explicitamente, não depende do
+       inline. */
+    .vis-progresso-mobile{display:none}
+    .vis-progresso-hdr{display:flex;justify-content:space-between;font-size:12px;color:var(--gray);margin-bottom:6px}
+    .vis-progresso-barra{height:5px;border-radius:3px;background:var(--gray-light);overflow:hidden}
+    .vis-progresso-barra div{height:100%;background:var(--c1);border-radius:3px;transition:width .2s}
+    @media(max-width:680px){
+      .vis-progresso-mobile{display:block;margin-bottom:12px}
+      #page-visitas .wrap{padding-bottom:100px}
+      #vis-acts-bottom{position:fixed;left:0;right:0;bottom:64px;z-index:40;background:#fff;border-top:1px solid var(--line);padding:12px 14px;margin:0;box-shadow:0 -6px 16px -8px rgba(16,28,48,.18)}
+    }

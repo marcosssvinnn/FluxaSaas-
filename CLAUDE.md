@@ -3117,3 +3117,45 @@ maior, à parte, não incluído aqui.
   de lista/formulário de nenhuma das 5 telas pro grid `.rd-table`/
   `.rd-row`; telas mobile específicas (task #38); fila unificada de
   insights (task #45).
+
+### Continuação (17/08) — Telas mobile: wizard de Orçamento + progresso de Vistoria (task #38)
+
+Investiguei o que "wizard literal" de fato significa no v1 antes de portar
+qualquer coisa — os 3 nomes da task (Novo Orçamento/Insights/Vistoria)
+eram 3 tratamentos mobile BEM diferentes lá, não a mesma ideia repetida:
+
+- **Novo Orçamento** — de fato um wizard: 3 passos (Cliente/Serviços/
+  Finalizar), só um visível por vez abaixo de 900px. **Portado.**
+  `_orcApplyMobileStep()`/`_orcIrParaPasso()`/`_orcMobileFinalizar()` —
+  campos NUNCA saem do DOM (só `style.display`), então rascunho automático
+  e prévia de WhatsApp continuam lendo tudo igual. Indicador de passos
+  clicável + barra de navegação Voltar/Próximo `position:sticky` (adaptei
+  a barra fixa no rodapé do v1 pra sticky — mais simples, sem precisar
+  duplicar o total nem calcular offset do `.mob-nav`). Validação: se
+  faltar cliente/local/origem ao tentar finalizar, volta pro passo 1 antes
+  de disparar o erro (senão apontaria pra campo escondido). Reseta pro
+  passo 1 sempre que entra na tela (novo, editar ou duplicar).
+- **Insights** — no v1 é um "hero" mobile alternativo (cards diferentes +
+  barra segmentada por estágio do funil) substituindo a faixa de 4 KPIs.
+  **Não portado, decisão consciente**: testei o Painel do v2 em 375px e a
+  grade `.rd-card` responsiva (já existente desde a fundação visual, task
+  #30) já se reorganiza bem em 2 colunas sem overflow nem quebra — construir
+  um componente "hero" inteiro à parte seria trabalho redundante sem
+  ganho real de usabilidade sobre o que já existe.
+- **Vistoria** — barra de progresso "N de M vistoriados" no card de
+  equipamentos + o botão "Finalizar Vistoria" virando barra fixa no
+  rodapé abaixo de 680px. **Portado.** Conta como "vistoriado" só
+  bom/atenção/crítico (N/A é o valor padrão ao adicionar um equipamento —
+  contá-lo fingiria progresso que não existe).
+  **Bug real achado e corrigido durante o teste** (existe também no v1
+  original, não é regressão minha): a barra de progresso não tinha uma
+  regra CSS de `display:none` fora da media query — só o atributo inline
+  do HTML, que o próprio `renderVisEquipGrid()` limpa assim que há
+  equipamento selecionado. Sem uma regra de classe cobrindo desktop, a
+  barra vazava pra tela grande depois da primeira renderização. Corrigido
+  com `.vis-progresso-mobile{display:none}` como regra base, antes da
+  media query.
+- Testado no Browser pane em 375×812 e 1280×800: wizard de Orçamento
+  (passo a passo, validação, reset ao reabrir, comportamento desktop
+  inalterado), progresso de Vistoria (contagem, barra fixa não sobrepõe a
+  nav inferior do app, escondido corretamente em desktop após o fix).

@@ -2036,6 +2036,10 @@ function go(p){
     if(!editId && lojaAtiva) setV('orc-loja', lojaAtiva);
     // Garante base de clientes atualizada para o autocomplete
     carregarClientesRemoto();
+    // Wizard mobile (17/08) — sempre começa no passo 1, seja novo, editando
+    // ou duplicando (mesmo comportamento do fluxa-app v1).
+    _orcMobileStep=1;
+    if(typeof _orcApplyMobileStep==='function') _orcApplyMobileStep();
   }
   if(p==='os-history') loadOSHist();
   if(p==='clientes'){ renderClientes(); carregarClientesRemoto(); }
@@ -2548,6 +2552,57 @@ function txtWA(){
   return tx;
 }
 function gerarPrev(){ document.getElementById('prev-wa').textContent=txtWA(); }
+
+// ══════════════════════════════════════════════════════════════════════
+//  WIZARD MOBILE — NOVO ORÇAMENTO (17/08, portado do fluxa-app v1)
+//  Abaixo de 900px, só um dos 3 cards fica visível por vez. Os campos
+//  NUNCA saem do DOM (só style.display), então tudo que lê .value direto
+//  — rascunho automático, prévia de WhatsApp — continua funcionando igual
+//  em qualquer passo.
+// ══════════════════════════════════════════════════════════════════════
+let _orcMobileStep=1;
+function _orcIsMobileWizard(){ return window.innerWidth<=900 && !!document.getElementById('novo-orc-steps'); }
+const _ORC_STEP_GRUPOS={
+  1:['orc-step-cliente'],
+  2:['orc-step-servicos-card'],
+  3:['orc-step-final']
+};
+function _orcApplyMobileStep(){
+  const mobile=_orcIsMobileWizard();
+  Object.keys(_ORC_STEP_GRUPOS).forEach(k=>{
+    const show=!mobile||Number(k)===_orcMobileStep;
+    _ORC_STEP_GRUPOS[k].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display=show?'':'none'; });
+  });
+  const botoes=document.querySelectorAll('#novo-orc-steps button');
+  botoes.forEach((btn,i)=>{
+    btn.classList.toggle('on', (i+1)===_orcMobileStep);
+    btn.classList.toggle('done', (i+1)<_orcMobileStep);
+  });
+  const nav=document.getElementById('novo-orc-nav'); if(!nav) return;
+  const voltar=_orcMobileStep>1?`<button type="button" class="orc-nav-voltar" onclick="_orcIrParaPasso(${_orcMobileStep-1})">← Voltar</button>`:'';
+  const proximo=_orcMobileStep<3
+    ?`<button type="button" class="orc-nav-prox" onclick="_orcIrParaPasso(${_orcMobileStep+1})">Próximo →</button>`
+    :`<button type="button" class="orc-nav-prox" onclick="_orcMobileFinalizar()">Gerar PDF →</button>`;
+  nav.innerHTML=voltar+proximo;
+}
+function _orcIrParaPasso(n){
+  _orcMobileStep=Math.min(3,Math.max(1,n));
+  _orcApplyMobileStep();
+  window.scrollTo({top:document.getElementById('novo-orc-steps')?.offsetTop-8||0, behavior:'smooth'});
+}
+// Confirma os campos obrigatórios do passo 1 (cliente/local/origem — os
+// mesmos que salvarApenas()/gerarPDF() já validam) ANTES de chamar a
+// função real: se faltar algo, volta pro passo 1 primeiro, senão o toast
+// de erro apontaria pra um campo escondido nos passos 2/3.
+function _orcMobileFinalizar(){
+  if(!gV('cli')||!gV('loc')||!gV('origem-cli')){
+    _orcIrParaPasso(1);
+    toast('⚠️ Complete os dados do cliente antes de gerar o PDF');
+    return;
+  }
+  gerarPDF();
+}
+window.addEventListener('resize', ()=>{ if(document.getElementById('page-form')?.classList.contains('on')) _orcApplyMobileStep(); });
 function copiarWA(){ navigator.clipboard.writeText(txtWA()).then(()=>toast('✅ Copiado!')).catch(()=>toast('✅ Copiado!')); }
 function enviarWA(){
   let tel=(gV('tel-cli')||'').replace(/\D/g,'');
@@ -8782,6 +8837,26 @@ function renderVisEquipGrid(){
       el.appendChild(buildEquipBlock(id,def.emoji,def.nome,d,'',''));
     });
   }
+
+  // Barra de progresso mobile (17/08, portado do fluxa-app v1) — conta
+  // quem já tem status marcado (bom/atenção/crítico/N-A contam como
+  // "vistoriado", só pendente é quem ainda não recebeu toque nenhum nos
+  // botões de status). "na" é o valor padrão gravado assim que o
+  // equipamento é ADICIONADO, antes de qualquer avaliação real — não dá
+  // pra diferenciar "nunca tocado" de "usuário confirmou N/A" sem mudar o
+  // dado, então conta só bom/atenção/crítico: mais conservador (um N/A
+  // real fica "pendente" pra sempre), mas não finge progresso que não
+  // existe — 100% de cara em tudo seria pior.
+  (function(){
+    const prog=document.getElementById('vis-progresso-mobile'); if(!prog) return;
+    const ordem=[...customIds, ...stdIds];
+    if(!ordem.length){ prog.style.display='none'; return; }
+    prog.style.display=''; // deixa a media query decidir (bloco no mobile, oculto no desktop)
+    const feitos=ordem.filter(id=>{ const st=visEquipDados[id]?.status; return st&&st!=='na'; }).length;
+    setV_el('vis-progresso-txt', feitos+' de '+ordem.length+' vistoriados','textContent');
+    const fill=document.getElementById('vis-progresso-fill');
+    if(fill) fill.style.width=Math.round(feitos/ordem.length*100)+'%';
+  })();
 }
 
 function buildEquipBlock(id,emoji,nome,d,modelo,potencia){
