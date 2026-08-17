@@ -130,9 +130,16 @@ function aplicarPermissoesPerfil(){
   }
   // Preenche os selects de empresa dos formulários a partir da config das lojas
   popularSelectsLojaForm();
-  // Carrega estoque em background (gestor) — necessário p/ baixa automática e reservado
-  if(eGestor()){ try{ loadEstoque(); }catch(e){ console.warn('[boot loadEstoque]', e?.message||e); } }
-  if(typeof loadVendasBalcao==='function') Promise.resolve(loadVendasBalcao()).catch(e=>console.warn('[boot loadVendasBalcao]', e?.message||e));
+  // Carrega estoque/vendas balcão em background — necessário p/ baixa automática e
+  // reservado. setTimeout(...,0) é proposital: isto roda dentro do prefixo síncrono
+  // do IIFE de boot (antes do primeiro await, linha ~1322), quando o resto do
+  // arquivo — que declara todosFornecedores/todasOC/todosProdutos/todasVendasBalcao
+  // com `let` bem mais abaixo (seção Estoque, linha 10000+) — ainda não rodou.
+  // Chamar direto aqui derruba com TDZ ("Cannot access ... before initialization").
+  // setTimeout empurra pro fim da fila de tarefas, depois que o script inteiro (e
+  // todos os `let` tardios) já executou.
+  setTimeout(()=>{ if(eGestor()){ try{ loadEstoque(); }catch(e){ console.warn('[boot loadEstoque]', e?.message||e); } } }, 0);
+  setTimeout(()=>{ if(typeof loadVendasBalcao==='function') Promise.resolve(loadVendasBalcao()).catch(e=>console.warn('[boot loadVendasBalcao]', e?.message||e)); }, 0);
 
   // ── Gear menu ──
   // Regras por id
