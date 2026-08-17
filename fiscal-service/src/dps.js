@@ -132,22 +132,38 @@ export function montarXmlDPS({
     ? `<vDescCondIncond><vDescIncond>${vDescIncond}</vDescIncond></vDescCondIncond>`
     : "";
 
-  // ⚠️ NÃO IMPLEMENTADO DE PROPÓSITO: o bloco <trib> (tributação/ISS) da DPS.
-  // MEI paga ISS fixo dentro do DAS — a nota deveria sair sem alíquota/valor
-  // de ISS destacado, mas a forma EXATA de declarar isso no XML da DPS
-  // (nome dos elementos dentro de <trib>, se existe uma flag específica de
-  // "optante MEI" tipo <regTrib>/<opSimpNac>, etc.) eu não tenho como
-  // confirmar sem consultar o XSD oficial de novo ou testar contra a SEFIN
-  // Nacional de verdade — e adivinhar campo de schema de governo é
-  // exatamente o erro que este arquivo já corrigiu uma vez (ver comentário
-  // no topo do arquivo sobre o código morto do v1). Por isso:
-  // 1) esta função ainda NÃO monta <trib> nenhum;
-  // 2) enviarDPS() (sefinClient.js)/server.js devem continuar recusando
-  //    ambiente:'producao' até isso ser resolvido;
-  // 3) resolver isso é o próximo passo real do Marco 0 (teste contra
-  //    homologação com o certificado de verdade do Marcos) — a resposta do
-  //    governo (aceita/rejeita/pede campo faltando) é a forma confiável de
-  //    descobrir o formato certo, não uma segunda tentativa de adivinhação.
+  // Regime tributário do PRESTADOR — declara "sou MEI" pro governo, dentro
+  // de <prest>. Achado em 17/08 pesquisando o SDK open-source
+  // nfse-nacional/nfse-php (github.com/nfse-nacional/nfse-php,
+  // RegimeTributarioData.php), que mapeia os campos do schema oficial do
+  // Sistema Nacional NFS-e — não é a fonte primária (XSD/manual do
+  // gov.br/nfse), mas é uma implementação de terceiros documentada e
+  // consistente com tudo que já sabíamos (a lista de valores bate:
+  // 1=Não optante, 2=Optante MEI, 3=Optante ME/EPP). `opSimpNac=2` é o
+  // valor de MEI; `regEspTrib=0` é "nenhum regime especial" (não é
+  // cooperativa/cartório/profissional autônomo etc., que teriam outros
+  // códigos). `regApTribSN` (regime de apuração SN) só é exigido quando
+  // opSimpNac=3 (ME/EPP) — omitido aqui de propósito, não se aplica a MEI.
+  const regTrib = `<regTrib><opSimpNac>2</opSimpNac><regEspTrib>0</regEspTrib></regTrib>`;
+
+  // Tributação da OPERAÇÃO (dentro de <valores>) — separado do regime do
+  // prestador acima. tribISSQN=1 (operação tributável normalmente — não é
+  // exportação/imunidade/não-incidência) e tpRetISSQN=1 (não retido —
+  // retenção de ISS é VEDADA pro MEI por lei, Resolução CGSN 140/2018 art.
+  // 103 IV, confirmado pelo contador). NÃO inclui pAliq/vISSQN: são campos
+  // opcionais no schema (confirmado no mesmo SDK) e o MEI não calcula ISS
+  // por nota — é valor fixo dentro do DAS, não faz sentido destacar uma
+  // alíquota/valor aqui. Se a SEFIN Nacional rejeitar por exigir algum
+  // desses, o retorno do teste em homologação (Marco 0) vai dizer
+  // exatamente o quê — não adivinhar de novo antes disso.
+  const trib = `<trib><tribMun><tribISSQN>1</tribISSQN><tpRetISSQN>1</tpRetISSQN></tribMun></trib>`;
+
+  // ⚠️ Ainda pendente de verificação real (Marco 0, passo 4): este bloco
+  // nunca foi testado contra a SEFIN Nacional de verdade. A fonte dos
+  // nomes de campo é um SDK de terceiros, não o XSD oficial relido nem um
+  // round-trip real — por isso ambiente:'producao' continua bloqueado em
+  // server.js até um teste real em homologação confirmar que isso é aceito
+  // (ou dizer o que falta).
   return (
     `<DPS>` +
     `<infDPS xmlns="http://www.sped.fazenda.gov.br/nfse" Id="${idDPS}">` +
@@ -159,13 +175,13 @@ export function montarXmlDPS({
     `<dCompet>${competencia}</dCompet>` +
     `<tpEmit>1</tpEmit>` +
     `<cLocEmi>${municipioEmissaoIbge}</cLocEmi>` +
-    `<prest><CNPJ>${prestadorCnpj}</CNPJ><xNome>${escapeXml(prestadorNome)}</xNome></prest>` +
+    `<prest><CNPJ>${prestadorCnpj}</CNPJ><xNome>${escapeXml(prestadorNome)}</xNome>${regTrib}</prest>` +
     `<toma><${tomadorDoc.tipo}>${tomadorDoc.valor}</${tomadorDoc.tipo}><xNome>${escapeXml(tomadorNome)}</xNome></toma>` +
     `<serv>` +
     `<locPrest><cLocPrestacao>${municipioPrestacaoIbge}</cLocPrestacao></locPrest>` +
     `<cServ><cTribNac>${codigoTributacaoNacional}</cTribNac><xDescServ>${escapeXml(xDescServ)}</xDescServ></cServ>` +
     `</serv>` +
-    `<valores><vServPrest><vServ>${vServ}</vServ></vServPrest>${descCondIncond}</valores>` +
+    `<valores><vServPrest><vServ>${vServ}</vServ></vServPrest>${descCondIncond}${trib}</valores>` +
     `</infDPS>` +
     `</DPS>`
   );

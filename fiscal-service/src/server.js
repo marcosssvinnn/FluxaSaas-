@@ -100,14 +100,17 @@ app.post("/emitir", async (req, res) => {
 
     const dadosFiscaisLoja = await buscarDadosFiscaisLoja(os.loja_id);
 
-    // Ambiente de produção fica bloqueado até o bloco de tributação (ISS
-    // fixo do MEI) ser validado contra a SEFIN Nacional de verdade — ver
-    // comentário em dps.js. Homologação continua liberada (é exatamente
-    // onde essa validação precisa acontecer, com o Marcos presente e o
-    // certificado real — Marco 0, passo 4 do plano).
+    // Ambiente de produção fica bloqueado até o bloco de tributação (regTrib/
+    // opSimpNac=2 — declaração de MEI, ver dps.js) ser validado contra a
+    // SEFIN Nacional de verdade. A fonte dos nomes de campo (17/08) é um SDK
+    // de terceiros que mapeia o schema oficial, não o XSD/manual do governo
+    // relido nem um round-trip real — melhor confiança que uma adivinhação
+    // do zero, mas ainda não confirmado. Homologação continua liberada (é
+    // exatamente onde essa validação precisa acontecer, com o Marcos
+    // presente e o certificado real — Marco 0, passo 4 do plano).
     if (ambiente === "producao") {
       return res.status(400).json({
-        erro: "Emissão em produção ainda bloqueada — a declaração de tributação (ISS fixo do MEI) não foi validada contra a SEFIN Nacional real. Use homologação primeiro.",
+        erro: "Emissão em produção ainda bloqueada — a declaração de tributação do MEI (regTrib/opSimpNac) ainda não foi confirmada por um teste real contra a SEFIN Nacional. Use homologação primeiro.",
       });
     }
 

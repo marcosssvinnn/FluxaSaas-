@@ -185,17 +185,29 @@ com uma query de leitura (não confie só em "não deu erro").
 >   `orcamentoId`), busca a OS, exige `status==='concluido'`, e usa o
 >   orçamento de origem (`os.orcamento_id`) só pra pegar subtotal/desconto
 >   detalhados quando existir um.
-> - **NÃO implementado, bloqueado de propósito:** o bloco `<trib>`
->   (tributação/ISS) da DPS em si. MEI deveria sair sem alíquota/valor de
->   ISS destacado, mas a forma EXATA de declarar isso no XML (nome dos
->   elementos, se existe flag de "optante MEI") eu não tenho como confirmar
->   sem consultar o XSD oficial de novo ou testar contra a SEFIN Nacional —
->   e adivinhar campo de schema de governo é exatamente o erro que este
->   arquivo já cometeu uma vez (o achado de 2026-07-20 acima). Por isso
->   `/emitir` **recusa `ambiente:'producao'` explicitamente** até isso ser
->   validado — só homologação fica liberada, que é onde essa validação
->   precisa acontecer (Marco 0, passo 4, com o Marcos presente e o
->   certificado real).
+> - **Bloco `<trib>` (tributação/ISS) da DPS — implementado em 17/08,
+>   ainda não confirmado por teste real.** Pesquisei o SDK open-source
+>   `nfse-nacional/nfse-php` (github.com/nfse-nacional/nfse-php,
+>   `RegimeTributarioData.php`/`TributacaoData.php`), que mapeia os campos
+>   do schema oficial do Sistema Nacional NFS-e — não é a fonte primária
+>   (XSD/manual do gov.br/nfse), mas é uma implementação de terceiros
+>   documentada, com enumeração de valores consistente com tudo que já
+>   sabíamos. Campos implementados em `dps.js`:
+>   - `<prest><regTrib><opSimpNac>2</opSimpNac><regEspTrib>0</regEspTrib>` —
+>     `opSimpNac=2` é literalmente "Optante - Microempreendedor Individual
+>     (MEI)" (1=não optante, 3=optante ME/EPP); `regEspTrib=0` é "nenhum
+>     regime especial" (não é cooperativa/cartório/profissional autônomo).
+>   - `<valores><trib><tribMun><tribISSQN>1</tribISSQN><tpRetISSQN>1</tpRetISSQN>` —
+>     operação tributável normalmente, não retida (retenção é vedada pro
+>     MEI por lei).
+>   - `pAliq`/`vISSQN` deliberadamente OMITIDOS: são campos opcionais no
+>     schema e o MEI não calcula ISS por nota (é fixo no DAS) — não fazia
+>     sentido inventar um valor de alíquota que não se aplica.
+>   `/emitir` continua **recusando `ambiente:'producao'` explicitamente**
+>   até um teste real em homologação confirmar que isso é aceito (ou dizer
+>   o que falta) — a fonte é de terceiros, não o XSD oficial relido nem um
+>   round-trip real. Só homologação fica liberada (Marco 0, passo 4, com o
+>   Marcos presente e o certificado real).
 > - **Achado novo, também bloqueando:** não existe coluna de CPF em
 >   NENHUMA tabela (nem `orcamentos`, nem `ordens_servico`) — só CNPJ. Pra
 >   cliente pessoa física (parte real do negócio: "casas e residências de
