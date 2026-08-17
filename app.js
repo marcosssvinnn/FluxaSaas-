@@ -2247,6 +2247,7 @@ function _limparCamposOrc(){
   const tog=document.getElementById('toggle-os'); if(tog) tog.checked=false;
   const osf=document.getElementById('os-inline-fields'); if(osf) osf.style.display='none';
   ['os-inline-data','os-inline-hora','os-inline-tec'].forEach(id=>{const el=document.getElementById(id);if(el){el.value=id==='os-inline-hora'?'08:00':'';}});
+  const tov=document.getElementById('toggle-ocultar-valores'); if(tov) tov.checked=false;
   const bb=document.getElementById('form-back-bar'); if(bb) bb.style.display='none';
 }
 function novoOrc(){
@@ -2520,6 +2521,7 @@ function txtWA(){
   }
   const nome1=cli.split(' ')[0]; // primeiro nome
   const vals=svcs.filter(s=>s.d.trim());
+  const ocultarValores=document.getElementById('toggle-ocultar-valores')?.checked;
   let tx=`Olá, *${nome1}*! 👋\n\n`;
   tx+=`Preparei o orçamento que você solicitou. Segue abaixo:\n\n`;
   tx+=`━━━━━━━━━━━━━━━━━━━━━━━\n`;
@@ -2535,7 +2537,7 @@ function txtWA(){
       const pUnit=parseFloat(sv.p)||0;
       const pTotal=gP(sv);
       let detalhe='';
-      if(pTotal>0){
+      if(!ocultarValores&&pTotal>0){
         if(temMultiWA&&qty>1) detalhe=` — ${qty}× ${brl(pUnit)} = *${brl(pTotal)}*`;
         else detalhe=` — *${brl(pTotal)}*`;
       }
@@ -2543,7 +2545,7 @@ function txtWA(){
     });
     tx+=`\n`;
   }
-  if(d>0){
+  if(!ocultarValores&&d>0){
     tx+=`Subtotal: ${brl(s)}\n`;
     tx+=`🎁 Desconto especial: *− ${brl(d)}*\n\n`;
   }
@@ -2783,6 +2785,7 @@ async function salvarApenas(){
       validade_dias:dados.dias, validade_data:dados.vData,
       data_servico:dados.dataSvc, escopo:dados.escopo, obs:dados.obs,
     municipio_servico_ibge:dados.municipioServico||null,
+    ocultar_valores:dados.ocultarValores||false,
       foto_base64:fotosB64.filter(Boolean).length?JSON.stringify(fotosB64.filter(Boolean)):null, nota_interna:gV('nota-interna')||null
     };
 
@@ -2880,6 +2883,7 @@ async function gerarPDF(){
     validade_dias:dados.dias, validade_data:dados.vData,
     data_servico:dados.dataSvc, escopo:dados.escopo, obs:dados.obs,
     municipio_servico_ibge:dados.municipioServico||null,
+    ocultar_valores:dados.ocultarValores||false,
     foto_base64:fotosB64.filter(Boolean).length?JSON.stringify(fotosB64.filter(Boolean)):null, nota_interna:gV('nota-interna')||null
   };
   let num=null;
@@ -2978,6 +2982,7 @@ function coletarForm(){
   return { cli:gV('cli')||'—', cliId:gV('cli-id')||null, loc:gV('loc'), tel:gV('tel-cli'), cnpj:gV('cnpj-cli'), cpf:gV('cpf-cli'),
     loja_id:gV('orc-loja')||LOJA_PADRAO_ID,
     origem:getOrigemCli(),
+    ocultarValores:document.getElementById('toggle-ocultar-valores')?.checked||false,
     pag:gV('pag'), pagFormatado:formatPagamento(gV('pag'),tot()),
     pagParcelas:parseInt(gV('pag-parcelas'))||null,
     pagEntrada:parseFloat((gV('pag-entrada')||'').replace(',','.'))||null,
@@ -3016,14 +3021,19 @@ function preencherDocOrc(d, num){
   setV_el('pd-foot-orc',LC.nome+(LC.tel?'   ·   '+LC.tel:'')+(LC.cidades?'   ·   '+LC.cidades:''),'textContent');
   // table body
   const tb=document.getElementById('pd-tbody-orc'); tb.innerHTML='';
-  const temMulti=d.svcs.some(s=>(parseInt(s.qty)||1)>1);
-  document.getElementById('pd-thead-orc').innerHTML=temMulti
-    ?'<th>#</th><th>Descrição</th><th>Qtd × Unit.</th><th>Total</th>'
-    :'<th>#</th><th>Descrição</th><th>Valor</th>';
+  const ocultarValores=!!d.ocultarValores;
+  const temMulti=!ocultarValores&&d.svcs.some(s=>(parseInt(s.qty)||1)>1);
+  document.getElementById('pd-thead-orc').innerHTML=ocultarValores
+    ?'<th>#</th><th>Descrição</th>'
+    :temMulti
+      ?'<th>#</th><th>Descrição</th><th>Qtd × Unit.</th><th>Total</th>'
+      :'<th>#</th><th>Descrição</th><th>Valor</th>';
   d.svcs.forEach((s,i)=>{
     const tr=document.createElement('tr');
     const qty=parseInt(s.qty)||1;
-    if(temMulti){
+    if(ocultarValores){
+      tr.innerHTML=`<td>${i+1}</td><td>${esc(s.desc)}</td>`;
+    } else if(temMulti){
       const qtyUnit=s.preco>0?`${qty} × ${brl(s.precoUnit||0)}`:'—';
       const total=s.preco>0?brl(s.preco):'—';
       tr.innerHTML=`<td>${i+1}</td><td>${esc(s.desc)}</td><td>${qtyUnit}</td><td>${total}</td>`;
@@ -3035,7 +3045,7 @@ function preencherDocOrc(d, num){
   // totals block (below table, outside table element)
   const tw=document.getElementById('pd-totals-orc');
   let th='';
-  if(d.desc>0){
+  if(!ocultarValores&&d.desc>0){
     th+=`<div class="pd-tot-row"><span>Subtotal</span><span>${brl(d.sub)}</span></div>`;
     th+=`<div class="pd-tot-row is-dis"><span>Desconto aplicado</span><span>− ${brl(d.desc)}</span></div>`;
   }
@@ -4076,6 +4086,7 @@ function abrirOrc(id){
   setOrigemCli(o.origem_cliente||'');
   // Restaura desconto salvo (bug: antes o desconto sumia ao editar e salvar)
   setV('disc-v',o.desconto>0?String(o.desconto):''); setV('disc-t','R$');
+  { const tov=document.getElementById('toggle-ocultar-valores'); if(tov) tov.checked=!!o.ocultar_valores; }
   svcs=(o.servicos||[]).map(s=>({id:Date.now()+Math.random(),d:s.desc,p:String(s.precoUnit||s.preco||''),qty:s.qty||1,produto_id:s.produto_id||null}));
   if(!svcs.length) svcs=[{id:Date.now(),d:'',p:''}];
   // Compatibilidade: antigo=string, novo=JSON array
@@ -4103,7 +4114,8 @@ function verOrcPDF(id){
     dataSvc:o.data_servico||'', vData:o.validade_data||'',
     dataStr:new Date(o.data_criacao||Date.now()).toLocaleDateString('pt-BR'),
     sub:o.subtotal||0, desc:o.desconto||0, tot:o.total||0,
-    svcs:o.servicos||[], loja_id:o.loja_id||LOJA_PADRAO_ID
+    svcs:o.servicos||[], loja_id:o.loja_id||LOJA_PADRAO_ID,
+    ocultarValores:!!o.ocultar_valores
   };
   const savedFotos=[...fotosB64];
   try{ const raw=o.foto_base64||''; fotosB64=raw.startsWith('[')?JSON.parse(raw):(raw?[raw]:[]); }catch(e){ fotosB64=[]; }
@@ -4133,6 +4145,7 @@ function duplicarOrc(id){
   renderFotosOrcSlots();
   const tog=document.getElementById('toggle-os'); if(tog) tog.checked=false;
   const osf=document.getElementById('os-inline-fields'); if(osf) osf.style.display='none';
+  { const tov=document.getElementById('toggle-ocultar-valores'); if(tov) tov.checked=!!o.ocultar_valores; }
   limparRascunho('form'); window._skipDraftForm=true; // não deixar rascunho antigo sobrescrever os dados duplicados
   renderSvcs(); upd(); go('form');
   toast('📋 Orçamento duplicado — edite e salve como novo');
