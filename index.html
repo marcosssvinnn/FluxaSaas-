@@ -1128,7 +1128,7 @@
       <div id="checkin-bar" style="display:none" class="checkin-bar">
         <span>✅ Check-in realizado</span>
         <span class="checkin-timer" id="checkin-timer">00:00</span>
-        <button class="ba" style="background:var(--red);color:white;padding:8px 14px;font-size:13px" onclick="fazerCheckout()">✔ Check-out</button>
+        <button class="ba" style="background:var(--red);color:white;padding:8px 14px;font-size:13px" onclick="abrirFinalizarOS()">Finalizar serviço</button>
       </div>
       <div id="checkin-form" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         <select id="os-tec-checkin" style="padding:9px 12px;border:1.5px solid var(--gray-mid);border-radius:8px;font-size:14px;font-family:'Inter',sans-serif;outline:none;flex:1">
@@ -2895,6 +2895,15 @@
       <button type="button" class="rd-modal-btn rd-modal-btn-sim" id="confirmar-sim">Confirmar</button>
     </div>
     <span class="rd-modal-hint" id="confirmar-hint" style="display:none"></span>
+  </div>
+</div>
+
+<!-- ══ MODAL: Finalizar serviço (Tarefa 3i.7, 19/08) — passo terminal
+     único, substitui Concluir + Check-out + Salvar. Conteúdo montado por
+     _finalizarOSRender(), padrão .rd-modal-wide (560px, mesmo da 3c). ══ -->
+<div class="rd-modal-bg" id="finalizar-os-modal-bg" role="dialog" aria-modal="true" onclick="if(event.target===this) fecharFinalizarOS()">
+  <div class="rd-modal rd-modal-wide">
+    <div id="finalizar-os-conteudo"></div>
   </div>
 </div>
 

@@ -7568,8 +7568,113 @@ function fazerCheckin(){
         .then(r=>{ if(r.error) console.warn('[checkin OS] sync falhou:', r.error.message); })
         .catch(e=>console.warn('[checkin OS]', e?.message||e));
     }
+    // Reflete "em campo" na trilha/cartão na hora, sem precisar reabrir a OS.
+    const osAtual=todosOS[j]; if(osAtual) _osMontarTopoEstado(osAtual);
   }
   toast('📍 Check-in realizado!');
+}
+
+// ── Finalizar serviço (Tarefa 3i.7, 19/08) — passo terminal único.
+// Substitui Concluir + Check-out + Salvar dentro do form (page-minhas-os
+// mantém o atalho de 1 toque pra OS sem nada a registrar — "não mexer" do
+// plano). Reaproveita _fazerCheckoutConfirmado() como motor de
+// persistência (mesma lógica de sempre: materiais/obs/fotos/checklist,
+// duração, baixa de estoque, próxima ocorrência recorrente) — chamado
+// DIRETO (não via fazerCheckout()/confirmar(), que abriria um SEGUNDO
+// modal de confirmação por cima do meu; este modal já É a confirmação).
+// A confirmação por serviço vira itens do checklist ANTES de chamar —
+// mesma estrutura que já existe e já persiste, sem coluna nova.
+let _finalizarOSConf={}; // {idx: {feito:bool, motivo:string}}
+function abrirFinalizarOS(){
+  if(!checkinAt){ toast('⚠️ Faça o check-in primeiro'); return; }
+  _finalizarOSConf={};
+  (osSvcs||[]).forEach((s,i)=>{ _finalizarOSConf[i]={feito:true, motivo:''}; });
+  _finalizarOSRender();
+  document.getElementById('finalizar-os-modal-bg').classList.add('on');
+}
+function fecharFinalizarOS(){ document.getElementById('finalizar-os-modal-bg').classList.remove('on'); }
+function _finalizarOSSetStatus(idx, feito){
+  _finalizarOSConf[idx]=_finalizarOSConf[idx]||{};
+  _finalizarOSConf[idx].feito=feito;
+  if(feito) _finalizarOSConf[idx].motivo='';
+  _finalizarOSRender();
+}
+function _finalizarOSSetMotivo(idx, val){ if(_finalizarOSConf[idx]) _finalizarOSConf[idx].motivo=val; }
+function _finalizarOSRender(){
+  const el=document.getElementById('finalizar-os-conteudo'); if(!el) return;
+  const diffSeg=Math.max(0,Math.floor((new Date()-checkinAt)/1000));
+  const durMin=Math.round(diffSeg/60);
+  // Materiais é texto livre (ordens_servico.materiais) — sem estrutura de
+  // chips real hoje (limitação já registrada), contagem aproximada por
+  // linha/vírgula não vazia.
+  const qtdMat=(gV('os-mat')||'').split(/\n|,/).map(x=>x.trim()).filter(Boolean).length;
+  const qtdFotos=(osFotos||[]).filter(Boolean).length;
+  const pendentes=(osSvcs||[]).filter((s,i)=>!_finalizarOSConf[i]?.feito).length;
+  el.innerHTML=`
+    <div style="display:flex;flex-direction:column;gap:2px;margin-bottom:4px">
+      <h3 style="margin:0;font-size:16px;font-weight:700;color:var(--c2)">Finalizar serviço</h3>
+      <p style="margin:0;font-size:12px;color:var(--tx3,#6B7686)">Confirme o que foi feito antes de encerrar.</p>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0">
+      <div style="text-align:center;padding:10px;background:var(--bg-app,#F7F9FC);border-radius:10px">
+        <div style="font-size:20px;font-weight:600;color:var(--c2);font-variant-numeric:tabular-nums">${durMin}min</div>
+        <div style="font-size:10px;color:var(--tx3,#6B7686);text-transform:uppercase;letter-spacing:.06em;margin-top:2px">Duração</div>
+      </div>
+      <div style="text-align:center;padding:10px;background:var(--bg-app,#F7F9FC);border-radius:10px">
+        <div style="font-size:20px;font-weight:600;color:var(--c2);font-variant-numeric:tabular-nums">${qtdMat}</div>
+        <div style="font-size:10px;color:var(--tx3,#6B7686);text-transform:uppercase;letter-spacing:.06em;margin-top:2px">Materiais</div>
+      </div>
+      <div style="text-align:center;padding:10px;background:var(--bg-app,#F7F9FC);border-radius:10px">
+        <div style="font-size:20px;font-weight:600;color:var(--c2);font-variant-numeric:tabular-nums">${qtdFotos}</div>
+        <div style="font-size:10px;color:var(--tx3,#6B7686);text-transform:uppercase;letter-spacing:.06em;margin-top:2px">Fotos</div>
+      </div>
+    </div>
+    <div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3,#6B7686);margin-bottom:8px">Serviço vendido — o que foi feito?</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+      ${(osSvcs||[]).map((s,i)=>{
+        const conf=_finalizarOSConf[i]||{feito:true,motivo:''};
+        return `<div style="border:1px solid var(--line,#DFE5EE);border-radius:10px;padding:10px 12px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="flex:1;font-size:13px;color:var(--c2)">${esc(s.d||'—')}</span>
+            <button type="button" onclick="_finalizarOSSetStatus(${i},true)" style="padding:6px 12px;border-radius:7px;border:1.5px solid ${conf.feito?'var(--ok)':'var(--gray-mid,#e5e7eb)'};background:${conf.feito?'var(--ok-bg,#E9F3EB)':'#fff'};color:${conf.feito?'var(--ok)':'var(--tx3,#6B7686)'};font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Fiz</button>
+            <button type="button" onclick="_finalizarOSSetStatus(${i},false)" style="padding:6px 12px;border-radius:7px;border:1.5px solid ${!conf.feito?'var(--bad)':'var(--gray-mid,#e5e7eb)'};background:${!conf.feito?'var(--bad-bg,#FBEAE7)':'#fff'};color:${!conf.feito?'var(--bad)':'var(--tx3,#6B7686)'};font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Não fiz</button>
+          </div>
+          ${!conf.feito?`<input type="text" value="${esc(conf.motivo||'')}" oninput="_finalizarOSSetMotivo(${i},this.value)" placeholder="Motivo — por que não foi feito?" style="width:100%;margin-top:8px;padding:8px 10px;border:1.5px solid var(--bad,#9C3A2E);border-radius:7px;font-size:12px;box-sizing:border-box;font-family:inherit">`:''}
+        </div>`;
+      }).join('')||'<div style="font-size:12px;color:var(--tx3,#6B7686)">Nenhum serviço vendido nesta OS.</div>'}
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;padding:12px;background:var(--bg-app,#F7F9FC);border-radius:10px">
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--tx4,#8D99A9);cursor:not-allowed" title="Ainda não existe — chega com o relatório de serviço executado">
+        <input type="checkbox" checked disabled style="width:16px;height:16px">Gerar relatório de serviço (em breve)
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--c2);cursor:pointer">
+        <input type="checkbox" id="finalizar-os-wa" style="width:16px;height:16px">Mandar no WhatsApp do cliente
+      </label>
+    </div>
+    <div style="font-size:11px;color:var(--tx3,#6B7686);line-height:1.4;margin-bottom:14px">O faturamento não muda aqui — ele já aconteceu na aprovação do orçamento.</div>
+    <div style="display:flex;gap:10px">
+      <button type="button" onclick="fecharFinalizarOS()" style="flex:1;padding:11px;border:1.5px solid var(--gray-mid,#e5e7eb);border-radius:9px;background:#fff;color:var(--c2);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Cancelar</button>
+      <button type="button" onclick="confirmarFinalizarOS()" style="flex:2;padding:11px;border:none;border-radius:9px;background:#0B62CE;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Finalizar${pendentes?' ('+pendentes+' sem confirmar)':''}</button>
+    </div>
+  `;
+}
+function confirmarFinalizarOS(){
+  const itensServico=(osSvcs||[]).map((s,i)=>{
+    const conf=_finalizarOSConf[i]||{feito:true,motivo:''};
+    return {label:s.d||'Serviço', checked:conf.feito, servico:true, obs:conf.feito?'':('Não executado — '+(conf.motivo||'sem motivo informado'))};
+  });
+  osChecklist=[...(osChecklist||[]), ...itensServico];
+  const mandarWA=document.getElementById('finalizar-os-wa')?.checked;
+  const osIdParaWA=osCheckinId;
+  fecharFinalizarOS();
+  _fazerCheckoutConfirmado();
+  if(mandarWA && osIdParaWA){
+    // todosOS direto, não getNC() — mesmo cuidado do fix em verDetalhesOS
+    // (3i.5): o cache só é populado por quem renderiza a tabela de OS, e
+    // aqui acabamos de concluir sem passar por ela.
+    const o=(todosOS||[]).find(x=>x.id===osIdParaWA);
+    if(o) enviarNotifWA(notifConcluida(o), o.tel_cliente||'');
+  }
 }
 
 function fazerCheckout(){
@@ -7586,8 +7691,15 @@ function _fazerCheckoutConfirmado(){
   document.getElementById('checkin-bar').style.display='none';
   document.getElementById('checkin-form').style.display='flex';
   document.getElementById('checkin-info').textContent=`✅ Duração: ${duracaoMin} min (${checkinAt.toLocaleTimeString('pt-BR')} → ${checkout.toLocaleTimeString('pt-BR')})`;
-  // Captura o que o técnico preencheu na OS para salvar JUNTO com o check-out
-  const chkOk = (osChecklist||[]).filter(x=>x.checked);
+  // Captura o que o técnico preencheu na OS para salvar JUNTO com o check-out.
+  // x.servico (Tarefa 3i.7, achado ao testar): itens de confirmação por
+  // serviço vendido (Fiz/Não fiz) precisam ser salvos SEMPRE, feito ou
+  // não — o filtro original (só x.checked) existia pro checklist
+  // operacional, onde "não marcado" = "não relevante". Pra serviço vendido
+  // é o oposto: "não fiz" é justamente o dado que evita cobrar por
+  // trabalho não executado, e esse filtro estava descartando exatamente
+  // essa informação antes de chegar no banco.
+  const chkOk = (osChecklist||[]).filter(x=>x.checked || x.servico);
   const dadosPreenchidos = {
     obs_tecnica: gV('os-obs')||'',
     materiais: gV('os-mat')||'',
