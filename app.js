@@ -3857,40 +3857,45 @@ function _renderCartaoEstado(cfg){
   </div>`;
 }
 
+// Tarefa 3i.3 (19/08) — troca os 4 KPIs antigos (Total emitido/Aprovados/
+// Pendentes/Recusados-Vencidos) pelos 4 do DIAGNOSTICO-ORCAMENTOS.md.
+// "Ticket médio" saiu de vez: não gera ação nenhuma, ninguém muda de
+// comportamento por causa dele — o card "Aprovado sem OS" no lugar dele é
+// acionável (mesmo cálculo de _orcExecucaoInfo que já move o chip/rodapé
+// da 3i.2, não duplica lógica).
 function renderOrcMiniKpis(lista){
   const el=document.getElementById('orc-mini-kpis'); if(!el) return;
   const ocultarFin=eVendas();
-  const total=lista.length;
-  const soma=lista.reduce((a,o)=>a+(o.total||0),0);
+  const pendentes=lista.filter(o=>o.status==='pendente');
+  const pipelineAberto=pendentes.reduce((a,o)=>a+(o.total||0),0);
   const aprov=lista.filter(o=>o.status==='aprovado');
   const somaA=aprov.reduce((a,o)=>a+(o.total||0),0);
-  const pend=lista.filter(o=>o.status==='pendente').length;
   const rec=lista.filter(o=>o.status==='recusado').length;
   const venc=lista.filter(o=>o.status==='vencido').length;
-  const tick=total>0?soma/total:0;
-  // Padrão .rd-card/.rd-kpi-* (portado do v1, 16/08) — mesmos cálculos de
-  // sempre, só o container mudou. rd-badge-* dá a cor por estado em vez de
-  // background/border-left inline.
+  const decididos=aprov.length+rec+venc;
+  const taxaFechamento=decididos>0?Math.round(aprov.length/decididos*100):null;
+  const semOS=aprov.filter(o=>_orcExecucaoInfo(o).tipo==='sem_os');
+  const somaSemOS=semOS.reduce((a,o)=>a+(o.total||0),0);
   el.innerHTML=`
     <div class="rd-card rd-card-dense rd-card-dark">
-      <div class="rd-kpi-lbl">Total emitido</div>
-      <div class="rd-kpi-num rd-kpi-num-sm">${ocultarFin?total+' orç.':brl(soma)}</div>
-      <div class="rd-kpi-apoio">${total} orçamento${total!==1?'s':''}</div>
+      <div class="rd-kpi-lbl">Pipeline aberto</div>
+      <div class="rd-kpi-num rd-kpi-num-sm">${ocultarFin?pendentes.length+' orç.':brl(pipelineAberto)}</div>
+      <div class="rd-kpi-apoio">${pendentes.length} pendente${pendentes.length!==1?'s':''}</div>
     </div>
     <div class="rd-card rd-card-dense">
-      <div class="rd-kpi-lbl"><span class="rd-badge rd-badge-ok">Aprovados</span></div>
+      <div class="rd-kpi-lbl"><span class="rd-badge rd-badge-ok">Aprovados no mês</span></div>
       <div class="rd-kpi-num rd-kpi-num-sm" style="color:var(--ok)">${ocultarFin?aprov.length:brl(somaA)}</div>
       <div class="rd-kpi-apoio">${aprov.length} aprovado${aprov.length!==1?'s':''}</div>
     </div>
-    <div class="rd-card rd-card-dense">
-      <div class="rd-kpi-lbl"><span class="rd-badge rd-badge-warn">Pendentes</span></div>
-      <div class="rd-kpi-num rd-kpi-num-sm" style="color:var(--warn)">${pend}</div>
-      <div class="rd-kpi-apoio">${ocultarFin?'':tick>0?'Ticket: '+brl(tick):''}</div>
+    <div class="rd-card rd-card-dense" style="border-color:var(--warn-border)">
+      <div class="rd-kpi-lbl"><span class="rd-badge rd-badge-warn">Aprovado sem OS</span></div>
+      <div class="rd-kpi-num rd-kpi-num-sm" style="color:var(--warn)">${ocultarFin?semOS.length:brl(somaSemOS)}</div>
+      <div class="rd-kpi-apoio">${semOS.length} vendido${semOS.length!==1?'s':''} e não entregue${semOS.length!==1?'s':''}</div>
     </div>
     <div class="rd-card rd-card-dense">
-      <div class="rd-kpi-lbl"><span class="rd-badge rd-badge-bad">Recusados/Vencidos</span></div>
-      <div class="rd-kpi-num rd-kpi-num-sm" style="color:var(--bad)">${rec+venc}</div>
-      <div class="rd-kpi-apoio">${rec} recusado${rec!==1?'s':''} · ${venc} vencido${venc!==1?'s':''}</div>
+      <div class="rd-kpi-lbl"><span class="rd-badge rd-badge-info">Taxa de fechamento</span></div>
+      <div class="rd-kpi-num rd-kpi-num-sm" style="color:var(--info)">${taxaFechamento!=null?taxaFechamento+'%':'—'}</div>
+      <div class="rd-kpi-apoio">${decididos} decidido${decididos!==1?'s':''} no período</div>
     </div>`;
 }
 
