@@ -46,6 +46,14 @@
       /* Raios */
       --r-lg: 14px; --r-sm: 8px; --r-xs: 6px; --r-pill: 999px;
       --sh-pdf: 0 10px 24px -16px rgba(16,28,48,0.4);
+      /* Cartão de estado (3i.1, 19/08) — fixo, não troca por empresa, mesmo
+         raciocínio de --nav-bg: é UI funcional (status), não expressão de
+         marca. Distinto de --c2 (que .rd-card-dark usa e SEGUE a cor da
+         empresa) — não reutilizar .rd-card-dark aqui, são propósitos
+         diferentes. Azul terciário/secundário são só usados dentro do
+         cartão de estado (número em destaque sobre fundo escuro). */
+      --escuro: #101720;
+      --azul2: #3D82DA; --azul3: #6FA8E8;
     }
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:'Instrument Sans','Inter',sans-serif;background:#f0f2f5;color:var(--c2);min-height:100vh;padding-top:calc(56px + env(safe-area-inset-top));padding-left:var(--sidebar-w);transition:padding-left .2s ease;-webkit-font-smoothing:antialiased}
@@ -212,6 +220,52 @@
     .rd-cell-strong{font-weight:600}
     .rd-cell-sub{font-size:11px;color:var(--tx3);margin-top:2px}
     .rd-tfoot{margin-top:auto;padding:12px 18px;border-top:1px solid var(--line);background:var(--bg-app);display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--tx2)}
+
+    /* ── Trilha de estados (3i.1, 19/08) — usada no orçamento (3i.5) e na OS
+       (3i.6); mesma referência visual da ficha de Oficina (3h.2, fora desta
+       rodada). _renderTrilhaEstados() em app.js monta o HTML. ── */
+    .rd-trilha{display:flex;align-items:flex-start}
+    .rd-trilha-item{display:flex;flex-direction:column;align-items:center;gap:5px;min-width:76px;padding:0 4px}
+    .rd-trilha-dot{width:22px;height:22px;border-radius:var(--r-pill);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+    .rd-trilha-dot-done{background:var(--ok)}
+    .rd-trilha-dot-atual{background:#0B62CE;box-shadow:0 0 0 4px rgba(11,98,206,0.18)}
+    .rd-trilha-dot-atual::after{content:'';width:7px;height:7px;border-radius:var(--r-pill);background:#fff}
+    .rd-trilha-dot-futuro{border:2px solid var(--field-line);background:#fff}
+    .rd-trilha-dot-tracejado{border:2px dashed var(--field-line);background:#fff}
+    .rd-trilha-label{font-size:11px;font-weight:500;color:var(--tx4);text-align:center;line-height:1.25}
+    .rd-trilha-item-done .rd-trilha-label,.rd-trilha-item-atual .rd-trilha-label{font-weight:600;color:var(--c2)}
+    .rd-trilha-item-atual .rd-trilha-label{color:#0B62CE}
+    .rd-trilha-data{font-size:10px;color:var(--tx3);text-align:center}
+    .rd-trilha-item-atual .rd-trilha-data{font-weight:600;color:#0B62CE;font-variant-numeric:tabular-nums}
+    .rd-trilha-item-tracejado .rd-trilha-data{color:var(--warn);font-weight:600}
+    .rd-trilha-conector{flex:1;height:2px;background:var(--field-line);margin-top:10px;min-width:16px}
+    .rd-trilha-conector-done{background:var(--ok)}
+    .rd-trilha-conector-estourado{background:var(--warn-dot)}
+
+    /* ── Cartão de estado (3i.1, 19/08) — o cartão #101720 no topo da coluna
+       direita, único elemento que muda de conteúdo por estado (orçamento e
+       OS). _renderCartaoEstado(cfg) em app.js monta o HTML a partir de um
+       objeto de config — evita duplicar este bloco pra cada estado. ── */
+    .rd-cestado{background:var(--escuro);border-radius:var(--r);padding:17px 19px;display:flex;flex-direction:column;gap:12px}
+    .rd-cestado-topo{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .rd-cestado-eyebrow{font-size:11px;font-weight:600;letter-spacing:.10em;text-transform:uppercase;color:var(--tx4)}
+    .rd-cestado-timer{font-size:14px;font-weight:600;color:var(--azul3);font-variant-numeric:tabular-nums}
+    .rd-cestado-corpo{display:flex;flex-direction:column;gap:3px}
+    .rd-cestado-titulo{font-size:22px;font-weight:600;color:var(--nav-tx-strong);letter-spacing:-.02em}
+    .rd-cestado-titulosub{font-size:12px;color:var(--tx4)}
+    .rd-cestado-barra{height:7px;border-radius:var(--r-xs);background:var(--nav-item-bg);overflow:hidden}
+    .rd-cestado-barra-fill{height:100%;background:#0B62CE;border-radius:var(--r-xs)}
+    .rd-cestado-caixa{background:var(--nav-item-bg);border-radius:var(--r-sm);padding:11px 13px;display:flex;flex-direction:column;gap:7px}
+    .rd-cestado-caixa-tit{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--tx4)}
+    .rd-cestado-item{display:flex;align-items:center;gap:9px}
+    .rd-cestado-item-dot{width:6px;height:6px;border-radius:var(--r-pill);flex-shrink:0}
+    .rd-cestado-item-dot.ok{background:var(--ok)}
+    .rd-cestado-item-dot.pend{background:var(--warn-dot)}
+    .rd-cestado-item-tx{font-size:12px;color:var(--nav-tx-strong);flex:1}
+    .rd-cestado-acao{display:block;width:100%;border:none;font-family:inherit;background:#0B62CE;color:#fff;font-size:13px;font-weight:600;padding:11px;border-radius:var(--r-sm);text-align:center;cursor:pointer}
+    .rd-cestado-acao:hover{background:#084C9F}
+    .rd-cestado-acao.rd-cestado-acao-off{background:var(--nav-item-bg);color:var(--nav-tx);cursor:default}
+    .rd-cestado-nota{font-size:11px;color:var(--tx4);line-height:1.45}
 
     .rd-empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:18px}
     .rd-empty-ico{width:40px;height:40px;border-radius:11px;background:var(--line2);display:flex;align-items:center;justify-content:center;color:#5D6A7B}

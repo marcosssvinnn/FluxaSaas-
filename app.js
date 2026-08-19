@@ -3769,6 +3769,85 @@ function _orcListaMes(){
   return lista;
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+//  Componentes compartilhados — trilha de estados + cartão de estado
+//  (Tarefa 3i.1, 19/08). Usados no orçamento aberto (3i.5) e na OS (3i.6);
+//  mesma referência visual da ficha de Oficina (3h.2, fora desta rodada).
+//  Construídos uma vez aqui pra não duplicar o markup em cada tela — ver
+//  DIAGNOSTICO-OS.md/DIAGNOSTICO-ORCAMENTOS.md pro porquê.
+// ══════════════════════════════════════════════════════════════════════════
+
+// nos: [{label, data, tracejado, estourado}]
+//   - data: texto pequeno abaixo do label (data/hora), opcional
+//   - tracejado: etapa que ainda não existe de verdade no sistema (ex.:
+//     "Relatório enviado" antes da 3i.8) — fica sempre pontilhada, nunca
+//     "atual" nem "concluída", mesmo que atualIdx aponte pra ela ou além
+//   - estourado: o CONECTOR que sai deste nó fica em âmbar (atraso/SLA
+//     estourado entre esta etapa e a próxima)
+// atualIdx: índice (0-based) do nó atual. -1 = nenhum nó atingido ainda
+// (todos "futuro") — usado quando a entidade nem começou o ciclo.
+function _renderTrilhaEstados(nos, atualIdx){
+  let h='<div class="rd-trilha">';
+  nos.forEach((n,i)=>{
+    const tipo = n.tracejado ? 'tracejado' : i<atualIdx ? 'done' : i===atualIdx ? 'atual' : 'futuro';
+    const icone = tipo==='done'
+      ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#FFF" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>'
+      : '';
+    h+=`<div class="rd-trilha-item rd-trilha-item-${tipo}">
+      <div class="rd-trilha-dot rd-trilha-dot-${tipo}">${icone}</div>
+      <span class="rd-trilha-label">${esc(n.label)}</span>
+      ${n.data?`<span class="rd-trilha-data">${esc(n.data)}</span>`:''}
+    </div>`;
+    if(i<nos.length-1){
+      const conDone = !n.tracejado && i<atualIdx;
+      h+=`<div class="rd-trilha-conector${n.estourado?' rd-trilha-conector-estourado':conDone?' rd-trilha-conector-done':''}"></div>`;
+    }
+  });
+  h+='</div>';
+  return h;
+}
+
+// cfg: {
+//   eyebrow: texto pequeno em maiúsculas no topo (obrigatório em espírito,
+//     mas nada quebra se faltar),
+//   timer: canto superior direito (ex. "00:42"), opcional,
+//   titulo: linha grande (número/estado em destaque), opcional,
+//   tituloSub: linha pequena logo abaixo do título, opcional,
+//   progresso: 0–100, desenha a barra fina, opcional,
+//   listaTitulo + lista: [{ok:bool, texto}] — caixa "o que falta"/checklist
+//     dentro do cartão, opcional (sem lista, a caixa nem aparece),
+//   acao: {label, onclick} — pílula azul clicável; passar só {label} (sem
+//     onclick) desenha a pílula cinza não-clicável (ex. "Ligar para o
+//     técnico" quando não há telefone cadastrado),
+//   nota: texto pequeno de rodapé explicando a trava do estado, opcional
+// }
+function _renderCartaoEstado(cfg){
+  const timerHtml = cfg.timer ? `<span class="rd-cestado-timer">${esc(cfg.timer)}</span>` : '';
+  const corpoHtml = cfg.titulo ? `<div class="rd-cestado-corpo">
+      <span class="rd-cestado-titulo">${esc(cfg.titulo)}</span>
+      ${cfg.tituloSub?`<span class="rd-cestado-titulosub">${esc(cfg.tituloSub)}</span>`:''}
+    </div>` : '';
+  const progressoHtml = cfg.progresso!=null ? `<div class="rd-cestado-barra"><div class="rd-cestado-barra-fill" style="width:${Math.max(0,Math.min(100,cfg.progresso))}%"></div></div>` : '';
+  const listaHtml = (cfg.lista&&cfg.lista.length) ? `<div class="rd-cestado-caixa">
+      ${cfg.listaTitulo?`<span class="rd-cestado-caixa-tit">${esc(cfg.listaTitulo)}</span>`:''}
+      ${cfg.lista.map(it=>`<div class="rd-cestado-item"><span class="rd-cestado-item-dot ${it.ok?'ok':'pend'}"></span><span class="rd-cestado-item-tx">${esc(it.texto)}</span></div>`).join('')}
+    </div>` : '';
+  const acaoHtml = cfg.acao ? (cfg.acao.onclick
+      ? `<button type="button" class="rd-cestado-acao" onclick="${cfg.acao.onclick}">${esc(cfg.acao.label)}</button>`
+      : `<span class="rd-cestado-acao rd-cestado-acao-off">${esc(cfg.acao.label)}</span>`) : '';
+  return `<div class="rd-cestado">
+    <div class="rd-cestado-topo">
+      <span class="rd-cestado-eyebrow">${esc(cfg.eyebrow||'')}</span>
+      ${timerHtml}
+    </div>
+    ${corpoHtml}
+    ${progressoHtml}
+    ${listaHtml}
+    ${acaoHtml}
+    ${cfg.nota?`<span class="rd-cestado-nota">${esc(cfg.nota)}</span>`:''}
+  </div>`;
+}
+
 function renderOrcMiniKpis(lista){
   const el=document.getElementById('orc-mini-kpis'); if(!el) return;
   const ocultarFin=eVendas();
