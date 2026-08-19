@@ -2197,6 +2197,43 @@ function _perguntarCriarOS(orc){
 }
 function fecharAprovOS(){ document.getElementById('aprov-os-bg').classList.remove('on'); }
 
+// Núcleo de criação de OS a partir de um orçamento — extraído de
+// criarOSdeAprovacao() (Tarefa 3i.2, 19/08) pra ser reaproveitado pela ação
+// em lote "Agendar as N aprovadas sem OS" (_orcAgendarLoteExecutar). Mesma
+// lógica de sempre (insert numerado, fallback local se offline/falhar), só
+// parametrizada em vez de ler de inputs fixos do modal de aprovação.
+async function _criarOSDeOrcamento(orc, data, hora, tec){
+  const osSvcs=(orc.servicos||[]).map(s=>({desc:s.desc||s.d||'',produto_id:s.produto_id||null,qty:s.qty||1,precoUnit:parseFloat(s.p||s.preco||0)||0}));
+  const camposBase={
+    orcamento_id:String(orc.id).startsWith('local_')?null:orc.id,
+    cliente:orc.cliente, cliente_id:orc.cliente_id||null, local_servico:orc.local_servico,
+    data_servico:data, hora:hora||'08:00', tecnico:tec||'',
+    servicos:osSvcs, materiais:'', obs_tecnica:'',
+    total:orc.total, status:'agendado', loja_id:orc.loja_id||LOJA_PADRAO_ID
+  };
+  let numStr='???', offline=false;
+  if(dbOk&&db){
+    try{
+      const {data:insOS,error}=await dbInsertNumerado('ordens_servico',camposBase);
+      if(error) throw error;
+      const num=insOS?.numero||1;
+      numStr=String(num).padStart(3,'0');
+      if(insOS) todosOS.unshift(insOS);
+    }catch(e){
+      console.warn('[_criarOSDeOrcamento] falha ao salvar no banco:', e?.message||e);
+      const n=(parseInt(ls('fluxa_os_num')||'0'))+1; lsSet('fluxa_os_num',String(n));
+      _salvarOSLocal(camposBase, 'local_'+Date.now(), n);
+      numStr=String(n).padStart(3,'0'); offline=true;
+    }
+  }else{
+    const n=(parseInt(ls('fluxa_os_num')||'0'))+1; lsSet('fluxa_os_num',String(n));
+    _salvarOSLocal(camposBase, 'local_'+Date.now(), n);
+    numStr=String(n).padStart(3,'0'); offline=true;
+  }
+  logAcao('os_criada',`#${numStr} via aprovação do orçamento #${String(orc.numero||'?').padStart(3,'0')}`);
+  return {numStr, offline};
+}
+
 async function criarOSdeAprovacao(){
   const orcId=document.getElementById('aprov-os-orc-id').value;
   const data=document.getElementById('aprov-os-data').value;
@@ -2208,40 +2245,12 @@ async function criarOSdeAprovacao(){
   const btn=document.getElementById('aprov-os-btn');
   if(btn){ btn.disabled=true; btn.textContent='Criando…'; }
   try{
-    const osSvcs=(orc.servicos||[]).map(s=>({desc:s.desc||s.d||'',produto_id:s.produto_id||null,qty:s.qty||1,precoUnit:parseFloat(s.p||s.preco||0)||0}));
-    const camposBase={
-      orcamento_id:String(orcId).startsWith('local_')?null:orcId,
-      cliente:orc.cliente, cliente_id:orc.cliente_id||null, local_servico:orc.local_servico,
-      data_servico:data, hora, tecnico:tec,
-      servicos:osSvcs, materiais:'', obs_tecnica:'',
-      total:orc.total, status:'agendado', loja_id:orc.loja_id||LOJA_PADRAO_ID
-    };
-    let numStr='???';
-    let avisoOffline=false;
-    if(dbOk&&db){
-      try{
-        const {data:insOS,error}=await dbInsertNumerado('ordens_servico',camposBase);
-        if(error) throw error;
-        const num=insOS?.numero||1;
-        numStr=String(num).padStart(3,'0');
-        if(insOS) todosOS.unshift(insOS);
-      }catch(e){
-        console.warn('[criarOSdeAprovacao] falha ao salvar no banco:', e?.message||e);
-        const n=(parseInt(ls('fluxa_os_num')||'0'))+1; lsSet('fluxa_os_num',String(n));
-        _salvarOSLocal(camposBase, 'local_'+Date.now(), n);
-        numStr=String(n).padStart(3,'0'); avisoOffline=true;
-      }
-    }else{
-      const n=(parseInt(ls('fluxa_os_num')||'0'))+1; lsSet('fluxa_os_num',String(n));
-      _salvarOSLocal(camposBase, 'local_'+Date.now(), n);
-      numStr=String(n).padStart(3,'0'); avisoOffline=true;
-    }
+    const {numStr, offline}=await _criarOSDeOrcamento(orc, data, hora, tec);
     fecharAprovOS();
     const dataFmt=new Date(data+'T12:00:00').toLocaleDateString('pt-BR');
-    toast(avisoOffline
+    toast(offline
       ? `📴 OS #${numStr} salva neste aparelho — sincroniza quando reconectar`
       : `✅ OS #${numStr} criada — agendada para ${dataFmt} às ${hora} · Técnico: ${tec}`);
-    logAcao('os_criada',`#${numStr} via aprovação do orçamento #${String(orc.numero||'?').padStart(3,'0')}`);
     await loadOSHist();
   }catch(e){
     console.error('criarOSdeAprovacao:',e); toast('⚠️ Erro ao criar OS: '+e.message);
@@ -3885,6 +3894,120 @@ function renderOrcMiniKpis(lista){
     </div>`;
 }
 
+// ── Coluna "Execução" do histórico (Tarefa 3i.2, 19/08) ── Deriva de
+// orcamento_id em ordens_servico — sem tabela nova. Cinco valores possíveis
+// (DIAGNOSTICO-ORCAMENTOS.md); "OS agendada" (com OS vinculada mas ainda no
+// futuro) não está nas 5 categorias do diagnóstico — decisão: mesmo ponto
+// azul de "em campo", já que ambos significam "sob controle, tem próximo
+// passo definido" (a trilha da 3i.5 também trata "OS #NNN" como um nó só).
+// "em campo" propriamente dito depende de status:'em_andamento' em
+// ordens_servico, que HOJE NUNCA é gravado — fazerCheckin() só marca isso
+// em memória local (checkinAt), persistido no banco só no checkout junto
+// com 'concluido' (achado ao investigar antes de codar). Fica correto do
+// jeito que está: essa categoria simplesmente não aparece até a 3i.6
+// persistir o check-in de verdade — não é um bug desta função.
+function _orcExecucaoInfo(o){
+  if(o.status!=='aprovado') return {tipo:'-', texto:'—', cor:'var(--tx4)'};
+  const osVinc=(todosOS||[]).find(x=>x.orcamento_id===o.id);
+  if(!osVinc){
+    const ref=o.data_aprovacao?new Date(o.data_aprovacao):_orcData(o);
+    const dias=ref&&!isNaN(ref)?Math.max(0,Math.floor((new Date()-ref)/86400000)):0;
+    return {tipo:'sem_os', texto:`sem OS há ${dias}d`, cor:'var(--warn)', linha:true};
+  }
+  const num='OS #'+String(osVinc.numero||'').padStart(3,'0');
+  if(osVinc.status==='concluido'){
+    // relatorio_enviado_em ainda não existe no schema — chega com a 3i.8.
+    // Até lá este ramo nunca dispara; deixado pronto de propósito.
+    if(osVinc.relatorio_enviado_em){
+      return {tipo:'relatorio', texto:'relatório enviado '+_dataBR(osVinc.relatorio_enviado_em), cor:'var(--ok)'};
+    }
+    const dt=osVinc.data_servico?_dataBR(osVinc.data_servico):'';
+    return {tipo:'sem_relatorio', texto:`executado${dt?' '+dt:''} · sem relatório`, cor:'var(--warn-dot)', linha:true};
+  }
+  if(osVinc.status==='em_andamento'){
+    return {tipo:'em_campo', texto:num+' em campo', cor:'#0B62CE'};
+  }
+  const dt=osVinc.data_servico?_dataBR(osVinc.data_servico):'';
+  return {tipo:'agendada', texto:num+' agendada'+(dt?' '+dt:''), cor:'#0B62CE'};
+}
+// DD/MM a partir de string ISO ou 'YYYY-MM-DD' — vários pontos do app já
+// fazem isso inline; centralizado aqui pra não repetir o parsing.
+function _dataBR(iso){
+  if(!iso) return '';
+  const d=new Date(iso.length<=10?iso+'T12:00:00':iso);
+  if(isNaN(d)) return '';
+  return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
+}
+
+// Ação em lote "Agendar as N aprovadas sem OS" (3i.2, 19/08) — modal com
+// uma linha por orçamento (data + técnico, editáveis por linha; sem
+// técnico não agenda, não force um padrão que pode estar errado). Executa
+// em série via _criarOSDeOrcamento e mostra resultado por item — não um
+// toast genérico, cada linha vira ✅/⚠️/— ao terminar.
+function _orcAgendarLoteAbrir(){
+  const lista=(todosOrc||[]).filter(o=>_orcExecucaoInfo(o).tipo==='sem_os');
+  if(!lista.length){ toast('Nenhum orçamento aprovado sem OS'); return; }
+  const tecs=getTecnicos();
+  const hoje=_hojeLocal();
+  const m=document.createElement('div');
+  m.id='lote-os-modal';
+  m.style.cssText='position:fixed;inset:0;background:rgba(16,23,32,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  m.innerHTML=`<div style="background:#fff;border-radius:14px;padding:20px 22px;width:100%;max-width:520px;max-height:82vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.18)">
+    <div style="font-size:15px;font-weight:700;color:var(--c2);margin-bottom:2px">Agendar ${lista.length} aprovado${lista.length!==1?'s':''} sem OS</div>
+    <div style="font-size:12px;color:var(--tx3);margin-bottom:14px">Confirme data e técnico de cada um. Quem ficar sem técnico não é agendado agora.</div>
+    <div id="lote-os-linhas" style="display:flex;flex-direction:column;gap:10px"></div>
+    <div style="display:flex;gap:10px;margin-top:18px">
+      <button onclick="document.getElementById('lote-os-modal').remove()" style="flex:1;padding:10px;border:1.5px solid var(--gray-mid);border-radius:8px;background:#fff;cursor:pointer;font-size:13px">Fechar</button>
+      <button id="lote-os-btn" onclick="_orcAgendarLoteExecutar()" style="flex:2;padding:10px;border:none;border-radius:8px;background:#0B62CE;color:#fff;cursor:pointer;font-size:13px;font-weight:600">Agendar todos</button>
+    </div>
+  </div>`;
+  document.body.appendChild(m);
+  const linhasEl=document.getElementById('lote-os-linhas');
+  linhasEl.innerHTML=lista.map(o=>{
+    const num=String(o.numero||'').padStart(3,'0');
+    return `<div class="lote-os-linha" data-orc-id="${esc(o.id)}" style="display:flex;gap:8px;align-items:center;padding:9px;border:1px solid var(--line,#e5e7eb);border-radius:9px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;color:var(--c2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">#${num} · ${esc(o.cliente||'—')}</div>
+        <div id="lote-os-status-${esc(o.id)}" style="font-size:11px;color:var(--tx3)">aguardando</div>
+      </div>
+      <input type="date" class="lote-os-data" value="${hoje}" style="padding:7px;border:1.5px solid var(--gray-mid);border-radius:7px;font-size:12px;width:128px">
+      <select class="lote-os-tec" style="padding:7px;border:1.5px solid var(--gray-mid);border-radius:7px;font-size:12px;max-width:120px">
+        <option value="">Técnico…</option>
+        ${tecs.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('')}
+      </select>
+    </div>`;
+  }).join('');
+  m.addEventListener('click',e=>{ if(e.target===m) m.remove(); });
+}
+async function _orcAgendarLoteExecutar(){
+  const m=document.getElementById('lote-os-modal'); if(!m) return;
+  const btn=document.getElementById('lote-os-btn');
+  if(btn){ btn.disabled=true; btn.textContent='Agendando…'; }
+  const linhas=[...m.querySelectorAll('.lote-os-linha')];
+  let ok=0, semTec=0, falhas=0;
+  for(const linha of linhas){
+    const orcId=linha.dataset.orcId;
+    const orc=todosOrc.find(x=>x.id===orcId);
+    const statusEl=document.getElementById('lote-os-status-'+orcId);
+    const tec=linha.querySelector('.lote-os-tec').value;
+    const data=linha.querySelector('.lote-os-data').value;
+    if(!orc){ if(statusEl){statusEl.textContent='⚠️ orçamento sumiu da lista';statusEl.style.color='var(--warn)';} falhas++; continue; }
+    if(!tec){ if(statusEl){statusEl.textContent='— sem técnico, pulado';statusEl.style.color='var(--tx3)';} semTec++; continue; }
+    try{
+      const {numStr,offline}=await _criarOSDeOrcamento(orc, data, '08:00', tec);
+      if(statusEl){ statusEl.textContent=(offline?'📴 OS #'+numStr+' (offline)':'✅ OS #'+numStr+' criada'); statusEl.style.color=offline?'var(--warn)':'var(--ok)'; }
+      ok++;
+    }catch(e){
+      if(statusEl){ statusEl.textContent='⚠️ falhou: '+(e?.message||'erro'); statusEl.style.color='var(--bad)'; }
+      falhas++;
+    }
+  }
+  if(btn){ btn.disabled=false; btn.textContent='Fechar'; btn.onclick=()=>m.remove(); }
+  toast(`✅ ${ok} agendada${ok!==1?'s':''}${semTec?' · '+semTec+' sem técnico':''}${falhas?' · '+falhas+' com erro':''}`);
+  await loadOSHist();
+  renderTabela();
+}
+
 // Resumo de "o que fazer" pra cada linha do histórico — portado do v1
 // (renderTabela/Fase 5), mas reaproveitando os cálculos que o Funil já
 // tinha (_crmFuStatus/_crmEsfriando/_crmSituacaoCfg), em vez de duplicar
@@ -3961,10 +4084,16 @@ function renderTabela(){
   const lista=listaTotal.slice(ini, ini+_ORC_POR_PAGINA);
   const sopts=s=>['pendente','aprovado','recusado','vencido'].map(x=>`<option value="${x}" ${x===s?'selected':''}>${x.charAt(0).toUpperCase()+x.slice(1)}</option>`).join('');
   const ocultarFinanceiro=eVendas();
-  let h=`<div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+  // Chip "Sem OS N" (3i.2, 19/08) — só aparece com >0, não mostra zero à
+  // toa. Conta sobre a lista FILTRADA do mês (mesma lógica de "revelar o
+  // problema" do diagnóstico), não a base inteira.
+  const semOSCount=listaTotal.filter(o=>_orcExecucaoInfo(o).tipo==='sem_os').length;
+  const chipSemOS=semOSCount>0?`<button type="button" class="rd-chip rd-chip-alert" onclick="_orcAgendarLoteAbrir()">Sem OS ${semOSCount}</button>`:'<span></span>';
+  let h=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px">
+    ${chipSemOS}
     <button type="button" class="rd-btn rd-btn-secondary" style="font-size:12px;padding:6px 12px" onclick="_orcExportarCSV()">⬇ Exportar CSV</button>
   </div>`;
-  h+=`<div class="htw"><table class="ht"><thead><tr><th>#</th><th>Cliente</th>${ocultarFinanceiro?'':'<th>Total / Recebido</th>'}<th>Data</th><th>Status</th><th>Ações</th></tr></thead><tbody>`;
+  h+=`<div class="htw"><table class="ht"><thead><tr><th>#</th><th>Cliente</th>${ocultarFinanceiro?'':'<th>Total / Recebido</th>'}<th>Data</th><th>Status</th><th>Execução</th><th>Ações</th></tr></thead><tbody>`;
   lista.forEach(o=>{
     _nc[o.id]=o;
     const num=String(o.numero||'—').padStart(3,'0');
@@ -3979,12 +4108,18 @@ function renderTabela(){
     // pendente de verdade, reaproveitando o mesmo cálculo do Funil.
     const acao=_orcProximaAcaoTxt(o);
     const acaoHtml=acao?`<div style="margin-top:3px"><span class="rd-badge ${acao.urgente?'rd-badge-warn':'rd-badge-neutral'}" style="font-size:10px">${esc(acao.txt)}</span></div>`:'';
-    h+=`<tr>
+    // Execução (3i.2) — substitui a trilha de 4 pontos que ficava aqui: a
+    // coluna dedicada já diz o mesmo (e mais: dias parado, data, etc.) sem
+    // duplicar a informação duas vezes na mesma linha.
+    const exec=_orcExecucaoInfo(o);
+    const linhaDestaque=exec.linha?' style="background:var(--warn-row)"':'';
+    h+=`<tr${linhaDestaque}>
       <td><span class="on">#${num}</span>${pendSync?'<div title="Não sincronizado com o banco — aguardando conexão" style="font-size:9px;font-weight:700;color:#dc2626;background:#fee2e2;border-radius:4px;padding:1px 5px;margin-top:2px;text-align:center">⚠ PEND.</div>':''}</td>
-      <td><div class="ocl">${esc(o.cliente||'—')}${notaIcon}</div><div class="oloc">${esc(o.local_servico||'')}</div><div class="osvc" title="${esc(svs)}">${esc(svs)}</div><div style="margin-top:3px;display:flex;gap:5px;flex-wrap:wrap;align-items:center">${getLojaBadge(o.loja_id)}${getOrigemBadge(o.origem_cliente)}</div>${acaoHtml}${(()=>{ const etapas=[]; const st=o.status||'pendente'; const osVinc=(todosOS||[]).find(x=>x.orcamento_id===o.id); const entregue=!orcTemEntregaPendente(o)&&(o.servicos||[]).some(s=>s.produto_id); const etApr=st==='aprovado'||st==='recusado'||osVinc||entregue; const etOS=!!osVinc; const etConc=osVinc?.status==='concluido'; const dot=(ok,lbl)=>`<span style="display:flex;align-items:center;gap:2px;font-size:10px;color:${ok?'#16a34a':'#9ca3af'};font-weight:${ok?'700':'400'}">${ok?'●':'○'} ${lbl}</span>`; return `<div style="display:flex;gap:6px;align-items:center;margin-top:4px;flex-wrap:wrap">${dot(true,'Criado')}›${dot(etApr,'Aprovado')}›${dot(etOS,'OS')}›${dot(etConc,'Concluído')}</div>`; })()}</td>
+      <td><div class="ocl">${esc(o.cliente||'—')}${notaIcon}</div><div class="oloc">${esc(o.local_servico||'')}</div><div class="osvc" title="${esc(svs)}">${esc(svs)}</div><div style="margin-top:3px;display:flex;gap:5px;flex-wrap:wrap;align-items:center">${getLojaBadge(o.loja_id)}${getOrigemBadge(o.origem_cliente)}</div>${acaoHtml}</td>
       ${ocultarFinanceiro?'':'<td><span class="otot">'+brl(ttl)+'</span><br><span class="'+recCl+'" style="font-size:11px">'+recTxt+'</span></td>'}
       <td><span class="odt">${dt}</span></td>
       <td><select class="ss ${o.status||'pendente'}" onchange="mudarSt('${o.id}',this)">${sopts(o.status||'pendente')}</select></td>
+      <td><span style="font-size:12px;font-weight:600;color:${exec.cor};font-variant-numeric:tabular-nums">${esc(exec.texto)}</span></td>
       <td><div class="ta">
         <button class="tb" title="Ver PDF" onclick="verOrcPDF('${o.id}')">👁</button>
         <button class="tb" title="Editar" onclick="abrirOrc('${o.id}')">✎</button>
@@ -4014,6 +4149,9 @@ function renderTabela(){
   // já baixado (ver _ORC_PAGE em loadHist/_carregarMaisOrcamentos). Sem isso o
   // histórico baixava a tabela inteira sempre, crescendo sem limite com o tempo.
   if(_orcTemMais) h+=`<div style="text-align:center;padding:14px 0"><button id="orc-carregar-mais" class="fb" onclick="_carregarMaisOrcamentos()">Carregar mais antigos…</button></div>`;
+  // Ação em lote (3i.2) — no rodapé, separada do chip (que é só o
+  // indicador). Cobrar/agendar N coisas uma por uma não acontece.
+  if(semOSCount>0) h+=`<div style="text-align:center;padding:6px 0 14px"><button type="button" class="rd-btn rd-btn-primary" onclick="_orcAgendarLoteAbrir()">Agendar as ${semOSCount} aprovada${semOSCount!==1?'s':''} sem OS</button></div>`;
   document.getElementById('hist-body').innerHTML=h;
   _iniciarScrollHint(document.querySelector('#hist-body .htw'));
 }
