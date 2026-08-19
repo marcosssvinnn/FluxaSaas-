@@ -4310,6 +4310,48 @@ async function _excluirOrcConfirmado(id){
   toast('🗑 Excluído');
 }
 
+// Tarefa 3i.4 (19/08) — topbar única do orçamento aberto, substitui o par
+// form-back-bar + a extensão que seria form-acoes-edit (o v2 nunca teve
+// essa 2ª barra como o diagnóstico descrevia — as ações NF/Mês/Excluir
+// já viviam só na linha do histórico; aqui elas ganham um lugar dentro do
+// form também, sem duplicar a lógica, só chamando as mesmas funções).
+const STATUS_BADGE_CLS={pendente:'rd-badge-neutral',aprovado:'rd-badge-ok',recusado:'rd-badge-bad',vencido:'rd-badge-warn'};
+const STATUS_BADGE_LBL={pendente:'Pendente',aprovado:'Aprovado',recusado:'Recusado',vencido:'Vencido'};
+function _orcMontarTopbar(o){
+  const tituloEl=document.getElementById('form-topbar-titulo');
+  const subEl=document.getElementById('form-topbar-sub');
+  const badgeEl=document.getElementById('form-topbar-badge');
+  if(tituloEl) tituloEl.textContent='Orçamento #'+String(o.numero||'').padStart(3,'0')+' · '+(o.cliente||'—');
+  if(subEl){
+    const dtRef=o.status==='aprovado'&&o.data_aprovacao?'aprovado em '+_dataBR(o.data_aprovacao):'criado em '+_dataBR(o.data_criacao);
+    subEl.textContent=(eVendas()?'':brl(o.total||0)+' · ')+dtRef;
+  }
+  if(badgeEl){
+    const st=o.status||'pendente';
+    badgeEl.innerHTML=`<span class="rd-badge ${STATUS_BADGE_CLS[st]||'rd-badge-neutral'}">${esc(STATUS_BADGE_LBL[st]||st)}</span>`;
+  }
+  const maisEl=document.getElementById('form-topbar-mais');
+  if(maisEl){
+    const item=(label,onclick)=>`<button type="button" onclick="${onclick}" style="display:block;width:100%;text-align:left;padding:10px 14px;border:none;background:none;cursor:pointer;font-size:13px;color:var(--c2);font-family:inherit" onmouseover="this.style.background='var(--bg-app,#F7F9FC)'" onmouseout="this.style.background='none'">${esc(label)}</button>`;
+    maisEl.innerHTML=[
+      !eVendas()?item('Emitir NF', `abrirModalNFe('${o.id}');_orcTopbarToggleMais()`):'',
+      o.status==='aprovado'?item('Corrigir mês de aprovação', `corrigirDataAprovacao('${o.id}');_orcTopbarToggleMais()`):'',
+      item('Duplicar', `_orcTopbarToggleMais();duplicarOrc('${o.id}')`),
+      !eVendas()?item('Excluir', `_orcTopbarToggleMais();excluirOrc('${o.id}')`):''
+    ].join('');
+  }
+}
+function _orcTopbarToggleMais(){
+  const el=document.getElementById('form-topbar-mais'); if(!el) return;
+  el.style.display = el.style.display==='none'||!el.style.display ? 'block' : 'none';
+}
+document.addEventListener('click', e=>{
+  const maisEl=document.getElementById('form-topbar-mais');
+  if(maisEl && maisEl.style.display==='block' && !e.target.closest('#form-topbar-mais') && e.target.getAttribute('onclick')!=='_orcTopbarToggleMais()'){
+    maisEl.style.display='none';
+  }
+});
+
 function abrirOrc(id){
   const o=todosOrc.find(x=>x.id===id); if(!o) return;
   editId=id;
@@ -4343,6 +4385,7 @@ function abrirOrc(id){
   const bl=document.getElementById('form-back-label');
   if(bb){ bb.style.display='flex'; }
   if(bl){ bl.textContent='Editando ORC #'+String(o.numero).padStart(3,'0'); }
+  _orcMontarTopbar(o);
   toast('✏️ Editando Orçamento #'+String(o.numero).padStart(3,'0'));
 }
 
@@ -4369,6 +4412,11 @@ function verOrcPDF(id){
 function duplicarOrc(id){
   const o=todosOrc.find(x=>x.id===id); if(!o) return;
   editId=null; fotosB64=[];
+  // Achado no caminho (3i.4): sem isso, duplicar a partir de dentro de um
+  // orçamento já aberto deixava a topbar de edição visível (com o número
+  // do orçamento ANTERIOR) por cima do formulário do novo — confuso, já
+  // que este é um orçamento novo, não uma edição.
+  const bbDup=document.getElementById('form-back-bar'); if(bbDup) bbDup.style.display='none';
   setV('cli',o.cliente||''); setV('cli-id',o.cliente_id||''); setV('loc',o.local_servico||''); setV('tel-cli',o.tel_cliente||''); setV('cnpj-cli',o.cnpj||''); setV('cpf-cli',o.cpf_cliente||'');
   const _PAG_COD2=['boleto-parc','entrada-boleto','entrada-pix','cartao-parc'];
   setV('pag',o.pag_cod||(_PAG_COD2.includes(o.pagamento)?o.pagamento:'A combinar')); updPag();

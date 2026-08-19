@@ -777,10 +777,26 @@
   <div class="wrap">
     <!-- Indicador de rascunho salvo -->
     <div id="draft-indicator" style="display:none;font-size:11px;color:var(--gray);text-align:right;margin-bottom:4px;padding-top:4px">💾 Rascunho salvo às <span id="draft-time"></span></div>
-    <!-- Voltar ao histórico (visível só ao editar) -->
-    <div id="form-back-bar" style="display:none;align-items:center;justify-content:space-between;margin-bottom:10px;padding-top:4px">
-      <button onclick="go('history')" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:13px;font-weight:600;font-family:'Inter',sans-serif;display:flex;align-items:center;gap:5px">← Voltar ao Histórico</button>
-      <span id="form-back-label" style="font-size:12px;color:var(--gray)"></span>
+    <!-- Barra única do orçamento aberto (Tarefa 3i.4, 19/08) — visível só ao
+         editar (mesmo display:none/flex de antes). Substitui form-back-bar +
+         a extensão que seria form-acoes-edit: voltar · título · linha de
+         apoio · badge · ação secundária · "Mais ▾" (NF/Mês/Duplicar/Excluir
+         — ações ocasionais, não ocupam espaço permanente). A ação PRIMÁRIA
+         (cartão de estado) fica na coluna direita, 3i.5. -->
+    <div id="form-back-bar" style="display:none;flex-direction:column;gap:2px;margin-bottom:14px;padding:12px 16px;background:#fff;border:1px solid var(--line,#DFE5EE);border-radius:var(--r-lg,14px)">
+      <div style="display:flex;align-items:center;gap:10px">
+        <button onclick="go('history')" title="Voltar ao Histórico" style="background:none;border:none;cursor:pointer;color:var(--tx3,#6B7686);font-size:18px;line-height:1;padding:2px;flex-shrink:0">←</button>
+        <div style="flex:1;min-width:0">
+          <div id="form-topbar-titulo" style="font-size:15px;font-weight:600;color:var(--c2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+          <div id="form-topbar-sub" style="font-size:11px;color:var(--tx3,#6B7686);margin-top:1px"></div>
+        </div>
+        <span id="form-topbar-badge" style="flex-shrink:0"></span>
+        <div style="position:relative;flex-shrink:0">
+          <button type="button" onclick="_orcTopbarToggleMais()" style="padding:7px 12px;border:1.5px solid var(--gray-mid,#e5e7eb);border-radius:8px;background:#fff;font-size:12px;font-weight:600;cursor:pointer;color:var(--c2);font-family:inherit">Mais ▾</button>
+          <div id="form-topbar-mais" style="display:none;position:absolute;right:0;top:calc(100% + 4px);background:#fff;border:1px solid var(--line,#DFE5EE);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.14);min-width:170px;z-index:80;overflow:hidden"></div>
+        </div>
+      </div>
+      <span id="form-back-label" style="display:none"></span>
     </div>
 
     <!-- Wizard mobile (17/08, portado do fluxa-app v1) — abaixo de 900px,
