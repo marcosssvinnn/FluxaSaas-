@@ -1057,6 +1057,21 @@
 <div class="page" id="page-os">
   <div class="wrap">
     <button class="btn-voltar" onclick="voltar()">← Voltar</button>
+    <!-- Topbar + trilha + cartão de estado (Tarefa 3i.6, 19/08) — mesmo
+         padrão do orçamento (3i.4/3i.5), populados por _osMontarTopoEstado
+         dentro de _abrirOSForm. Só visíveis ao editar uma OS existente
+         (nova OS não tem estado nenhum ainda). -->
+    <div id="os-topo-estado" style="display:none;flex-direction:column;gap:2px;margin-bottom:14px;padding:12px 16px;background:#fff;border:1px solid var(--line,#DFE5EE);border-radius:var(--r-lg,14px)">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="flex:1;min-width:0">
+          <div id="os-topo-titulo" style="font-size:15px;font-weight:600;color:var(--c2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+          <div id="os-topo-sub" style="font-size:11px;color:var(--tx3,#6B7686);margin-top:1px"></div>
+        </div>
+        <span id="os-topo-badge" style="flex-shrink:0"></span>
+      </div>
+    </div>
+    <div id="os-trilha-wrap" style="display:none;margin-bottom:14px;overflow-x:auto"></div>
+    <div id="os-cartao-estado" style="display:none;margin-bottom:14px"></div>
     <div class="card">
       <div class="ct"><span id="os-form-titulo">Nova Ordem de Serviço</span> <span id="os-src-badge" style="font-size:11px;color:var(--gray);font-weight:400;text-transform:none;letter-spacing:0"></span></div>
       <div class="row">
@@ -1082,19 +1097,34 @@
         <div class="fl"><label>Data do Serviço</label><input type="date" id="os-data"></div>
         <div class="fl"><label>Horário</label><input type="time" id="os-hora" value="08:00"></div>
         <div class="fl"><label>Responsável Técnico</label><input type="text" id="os-tec" placeholder="Seu nome"></div>
-        <div class="fl"><label>Valor Total</label><input type="number" id="os-total" placeholder="0,00" step="0.01"></div>
+        <div class="fl"><label>Valor Total <span id="os-total-lock" style="display:none;font-weight:400;text-transform:none;letter-spacing:0;color:var(--tx3,#6B7686)">🔒 vem do orçamento</span></label><input type="number" id="os-total" placeholder="0,00" step="0.01"></div>
       </div>
     </div>
 
+    <!-- Serviços + confirmação num card só (Tarefa 3i.6, 19/08) — "o que
+         tem que ser feito" e "o que foi feito" são a mesma informação
+         vista de dois momentos; o técnico preenchia em dois lugares
+         separados antes. Mantidas as DUAS listas/lógicas de renderização
+         como já existiam (renderOSSvcs/os-slist e renderOsChecklist/
+         os-chklist) — só o envelope visual virou um, não reescrita de
+         lógica (mais seguro: cada lista continua sendo o que sempre foi
+         pro resto do código). -->
     <div class="card">
-      <div class="ct">Serviços a Executar</div>
+      <div class="ct">Serviços</div>
+      <div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3,#6B7686);margin-bottom:6px">O que foi vendido</div>
       <div class="slist" id="os-slist"></div>
       <button class="btn-add" onclick="addOSSvc()">＋ Adicionar serviço</button>
+      <div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3,#6B7686);margin:16px 0 6px">Confirmação da execução</div>
+      <div class="chk-list" id="os-chklist"></div>
+      <div class="chk-add-row">
+        <input type="text" class="chk-add-inp" id="chk-add-inp" placeholder="＋ Adicionar item personalizado…" onkeydown="if(event.key==='Enter'){addChkItem();event.preventDefault()}">
+        <button class="btn-add" style="font-size:12px;padding:7px 12px;border-width:1.5px;flex-shrink:0" onclick="addChkItem()">＋</button>
+      </div>
     </div>
 
     <!-- Check-in / Check-out -->
     <div class="card" id="os-checkin-card">
-      <div class="ct">⏱ Check-in / Check-out</div>
+      <div class="ct">Check-in / Check-out</div>
       <div id="checkin-bar" style="display:none" class="checkin-bar">
         <span>✅ Check-in realizado</span>
         <span class="checkin-timer" id="checkin-timer">00:00</span>
@@ -1110,13 +1140,17 @@
     </div>
 
     <div class="card" id="os-itens-card" style="display:none">
-      <div class="ct">📦 Itens a levar / validar</div>
+      <div class="ct">Itens a levar / validar</div>
       <p style="font-size:12px;color:var(--gray);margin:-4px 0 10px">Confirme o que foi realmente levado. Ao confirmar, dá baixa no estoque. Desmarque o que não levou.</p>
       <div id="os-itens-lista"></div>
       <button class="btn-primary" id="os-itens-btn" onclick="confirmarItensOS()" style="width:100%;margin-top:8px">✅ Confirmar itens e dar baixa</button>
       <div id="os-itens-ok" style="display:none;text-align:center;color:var(--green);font-size:13px;font-weight:600;padding:8px">✅ Itens já confirmados e baixados</div>
     </div>
 
+    <!-- Registro de campo (Tarefa 3i.6) — LEITURA pro gestor, formulário
+         pro técnico. Mesmos campos/ids de sempre (readonly condicional via
+         _osAplicarModoLeitura, chamado em _abrirOSForm) — o gestor não
+         digita a execução de outro, mas continua vendo o texto real. -->
     <div class="card">
       <div class="ct">Detalhes Técnicos</div>
       <div class="row f1" style="margin-bottom:12px">
@@ -1127,20 +1161,8 @@
       </div>
     </div>
 
-    <!-- ── Checklist de Execução ── -->
     <div class="card">
-      <div class="ct">✅ Confirmação da Execução
-        <button class="btn-add" style="font-size:11px;padding:4px 10px;border-width:1.5px" onclick="resetChecklist()" title="Restaurar itens padrão">↺ Resetar</button>
-      </div>
-      <div class="chk-list" id="os-chklist"></div>
-      <div class="chk-add-row">
-        <input type="text" class="chk-add-inp" id="chk-add-inp" placeholder="＋ Adicionar item personalizado…" onkeydown="if(event.key==='Enter'){addChkItem();event.preventDefault()}">
-        <button class="btn-add" style="font-size:12px;padding:7px 12px;border-width:1.5px;flex-shrink:0" onclick="addChkItem()">＋</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="ct">📷 Fotos e Vídeo</div>
+      <div class="ct">Fotos e Vídeo</div>
       <div class="row" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:12px">
         <div class="fl">
           <label>Foto 1</label>
@@ -1186,10 +1208,6 @@
       <button class="ba ba-save" id="btn-os-both" onclick="gerarOSPDF('both')" style="display:none">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l5 5v15a2 2 0 01-2 2H6a2 2 0 01-2-2V4a2 2 0 012-2z"/><polyline points="14 2 14 8 20 8"/></svg>
         OS + Orçamento
-      </button>
-      <button class="ba" style="background:#6b7280;color:white;display:none" id="btn-os-only-msg">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        OS sem orçamento vinculado
       </button>
     </div>
   </div>

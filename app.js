@@ -3149,7 +3149,6 @@ function toggleChk(i, checked){
 }
 function updChkObs(i, val){ if(osChecklist[i]) osChecklist[i].obs=val; }
 function rmChkItem(i){ osChecklist.splice(i,1); renderOsChecklist(); }
-function resetChecklist(){ osChecklist=OS_CHECKLIST_DEFAULT.map(x=>({...x})); renderOsChecklist(); }
 function addChkItem(){
   const inp=document.getElementById('chk-add-inp'); if(!inp) return;
   const nome=inp.value.trim(); if(!nome){ toast('⚠️ Digite o nome do item'); return; }
@@ -4413,6 +4412,14 @@ function _orcMontarCartaoOS(o){
     cfg={eyebrow:'A execução deste orçamento', titulo:'Executado',
       tituloSub:osVinc.data_servico?'em '+_dataBR(osVinc.data_servico)+' · aguardando relatório':'aguardando relatório',
       acao:{label:'Abrir OS #'+String(osVinc.numero||'').padStart(3,'0'), onclick:`verDetalhesOS('${osVinc.id}')`}};
+  }else if(osVinc.status==='em_andamento'){
+    // Real desde a persistência de check-in (achado ao planejar a 3i.6) —
+    // antes deste fix "em campo" nunca aparecia aqui, mesmo com o técnico
+    // trabalhando naquele momento.
+    cfg={eyebrow:'A execução deste orçamento', timer:'em campo',
+      titulo:'OS #'+String(osVinc.numero||'').padStart(3,'0')+' em campo',
+      tituloSub:osVinc.tecnico?osVinc.tecnico+' está no local agora':'acontecendo agora',
+      acao:{label:'Abrir OS #'+String(osVinc.numero||'').padStart(3,'0'), onclick:`verDetalhesOS('${osVinc.id}')`}};
   }else{
     cfg={eyebrow:'A execução deste orçamento', titulo:'OS #'+String(osVinc.numero||'').padStart(3,'0'),
       tituloSub:osVinc.data_servico?'agendada para '+_dataBR(osVinc.data_servico):'agendada, sem data definida',
@@ -4576,6 +4583,14 @@ function novaOS(){
   setV('os-data', _hojeLocal());
   setV('os-hora','08:00');
   osSvcs=[{id:Date.now(),d:''}]; renderOSSvcs();
+  // OS nova não tem estado nenhum ainda (Tarefa 3i.6) — esconde topbar/
+  // trilha/cartão da OS anterior que possa ter ficado visível.
+  const osTopoEl=document.getElementById('os-topo-estado'); if(osTopoEl) osTopoEl.style.display='none';
+  const osTrilhaEl=document.getElementById('os-trilha-wrap'); if(osTrilhaEl) osTrilhaEl.style.display='none';
+  const osCardEl=document.getElementById('os-cartao-estado'); if(osCardEl) osCardEl.style.display='none';
+  const totEl=document.getElementById('os-total'); if(totEl){ totEl.removeAttribute('readonly'); totEl.style.background=''; }
+  const lockEl=document.getElementById('os-total-lock'); if(lockEl) lockEl.style.display='none';
+  _osAplicarModoLeitura(true); // form novo: sempre editável, ninguém "leu a execução de outro" ainda
 }
 
 // ── MODAL PAGAMENTO ──
@@ -4765,6 +4780,86 @@ function editarOS(id){
   const o=_acharOS(id); if(!o||!o.id){ toast('OS não encontrada'); return; }
   _abrirOSForm(o);
 }
+const OS_STATUS_BADGE_CLS={agendado:'rd-badge-neutral',em_andamento:'rd-badge-info',concluido:'rd-badge-ok',cancelado:'rd-badge-bad'};
+const OS_STATUS_BADGE_LBL={agendado:'Agendada',em_andamento:'Em campo',concluido:'Concluída',cancelado:'Cancelada'};
+// Tarefa 3i.6 (19/08) — topbar/trilha/cartão de estado da própria OS, mesmo
+// padrão do orçamento (3i.4/3i.5). Trilha de 5 nós do DIAGNOSTICO-OS.md:
+// Orçamento aprovado → Agendada → Em campo → Concluída → Relatório
+// enviado (sempre tracejado, 3i.8 não existe ainda).
+function _osMontarTopoEstado(o){
+  const topoEl=document.getElementById('os-topo-estado');
+  const tituloEl=document.getElementById('os-topo-titulo');
+  const subEl=document.getElementById('os-topo-sub');
+  const badgeEl=document.getElementById('os-topo-badge');
+  const trilhaWrap=document.getElementById('os-trilha-wrap');
+  const cardWrap=document.getElementById('os-cartao-estado');
+  if(!topoEl||!trilhaWrap||!cardWrap) return;
+  const numStr='#'+String(o.numero||'').padStart(3,'0');
+  if(tituloEl) tituloEl.textContent='OS '+numStr+' · '+(o.cliente||'—');
+  const orc=osOrcId?todosOrc.find(x=>x.id===osOrcId):null;
+  if(subEl) subEl.textContent=o.data_servico?_dataBR(o.data_servico)+(o.hora?' às '+o.hora:''):'sem data definida';
+  if(badgeEl){
+    const st=o.status||'agendado';
+    badgeEl.innerHTML=`<span class="rd-badge ${OS_STATUS_BADGE_CLS[st]||'rd-badge-neutral'}">${esc(OS_STATUS_BADGE_LBL[st]||st)}</span>`;
+  }
+  topoEl.style.display='flex';
+
+  if(o.status==='cancelado'){
+    trilhaWrap.style.display='none';
+    cardWrap.innerHTML=_renderCartaoEstado({eyebrow:'Estado da OS', titulo:'Cancelada'});
+    cardWrap.style.display='block';
+    return;
+  }
+  const nos=[
+    {label:orc?'Orçamento aprovado':'Criada', data:orc?.data_aprovacao?_dataBR(orc.data_aprovacao):_dataBR(o.data_criacao)},
+    {label:'Agendada', data:o.data_servico?_dataBR(o.data_servico):undefined},
+    {label:'Em campo', data:o.checkin_time?_dataBR(o.checkin_time):undefined},
+    {label:'Concluída', data:o.checkout_time?_dataBR(o.checkout_time):undefined},
+    {label:'Relatório enviado', tracejado:true}
+  ];
+  let atualIdx;
+  if(o.status==='concluido') atualIdx=4;
+  else atualIdx=2; // agendado ou em_andamento — trilha não distingue os dois, o cartão sim
+  trilhaWrap.innerHTML=_renderTrilhaEstados(nos, atualIdx);
+  trilhaWrap.style.display='block';
+
+  let cfg;
+  if(o.status==='em_andamento'){
+    // Trava do plano: quem finaliza é quem está no local. Se quem está
+    // vendo AGORA é o próprio técnico que fez check-in neste aparelho, o
+    // check-out já está logo abaixo no card de Check-in/Check-out — o
+    // cartão só reforça o estado. Senão (gestor, ou outro dispositivo),
+    // a ação é "contatar", nunca "Concluir" por ele — foi exatamente
+    // fechar pelo desktop que produzia OS concluída e vazia.
+    const souEuNoLocal = eTecnico() && osCheckinId===o.id;
+    cfg={eyebrow:'Estado da OS', timer:o.checkin_time?'em campo':undefined,
+      titulo:(o.tecnico||'Técnico')+' está em campo',
+      tituloSub:souEuNoLocal?'faça o check-out quando terminar':'acompanhe — quem finaliza é quem está no local',
+      acao:souEuNoLocal?null:{label:o.tecnico?'Contatar '+o.tecnico:'Contatar o técnico'},
+      nota:souEuNoLocal?null:'Fechar pelo desktop é o que produzia OS concluída e vazia — evite concluir por quem está em campo.'};
+  }else if(o.status==='concluido'){
+    cfg={eyebrow:'Estado da OS', titulo:'Executada',
+      tituloSub:o.duracao_min?`${o.duracao_min} min · aguardando relatório`:'aguardando relatório'};
+  }else{
+    cfg={eyebrow:'Estado da OS', titulo:'Agendada',
+      tituloSub:o.data_servico?'para '+_dataBR(o.data_servico)+(o.hora?' às '+o.hora:''):'sem data definida'};
+  }
+  cardWrap.innerHTML=_renderCartaoEstado(cfg);
+  cardWrap.style.display='block';
+}
+// Registro de campo em modo leitura pro gestor (Tarefa 3i.6) — o gestor
+// não digita a execução de outro. Mesmos campos de sempre, só ganham
+// readonly quando quem abriu não é técnico (_tecMode já existe e trava os
+// campos administrativos no sentido contrário — este é o complemento).
+function _osAplicarModoLeitura(_tecMode){
+  ['os-mat','os-obs'].forEach(fid=>{
+    const el=document.getElementById(fid);
+    if(!el) return;
+    if(!_tecMode){ el.setAttribute('readonly',''); el.style.background='var(--gray-light)'; }
+    else{ el.removeAttribute('readonly'); el.style.background=''; }
+  });
+}
+
 function _abrirOSForm(o){
   osEditId=o.id;
   osOrcId=o.orcamento_id||null;
@@ -4822,6 +4917,18 @@ function _abrirOSForm(o){
   if(lojaEl){ if(_tecMode) lojaEl.setAttribute('disabled',''); else lojaEl.removeAttribute('disabled'); }
   const btnAddSvc=document.querySelector('#page-os .btn-add');
   if(btnAddSvc) btnAddSvc.style.display=_tecMode?'none':'';
+  _osAplicarModoLeitura(_tecMode);
+  _osMontarTopoEstado(o);
+  // Valor Total travado quando vem de orçamento aprovado (Tarefa 3i.6) — o
+  // valor já foi fechado na aprovação; deixar editável aqui é o que
+  // permitia o número divergir do orçamento (relatório errado, cobrança
+  // errada). Sem orçamento vinculado (serviço avulso) continua editável.
+  { const totEl=document.getElementById('os-total'); const lockEl=document.getElementById('os-total-lock');
+    if(totEl){
+      if(osOrcId){ totEl.setAttribute('readonly',''); totEl.style.background='var(--gray-light)'; if(lockEl) lockEl.style.display='inline'; }
+      else{ totEl.removeAttribute('readonly'); totEl.style.background=''; if(lockEl) lockEl.style.display='none'; }
+    }
+  }
   atualizarPainelItensOS();
 }
 
@@ -7441,6 +7548,27 @@ function fazerCheckin(){
     const s=String(diff%60).padStart(2,'0');
     const el=document.getElementById('checkin-timer'); if(el) el.textContent=h+':'+m+':'+s;
   },1000);
+  // Persiste "em campo" de verdade (achado ao planejar a 3i.6, 19/08) —
+  // antes o check-in só existia em memória local (checkinAt), sem refletir
+  // no banco até o checkout. Sem isso "em campo" nunca era visível de
+  // outro aparelho — um gestor olhando o orçamento/histórico de outro
+  // computador nunca via a OS realmente em campo, só depois de concluída.
+  // É o dado real que a coluna Execução (3i.2), o cartão de estado do
+  // orçamento (3i.5) e o cartão de estado da própria OS (3i.6) precisam.
+  if(osCheckinId){
+    const j=(todosOS||[]).findIndex(x=>x.id===osCheckinId);
+    if(j>=0) todosOS[j]={...todosOS[j], status:'em_andamento', checkin_time:checkinAt.toISOString(), tecnico:tec};
+    try{
+      const lista=JSON.parse(ls('fluxa_os_hist')||'[]');
+      const i=lista.findIndex(x=>x.id===osCheckinId);
+      if(i>=0){ lista[i]={...lista[i], status:'em_andamento', checkin_time:checkinAt.toISOString(), tecnico:tec}; lsSet('fluxa_os_hist',JSON.stringify(lista.slice(0,200))); }
+    }catch(e){ console.warn('[checkin OS local]', e?.message||e); }
+    if(dbOk&&db&&!String(osCheckinId).startsWith('local_')){
+      dbUpdate('ordens_servico', {status:'em_andamento', checkin_time:checkinAt.toISOString(), tecnico:tec}, 'id', osCheckinId)
+        .then(r=>{ if(r.error) console.warn('[checkin OS] sync falhou:', r.error.message); })
+        .catch(e=>console.warn('[checkin OS]', e?.message||e));
+    }
+  }
   toast('📍 Check-in realizado!');
 }
 
