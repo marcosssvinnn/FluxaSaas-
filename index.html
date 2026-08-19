@@ -799,6 +799,14 @@
       <span id="form-back-label" style="display:none"></span>
     </div>
 
+    <!-- Cartão de estado da OS + trilha (Tarefa 3i.5, 19/08) — visível só
+         ao editar (populado por _orcMontarCartaoOS, dentro de abrirOrc).
+         Layout de coluna única no v2 (não há "novo-orc-right" de 2 colunas
+         como o mockup assume) — vira mais um card empilhado, se destaca
+         pela cor escura mesmo sem layout lateral dedicado. -->
+    <div id="orc-trilha-wrap" style="display:none;margin-bottom:14px;overflow-x:auto"></div>
+    <div id="orc-cartao-os" style="display:none;margin-bottom:14px"></div>
+
     <!-- Wizard mobile (17/08, portado do fluxa-app v1) — abaixo de 900px,
          só um dos 3 passos fica visível por vez (_orcApplyMobileStep
          esconde os outros via style.display, nunca tira do DOM — o

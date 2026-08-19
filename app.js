@@ -2278,6 +2278,8 @@ function _limparCamposOrc(){
   ['os-inline-data','os-inline-hora','os-inline-tec'].forEach(id=>{const el=document.getElementById(id);if(el){el.value=id==='os-inline-hora'?'08:00':'';}});
   const tov=document.getElementById('toggle-ocultar-valores'); if(tov) tov.checked=false;
   const bb=document.getElementById('form-back-bar'); if(bb) bb.style.display='none';
+  const trilhaW=document.getElementById('orc-trilha-wrap'); if(trilhaW) trilhaW.style.display='none';
+  const cardOS=document.getElementById('orc-cartao-os'); if(cardOS) cardOS.style.display='none';
 }
 function novoOrc(){
   limparRascunho('form'); window._skipDraftForm=true; // novo orçamento = começar do zero, sem rascunho antigo
@@ -4352,6 +4354,75 @@ document.addEventListener('click', e=>{
   }
 });
 
+// Tarefa 3i.5 (19/08) — a OS como estado, não como botão. Substitui o que
+// hoje é um botão binário só na TABELA do histórico ("Gerar OS"/"OS#NNN")
+// por um cartão de estado rico dentro do próprio orçamento aberto, com a
+// trilha do ciclo completo.
+//
+// A trilha do diagnóstico tinha 6 nós (Enviado → Negociado → Aprovado →
+// OS → Relatório → Recebido) — "Negociado" não virou nó aqui porque não
+// existe like um status distinto no schema (só pendente/aprovado/recusado/
+// vencido); inventar um nó sem dado real por trás seria pior que omiti-lo.
+// Trilha real de 5 nós: Enviado → Aprovado → OS #NNN → Relatório →
+// Recebido. "Relatório" fica sempre tracejado (3i.8 não existe ainda).
+function _orcMontarCartaoOS(o){
+  const trilhaWrap=document.getElementById('orc-trilha-wrap');
+  const cardWrap=document.getElementById('orc-cartao-os');
+  if(!trilhaWrap||!cardWrap) return;
+  // Pendente/recusado/vencido: o negócio ainda pode nem virar OS — a
+  // trilha linear de 5 nós não representa bem uma saída lateral. Cartão
+  // simples, sem forçar uma trilha que não é fiel ao que aconteceu.
+  if(o.status!=='aprovado'){
+    trilhaWrap.style.display='none';
+    const msgs={
+      pendente:{tit:'Aguardando decisão',sub:'enviado, ainda sem resposta do cliente',acaoLbl:'Cobrar resposta'},
+      recusado:{tit:'Recusado',sub:'o cliente não aprovou este orçamento'},
+      vencido:{tit:'Vencido',sub:'prazo de validade expirado sem resposta',acaoLbl:'Revalidar preço'}
+    };
+    const m=msgs[o.status]||msgs.pendente;
+    cardWrap.innerHTML=_renderCartaoEstado({
+      eyebrow:'Situação do negócio', titulo:m.tit, tituloSub:m.sub,
+      acao:m.acaoLbl?{label:m.acaoLbl}:null
+    });
+    cardWrap.style.display='block';
+    return;
+  }
+  const osVinc=(todosOS||[]).find(x=>x.orcamento_id===o.id);
+  const recebidoTotal=o.total>0 && (o.valor_recebido||0)>=o.total;
+  const nos=[
+    {label:'Enviado', data:_dataBR(o.data_criacao)},
+    {label:'Aprovado', data:_dataBR(o.data_aprovacao)},
+    {label:osVinc?'OS #'+String(osVinc.numero||'').padStart(3,'0'):'OS', data:osVinc?.data_servico?_dataBR(osVinc.data_servico):undefined},
+    {label:'Relatório', tracejado:true},
+    {label:'Recebido'}
+  ];
+  let atualIdx;
+  if(recebidoTotal) atualIdx=nos.length;
+  else if(osVinc && osVinc.status==='concluido') atualIdx=3;
+  else atualIdx=2;
+  trilhaWrap.innerHTML=_renderTrilhaEstados(nos, atualIdx);
+  trilhaWrap.style.display='block';
+
+  let cfg;
+  if(!osVinc){
+    const dias=o.data_aprovacao?Math.max(0,Math.floor((new Date()-new Date(o.data_aprovacao))/86400000)):0;
+    cfg={eyebrow:'A execução deste orçamento', titulo:'Nada agendado ainda',
+      tituloSub:`aprovado há ${dias} dia${dias!==1?'s':''}`,
+      acao:{label:'Agendar a execução', onclick:`gerarOS_deOrc('${o.id}')`}};
+  }else if(osVinc.status==='concluido'){
+    cfg={eyebrow:'A execução deste orçamento', titulo:'Executado',
+      tituloSub:osVinc.data_servico?'em '+_dataBR(osVinc.data_servico)+' · aguardando relatório':'aguardando relatório',
+      acao:{label:'Abrir OS #'+String(osVinc.numero||'').padStart(3,'0'), onclick:`verDetalhesOS('${osVinc.id}')`}};
+  }else{
+    cfg={eyebrow:'A execução deste orçamento', titulo:'OS #'+String(osVinc.numero||'').padStart(3,'0'),
+      tituloSub:osVinc.data_servico?'agendada para '+_dataBR(osVinc.data_servico):'agendada, sem data definida',
+      acao:{label:'Abrir OS #'+String(osVinc.numero||'').padStart(3,'0'), onclick:`verDetalhesOS('${osVinc.id}')`}};
+  }
+  if(recebidoTotal) cfg.nota='Pagamento recebido integralmente.';
+  cardWrap.innerHTML=_renderCartaoEstado(cfg);
+  cardWrap.style.display='block';
+}
+
 function abrirOrc(id){
   const o=todosOrc.find(x=>x.id===id); if(!o) return;
   editId=id;
@@ -4386,6 +4457,7 @@ function abrirOrc(id){
   if(bb){ bb.style.display='flex'; }
   if(bl){ bl.textContent='Editando ORC #'+String(o.numero).padStart(3,'0'); }
   _orcMontarTopbar(o);
+  _orcMontarCartaoOS(o);
   toast('✏️ Editando Orçamento #'+String(o.numero).padStart(3,'0'));
 }
 
@@ -4417,6 +4489,8 @@ function duplicarOrc(id){
   // do orçamento ANTERIOR) por cima do formulário do novo — confuso, já
   // que este é um orçamento novo, não uma edição.
   const bbDup=document.getElementById('form-back-bar'); if(bbDup) bbDup.style.display='none';
+  const trilhaWDup=document.getElementById('orc-trilha-wrap'); if(trilhaWDup) trilhaWDup.style.display='none';
+  const cardOSDup=document.getElementById('orc-cartao-os'); if(cardOSDup) cardOSDup.style.display='none';
   setV('cli',o.cliente||''); setV('cli-id',o.cliente_id||''); setV('loc',o.local_servico||''); setV('tel-cli',o.tel_cliente||''); setV('cnpj-cli',o.cnpj||''); setV('cpf-cli',o.cpf_cliente||'');
   const _PAG_COD2=['boleto-parc','entrada-boleto','entrada-pix','cartao-parc'];
   setV('pag',o.pag_cod||(_PAG_COD2.includes(o.pagamento)?o.pagamento:'A combinar')); updPag();
@@ -7266,7 +7340,17 @@ function renderCal(){
 }
 
 function verDetalhesOS(id){
-  const o=getNC(id)||todosOS.find(x=>x.id===id)||(()=>{ try{ return JSON.parse(ls('fluxa_os_hist')||'[]').find(x=>x.id===id); }catch(e){ return null; } })();
+  // Achado na 3i.5 (19/08): getNC(id) SEMPRE retorna um objeto (nunca
+  // null — é {} quando não achado), então "getNC(id)||fallback" nunca caía
+  // no fallback: {} é truthy. Só não estourava antes porque essa função só
+  // era chamada a partir de botões dentro da própria renderOSTabela/
+  // Minhas OS, que já tinham acabado de popular _nc[id] de verdade. Agora
+  // que o cartão de estado do orçamento (3i.5) chama isto direto — sem
+  // passar primeiro pela tabela de OS — o cache podia estar vazio e o
+  // modal mostrava "OS #000"/tudo em branco. Corrigido checando se o
+  // cache tem conteúdo de verdade antes de confiar nele.
+  const nc=getNC(id);
+  const o=(nc&&nc.id)?nc:todosOS.find(x=>x.id===id)||(()=>{ try{ return JSON.parse(ls('fluxa_os_hist')||'[]').find(x=>x.id===id); }catch(e){ return null; } })();
   if(!o){ toast('OS não encontrada'); return; }
   const tipo=_osTipo(o);
   const statusLabel={agendado:'📋 Agendado',concluido:'✅ Concluído',cancelado:'🚫 Cancelado',em_andamento:'🔧 Em andamento'};
