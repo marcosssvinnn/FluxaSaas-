@@ -3291,3 +3291,152 @@ em que é criado).
   em "+ Orç." e "+ OS" a partir do cliente, `coletarForm()` captura
   corretamente, `_autoSalvarCliente()` grava CPF em cliente novo criado a
   partir de um orçamento/OS.
+
+## Sessão 2026-08-19/20 — Tarefa 3i: o ciclo Orçamento → OS → Relatório
+
+> Pacote de design em `~/Downloads/design_handoff_fluxa_redesign/`
+> (`DIAGNOSTICO-OS.md`, `DIAGNOSTICO-ORCAMENTOS.md`, `PLANO-3I-CICLO-OS.md`).
+> Executados os 8 commits do plano, na ordem, cada um testado no Browser
+> pane (offline, `dbOk=false;db=null;` bare) antes de commitar/dar push
+> pra `dev`. Referência visual: `Fluxa OS Fluxo.dc.html` (turno 11a) e
+> `Fluxa Orcamento Fluxo.dc.html` (turno 12a).
+
+**Achado logo no início, que moldou a rodada inteira:** os dois
+diagnósticos descrevem alguns elementos que não existem exatamente como
+descrito no v2 real (`#form-acoes-edit`, `novo-orc-right` de 2 colunas,
+"dossiê de assembleia", "ficha de equipamento" dedicada) — provavelmente
+escritos olhando outra versão/mockup. Em vez de forçar a estrutura
+descrita, cada commit foi adaptado ao que o código real tem hoje,
+documentando a divergência em vez de fingir que bate. Nada disso é
+regressão — é o estado real do produto, só desatualizado no pacote de
+design.
+
+### 3i.1 — Componentes compartilhados
+`_renderTrilhaEstados(nos, atualIdx)` e `_renderCartaoEstado(cfg)` (novos
+em `app.js`, tokens novos `--escuro`/`--azul2`/`--azul3` em `styles.css`,
+distintos de `--c2` — são UI de status fixa, não seguem a cor da empresa,
+mesmo raciocínio de `--nav-bg`). Usados por todos os commits seguintes.
+
+### 3i.2 — Histórico de orçamentos: coluna "Execução"
+`_orcExecucaoInfo(o)` deriva de `orcamento_id`/`orcamentos.status` sem
+tabela nova. Achado: "em campo" dependia de `status:'em_andamento'` em
+`ordens_servico`, que **nunca era gravado** — resolvido na 3i.6. Ação em
+lote "Agendar as N aprovadas sem OS" com modal linha-a-linha (data +
+técnico, sem técnico não agenda); `_criarOSDeOrcamento()` extraído de
+`criarOSdeAprovacao()` como núcleo reutilizável.
+
+### 3i.3 — Histórico: os 4 novos KPIs
+Pipeline aberto / Aprovados no mês / Aprovado sem OS (valor parado em
+reais) / Taxa de fechamento — substitui Total emitido/Aprovados/
+Pendentes/Recusados-Vencidos (Ticket médio não gerava ação nenhuma).
+
+### 3i.4 — Orçamento aberto: uma barra
+`_orcMontarTopbar(o)`: título/sub/badge + dropdown "Mais ▾" (NF/Corrigir
+mês/Duplicar/Excluir — chama as mesmas funções que já existiam na
+tabela). "Salvar"/"Gerar PDF" continuam separados, como já estavam.
+Achado: `duplicarOrc()` não escondia a topbar de edição anterior — corrigido.
+
+### 3i.5 — Orçamento: a OS como estado
+Trilha real de **5 nós** (não 6 — "Negociado" não virou nó por falta de
+status distinto no schema): Enviado → Aprovado → OS #NNN → Relatório
+(sempre tracejado até a 3i.8) → Recebido (`valor_recebido>=total`).
+Cartão de estado por situação (sem OS/agendada/em campo/executada/
+recebido). Achado, corrigido: `verDetalhesOS()` tinha
+`getNC(id)||fallback` que nunca caía no fallback — `getNC()` sempre
+retorna `{}` (nunca `null`), truthy sempre vencia.
+
+### 3i.6 — OS: uma ação primária por estado (a mais arriscada)
+**Pré-requisito resolvido antes do resto**: `fazerCheckin()` agora
+persiste `status:'em_andamento'`+`checkin_time` no banco na hora (antes só
+existia em `checkinAt`, memória local, até o checkout). Sem isso "em
+campo" nunca seria um estado real entre aparelhos.
+- Topbar/trilha/cartão da própria OS (`_osMontarTopoEstado`). Trava do
+  plano: em "em campo", se quem vê é o próprio técnico que fez check-in
+  neste aparelho → só reforça "faça o check-out"; senão (gestor/outro
+  dispositivo) → "Contatar {técnico}", nunca oferece Concluir — evita
+  reintroduzir o bug de 19/08 (fechar pelo desktop = OS concluída vazia).
+- "OS sem orçamento vinculado" removido (código morto, nunca era exibido).
+  "Resetar" do checklist removido. Valor Total travado quando há
+  orçamento vinculado. "Serviços a Executar" + "Confirmação da Execução"
+  viraram um card só (visual — as duas listas mantêm a lógica de sempre).
+  "Registro de campo" em leitura pro gestor (`_osAplicarModoLeitura`).
+  Emojis fora dos títulos.
+- **Escopo adiado de propósito**: "Salvar OS"/"OS + Orçamento" continuam
+  existindo — removê-los antes da 3i.7 ter o substituto deixaria a OS sem
+  nenhum jeito de persistir entre um commit e outro.
+
+### 3i.7 — Finalizar serviço
+Modal `.rd-modal-wide` (560px) que vira o único caminho de concluir.
+Serviço vendido com Fiz/Não fiz por item (Não fiz pede motivo). Chama
+`_fazerCheckoutConfirmado()` **direto**, não via `confirmar()` (que abriria
+um 2º modal de confirmação por cima). Achado real, corrigido: o checkout
+filtrava o checklist por `x.checked` antes de salvar — item "Não fiz"
+(o dado mais importante, "evita cobrar por serviço não executado") estava
+sendo descartado. Corrigido com flag `servico:true` que sempre passa.
+Achado 2: trilha/cartão só atualizavam ao reabrir a OS — `fazerCheckin()`
+chama `_osMontarTopoEstado()` na hora agora.
+
+### 3i.8 — O relatório de serviço executado
+A peça que não existia. `preencherRelatorioOS(os, versao)` — mesma
+família de classes `.pd-*` do relatório de vistoria, reaproveita
+`imprimirDoc`/`_nomeArquivoImpressao` (ganharam o caso `'ros'`).
+- **Schema** (`migracao-relatorio-os.sql`, aplicado): `os_materiais`
+  (tabela prevista pelo plano, ainda **não populada pela UI** — materiais
+  continuam texto livre; a tabela existe pronta pra quando o app ganhar
+  chips estruturados de material, mesmo padrão do estoque) +
+  `ordens_servico.relatorio_enviado_em`/`relatorio_servicos_pendentes`
+  (extensão que se mostrou necessária — sem isso não dava pra distinguir
+  "executado, aguardando relatório" de "enviado").
+- **`portal_dados()` estendida com cuidado** (RPC pública, já teve um
+  vazamento real corrigido em 15/08): o conteúdo do relatório
+  (checklist/materiais/obs_tecnica/fotos/horários) só é revelado no
+  bundle quando `relatorio_enviado_em` não é nulo — antes da revisão
+  manual, o técnico pode ter escrito algo que ninguém releu ainda, e a
+  RPC não passa pela UI (dá pra consultar direto). `relatorio_enviado_em`
+  em si (a flag) sempre aparece.
+- **Fluxo**: contrato mensal (`agendamento_id`) → `relatorio_enviado_em`
+  marcado na hora, ao finalizar. Demais OS → fica pendente; botão "Enviar
+  relatório" no Histórico de OS e na linha do tempo do cliente
+  (`enviarRelatorioOS`) abre o PDF pra leitura e SÓ ENTÃO marca — o
+  clique nele já é a revisão (decisão do Marcos, 19/08).
+  "Não fiz" agora exige escolher reagendar/abater por item antes de
+  liberar o Finalizar (sem padrão pré-selecionado — decisão do Marcos) —
+  registrado em `relatorio_servicos_pendentes`, **sem automatizar** o
+  reagendamento/abatimento em si (criar OS nova ou mexer em valor de
+  orçamento é decisão maior, fora desta tarefa).
+- **Publicação, ajustada à realidade do v2** (2 dos 4 lugares do plano
+  não existem hoje — achado ao investigar, não regressão): Histórico de
+  OS + linha do tempo do cliente + Portal (`verRelatorioPortalOS` seta
+  `CFG` a partir do bundle da RPC — achado: o portal nunca populava `CFG`,
+  sem isso o relatório sairia sem o branding certo). **"Ficha de
+  equipamento" e "dossiê de assembleia" não são telas reais no v2** —
+  publicação ali fica pra quando essas telas existirem.
+- Duas versões (cliente/interna — interna com valor por linha + total,
+  usando `orcamentos.ocultar_valores` já existente, sem chave nova).
+
+**Achado de processo, sem relação com o produto**: `window.print()` real
+trava toda a automação de clique/JS na aba até o diálogo nativo fechar —
+precisei mockar `window.print` nos testes da 3i.8 pra não travar a sessão
+de teste (já tinha travado uma vez, tive que fechar e reabrir a aba).
+
+**Testado, todos os 8 commits**: offline, dados mock cobrindo os
+principais estados de cada tela; ver mensagens de commit individuais no
+git log pra detalhe por commit. Nada gravado no Supabase real durante os
+testes (todos com `dbOk=false`) — a única mudança real em produção foi o
+schema (migrações aplicadas e verificadas via Management API).
+
+### Pendências / próximos passos registrados
+- `os_materiais` existe no schema mas a UI de "material aplicado" continua
+  sendo texto livre — estruturar isso é a extensão natural, não feita
+  agora (fora do escopo da 3i.8, que só previa a tabela).
+- Reagendar/abater (relatório de serviço não executado) fica só
+  **registrado**, não automatizado — criar a OS de reagendamento de
+  verdade, ou abater o valor do orçamento/faturamento, é decisão de
+  produto maior que merece tarefa própria.
+- "Ficha de equipamento" dedicada e "dossiê de assembleia" não existem no
+  v2 — se um dia forem construídas, o relatório de serviço já tem o dado
+  pronto pra aparecer lá (mesmo padrão de `verRelatorioPortalOS`).
+- Todo o trabalho está em `dev`, não `main` — segue a regra do projeto de
+  não promover sem validação. Antes de promover, testar o fluxo completo
+  (orçamento → OS → finalizar → relatório) com um clique real de ponta a
+  ponta, já que esta sessão só testou via `javascript_exec`/mocks.
