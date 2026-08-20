@@ -1776,6 +1776,79 @@
   <div class="pd-foot" id="pd-foot-vis"></div>
 </div>
 
+<!-- ══ Relatório de serviço executado (Tarefa 3i.8, 19/08) — mesma família
+     de classes .pd-* do relatório de vistoria (#pdoc-visita), conteúdo
+     adaptado. preencherRelatorioOS() em app.js monta os dois alternadores
+     de versão (cliente/interna) por cima da MESMA estrutura, só
+     escondendo/mostrando #pd-ros-interna-wrap. ══ -->
+<div class="pdoc" id="pdoc-relatorio-os">
+  <div class="pd-header" id="pd-header-ros">
+    <div class="pd-hdr-brand">
+      <img id="pd-hdr-logo-ros" class="pd-hdr-logo-img" alt="logo">
+      <div class="pd-hdr-logo-initials" id="pd-hdr-init-ros"></div>
+      <div class="pd-hdr-txt">
+        <div class="pd-hdr-nome" id="pd-nm-ros"></div>
+        <div class="pd-hdr-sub" id="pd-sb-ros"></div>
+        <div class="pd-hdr-tagline" id="pd-tag-ros"></div>
+      </div>
+    </div>
+    <div class="pd-hdr-doc">
+      <div class="pd-doctype-badge" id="pd-doctype-ros">Relatório de Serviço</div>
+      <div class="pd-docnum" id="pd-num-ros"></div>
+    </div>
+  </div>
+  <div class="pd-meta-strip">
+    <div class="pd-meta-left" id="pd-cont-ros"></div>
+    <div class="pd-meta-right" id="pd-meta-ros"></div>
+  </div>
+  <div class="pd-content">
+    <div class="pd-sl">Cliente</div>
+    <div class="pd-cli-card" style="margin-bottom:16px">
+      <div class="pd-cli-bar" id="pd-cli-bar-ros"></div>
+      <div class="pd-cli-info">
+        <div class="pd-cli-nm" id="pd-cli-nm-ros"></div>
+        <div class="pd-cli-loc" id="pd-cli-loc-ros"></div>
+      </div>
+    </div>
+    <div class="pd-vis-info-grid" id="pd-ros-info-grid"></div>
+    <div class="pd-sl">O que foi executado</div>
+    <div id="pd-ros-servicos" style="margin-bottom:16px"></div>
+    <div id="pd-ros-mat-wrap" style="display:none">
+      <div class="pd-sl">Material aplicado</div>
+      <div id="pd-ros-mat" style="margin-bottom:16px;font-size:12.5px;color:#374151;white-space:pre-line"></div>
+    </div>
+    <div id="pd-ros-obs-wrap" style="display:none">
+      <div class="pd-sl">Condições encontradas</div>
+      <div class="pd-obs-card">
+        <div class="pd-obs-bar" id="pd-ros-obs-bar"></div>
+        <div class="pd-obs-inner">
+          <div class="pd-obs-lbl">Observação técnica</div>
+          <div class="pd-obs-txt" id="pd-ros-obs-txt"></div>
+        </div>
+      </div>
+    </div>
+    <div id="pd-ros-interna-wrap" style="display:none">
+      <div class="pd-sl">Interno — não visível ao cliente</div>
+      <div id="pd-ros-interna" style="margin-bottom:16px;font-size:12.5px;color:#374151"></div>
+    </div>
+    <div id="pd-ros-fotos-wrap" style="display:none">
+      <div class="pd-sl">Registro fotográfico</div>
+      <div class="pd-vis-equip-fotos" id="pd-ros-fotos" style="margin-bottom:16px"></div>
+    </div>
+    <div class="pd-sig-area">
+      <div class="pd-sig-blk">
+        <div class="pd-sig-line"></div>
+        <div class="pd-sig-name">Assinatura de quem recebeu</div>
+      </div>
+      <div class="pd-sig-blk">
+        <div class="pd-sig-line"></div>
+        <div class="pd-sig-name" id="pd-ros-sign-tec">Técnico Responsável</div>
+      </div>
+    </div>
+  </div>
+  <div class="pd-foot" id="pd-foot-ros"></div>
+</div>
+
 <!-- ══ PAGE: OS HISTORY ══ -->
 <div class="page" id="page-os-history">
   <div class="wrap">
