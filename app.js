@@ -8855,6 +8855,192 @@ let visEditId = null;          // id da vistoria sendo editada (null = nova)
 let _visDraftId = null;        // id da vistoria atual em edição no form (compartilhado entre Salvar e Gerar PDF, evita duplicata)
 let visHistStatusFilt = '';    // filtro de status no histórico: ''|'critico'|'atencao'
 
+// ── Autosave defensivo da vistoria em andamento (25/08) ──
+// Vistoria em campo pode durar horas passando por vários equipamentos/setores
+// de um condomínio, com o app minimizado e reaberto várias vezes (o Android
+// pode matar o processo em background sob pressão de memória — comum aqui,
+// com dezenas de fotos acumuladas em memória durante a visita) e sinal de
+// rede ruim no local. Até aqui NADA do formulário ia pro disco antes de
+// "Finalizar Vistoria" no fim — visEquipDados/visEquipSelecionados/
+// visCheckinTime eram só variáveis `let` em memória. Um kill de processo no
+// meio perdia a vistoria inteira, sem aviso nenhum. Agora salva no
+// localStorage a cada mudança (debounce curto) + flush imediato ao
+// minimizar, e sabe retomar sozinho quando o técnico reabre a MESMA
+// vistoria (mesmo plano/local, ou a mesma edição). Chaveado por local/edição
+// (nunca um slot único) — começar uma vistoria diferente nunca apaga o
+// progresso de outra que ainda não foi finalizada.
+const VIS_RASCUNHOS_KEY = 'fluxa_vis_rascunhos';
+const VIS_RASCUNHO_MAX_IDADE_MS = 18*3600*1000; // 18h — depois disso é lixo de vistoria já fechada por outro caminho (ou nunca retomada)
+let _visRascunhoTimer = null;
+
+function _visRascunhoChave(localId, editId){
+  return editId ? ('edit:'+editId) : (localId ? ('local:'+localId) : 'livre');
+}
+function _visRascunhosLer(){
+  try{ const d=JSON.parse(ls(VIS_RASCUNHOS_KEY)||'{}'); return (d&&typeof d==='object')?d:{}; }catch(e){ return {}; }
+}
+function _visRascunhosSalvar(dict){
+  try{ lsSet(VIS_RASCUNHOS_KEY, JSON.stringify(dict)); return; }catch(e){ /* tenta sem fotos abaixo */ }
+  // Vistoria longa (condomínio grande, muitos equipamentos × até 3 fotos
+  // cada) pode estourar a cota do localStorage antes de finalizar — mesmo
+  // fallback já usado em lsVisSalvar (vistoria já concluída): salva sem as
+  // fotos pra não perder status/observação/checklist, o que importa mais se
+  // o app fechar antes de terminar. As fotos em si, se ainda não subiram pro
+  // Storage, se perdem nesse cenário raro — avisa explicitamente.
+  try{
+    const semFotos={};
+    Object.keys(dict).forEach(k=>{
+      const s=dict[k];
+      semFotos[k]={...s, equip_dados: Object.fromEntries(Object.entries(s.equip_dados||{}).map(([id,d])=>[id,{...d, fotos:[]}]))};
+    });
+    lsSet(VIS_RASCUNHOS_KEY, JSON.stringify(semFotos));
+    const agora=Date.now();
+    if(!_visRascunhosSalvar._aviso || agora-_visRascunhosSalvar._aviso>60000){
+      _visRascunhosSalvar._aviso=agora;
+      toast('⚠️ Pouco espaço neste aparelho — o progresso (status/observação) está protegido, mas fotos ainda não salvas podem se perder se o app fechar. Finalize e sincronize assim que possível.', {ms:10000});
+    }
+  }catch(e2){
+    console.warn('[visRascunho] não salvou nem sem fotos:', e2?.message||e2);
+    toast('⚠️ Não foi possível salvar o progresso da vistoria neste aparelho — libere espaço ou finalize agora.', {ms:9000});
+  }
+}
+function _visPodarRascunhosVelhos(dict){
+  const agora=Date.now();
+  Object.keys(dict).forEach(k=>{ if(agora-(dict[k]?.salvo_em||0) > VIS_RASCUNHO_MAX_IDADE_MS) delete dict[k]; });
+  return dict;
+}
+function _visSnapshotAtual(){
+  return {
+    local_id: window._visLocalId||null,
+    edit_id: visEditId||null,
+    draft_id: _visDraftId||null,
+    cliente: gV('vis-cli'), cliente_id: gV('vis-cli-id'), local: gV('vis-loc'),
+    data: gV('vis-data'), hora: gV('vis-hora'), mes_ref: gV('vis-mes-ref'),
+    tecnico: gV('vis-tec'), email_resp: gV('vis-email-resp'), obs_geral: gV('vis-obs'),
+    piscina_id: _visPiscinaSelecionadaId||null,
+    checkin_at: visCheckinTime?visCheckinTime.toISOString():null,
+    checkout_at: visCheckoutTime?visCheckoutTime.toISOString():null,
+    equip_sel: visEquipSelecionados, equip_dados: visEquipDados, equip_custom: _visEquipsCustom,
+    salvo_em: Date.now()
+  };
+}
+// Só vale gravar/oferecer retomada se já existe trabalho real — form vazio
+// sem nenhum equipamento tocado não é "vistoria em andamento".
+function _visTemConteudoReal(){
+  if(gV('vis-cli')) return true;
+  if(visCheckinTime) return true;
+  return Object.values(visEquipDados||{}).some(d=>d && ((d.status&&d.status!=='na') || (d.fotos||[]).some(Boolean) || (d.obs||'').trim()));
+}
+function _visSalvarRascunhoAgora(){
+  const chave=_visRascunhoChave(window._visLocalId, visEditId);
+  const dict=_visPodarRascunhosVelhos(_visRascunhosLer());
+  if(!_visTemConteudoReal()){ if(dict[chave]){ delete dict[chave]; _visRascunhosSalvar(dict); } return; }
+  dict[chave]=_visSnapshotAtual();
+  _visRascunhosSalvar(dict);
+}
+function _visAgendarRascunho(){
+  clearTimeout(_visRascunhoTimer);
+  _visRascunhoTimer=setTimeout(_visSalvarRascunhoAgora, 700);
+}
+function _visLimparRascunhoAtual(){
+  clearTimeout(_visRascunhoTimer);
+  const chave=_visRascunhoChave(window._visLocalId, visEditId);
+  const dict=_visRascunhosLer();
+  if(dict[chave]){ delete dict[chave]; _visRascunhosSalvar(dict); }
+}
+function _visRascunhoPara(localId, editId){
+  const chave=_visRascunhoChave(localId, editId);
+  const dict=_visPodarRascunhosVelhos(_visRascunhosLer());
+  return dict[chave] ? {chave, snap:dict[chave]} : null;
+}
+// Restaura um snapshot salvo pro form ao vivo — usado tanto pela retomada
+// automática (mesmo local/edição sendo reaberto) quanto pelo banner manual
+// ("Retomar" quando o alvo não bate com o que foi clicado agora).
+function _visAplicarRascunho(snap, chave){
+  window._visLocalId=snap.local_id||null;
+  visEditId=snap.edit_id||null;
+  _visDraftId=snap.draft_id||null;
+  setV('vis-cli',snap.cliente||''); setV('vis-cli-id',snap.cliente_id||''); setV('vis-loc',snap.local||'');
+  setV('vis-data',snap.data||''); setV('vis-hora',snap.hora||''); setV('vis-mes-ref',snap.mes_ref||'');
+  setV('vis-obs',snap.obs_geral||''); setV('vis-email-resp',snap.email_resp||'');
+  if(snap.tecnico){
+    const sel=document.getElementById('vis-tec');
+    if(sel){ let found=false; for(const o of sel.options){ if(o.value===snap.tecnico){ o.selected=true; found=true; break; } } if(!found) sel.appendChild(new Option(snap.tecnico,snap.tecnico,true,true)); }
+  }
+  _visPiscinaSelecionadaId=snap.piscina_id||null;
+  visEquipSelecionados=snap.equip_sel||[];
+  visEquipDados=snap.equip_dados||{};
+  _visEquipsCustom=snap.equip_custom||[];
+  visCheckinTime=snap.checkin_at?new Date(snap.checkin_at):null;
+  visCheckoutTime=snap.checkout_at?new Date(snap.checkout_at):null;
+  if(visCheckinInterval){ clearInterval(visCheckinInterval); visCheckinInterval=null; }
+  if(visCheckinTime && !visCheckoutTime){
+    const bar=document.getElementById('vis-checkin-bar'), form=document.getElementById('vis-checkin-form'), info=document.getElementById('vis-checkin-info'), timerEl=document.getElementById('vis-checkin-timer');
+    if(bar) bar.style.display='flex'; if(form) form.style.display='none';
+    if(info) info.textContent='📍 Check-in: '+visCheckinTime.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    visCheckinInterval=setInterval(()=>{
+      const diff=Math.floor((Date.now()-visCheckinTime)/1000);
+      const h=Math.floor(diff/3600), m=Math.floor((diff%3600)/60), s=diff%60;
+      if(timerEl) timerEl.textContent=(h?h+':':'')+(m<10&&h?'0':'')+m+':'+(s<10?'0':'')+s;
+    },1000);
+  } else { _resetCheckinVis(); }
+  const _vdb=document.getElementById('vis-dados-body'); if(_vdb) _vdb.style.display='';
+  const _vdt=document.getElementById('vis-dados-toggle'); if(_vdt) _vdt.textContent='▲ recolher';
+  const planoBanner=document.getElementById('vis-plano-banner');
+  if(planoBanner) planoBanner.style.display = snap.local_id ? 'flex' : 'none';
+  const rascBanner=document.getElementById('vis-rascunho-banner');
+  if(rascBanner) rascBanner.style.display='none';
+  window._visRascunhoBannerAlvo=null;
+  visTab('nova');
+  renderVisChips();
+  renderVisEquipGrid();
+  if(typeof _visRenderPiscinas==='function') _visRenderPiscinas();
+  const nEquip=(visEquipSelecionados.length||0)+(_visEquipsCustom.length||0);
+  toast('🔄 Retomando vistoria em andamento'+(nEquip?` (${nEquip} equipamento${nEquip>1?'s':''} já avaliados)`:'')+' — nada foi perdido', {ms:6500});
+}
+// Banner visível quando o form está VAZIO mas existe rascunho abandonado
+// (ex.: técnico reabriu o app por um caminho que não sabe qual vistoria
+// específica retomar — cai aqui em vez de tentar adivinhar).
+function _visAtualizarBannerRascunho(){
+  const banner=document.getElementById('vis-rascunho-banner'); if(!banner) return;
+  if(_visTemConteudoReal()){ banner.style.display='none'; return; }
+  const dict=_visPodarRascunhosVelhos(_visRascunhosLer());
+  const chaves=Object.keys(dict);
+  if(!chaves.length){ banner.style.display='none'; window._visRascunhoBannerAlvo=null; return; }
+  chaves.sort((a,b)=>(dict[b]?.salvo_em||0)-(dict[a]?.salvo_em||0));
+  const chave=chaves[0], snap=dict[chave];
+  window._visRascunhoBannerAlvo={chave,snap};
+  const sub=document.getElementById('vis-rascunho-sub');
+  if(sub){
+    const nEquip=(snap.equip_sel?.length||0)+(snap.equip_custom?.length||0);
+    sub.textContent=(snap.cliente?('Cliente: '+snap.cliente+' — '):'')+(nEquip?nEquip+' equipamento(s) já avaliados · ':'')+'nada foi perdido.';
+  }
+  banner.style.display='flex';
+}
+function _visRetomarRascunhoBanner(){
+  const alvo=window._visRascunhoBannerAlvo; if(!alvo) return;
+  _visAplicarRascunho(alvo.snap, alvo.chave);
+}
+function _visDescartarRascunhoBanner(){
+  const alvo=window._visRascunhoBannerAlvo; if(!alvo) return;
+  const dict=_visRascunhosLer();
+  delete dict[alvo.chave];
+  _visRascunhosSalvar(dict);
+  window._visRascunhoBannerAlvo=null;
+  const banner=document.getElementById('vis-rascunho-banner'); if(banner) banner.style.display='none';
+  toast('Rascunho descartado');
+}
+// Delegação: qualquer digitação/seleção dentro do form de vistoria agenda um
+// autosave — cobre os campos de texto (cliente/local/obs/e-mail/datas) sem
+// precisar tocar em cada handler individual já existente neles.
+document.addEventListener('input', e=>{ if(e.target && e.target.closest && e.target.closest('#vis-view-nova')) _visAgendarRascunho(); });
+document.addEventListener('change', e=>{ if(e.target && e.target.closest && e.target.closest('#vis-view-nova')) _visAgendarRascunho(); });
+// Momento crítico: a app está prestes a ir pro background (técnico minimizou
+// pra atender o celular/trocar de setor) — é exatamente quando o Android
+// pode decidir matar o processo por memória. Flush imediato, sem esperar o
+// debounce, junto com o autosave normal de sync que a linha ao lado já fazia.
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden'){ clearTimeout(_visRascunhoTimer); _visSalvarRascunhoAgora(); } });
+
 // Promise com timeout — evita que uma chamada de rede travada (Supabase/EmailJS)
 // deixe a UI pendurada para sempre. Rejeita após `ms` se não resolver.
 function _comTimeout(promise, ms, rotulo){
@@ -9300,6 +9486,12 @@ function iniciarVistoriaPlena(locId){
   const loc=locaisVistoria.find(x=>x.id===locId);
   if(!loc) return;
 
+  // Retoma sozinho se já existe uma vistoria em andamento pra ESTE local
+  // (app fechado/minimizado no meio, técnico voltou e clicou de novo no
+  // mesmo plano) — nunca começa do zero por cima de trabalho não salvo.
+  const _rasc=_visRascunhoPara(locId, null);
+  if(_rasc){ _visAplicarRascunho(_rasc.snap, _rasc.chave); return; }
+
   // Reset estado
   visEquipSelecionados=[];
   visEquipDados={};
@@ -9577,6 +9769,9 @@ function visTab(tab){
     // técnico não precisa ver campo de e-mail
     const emailRow=document.getElementById('vis-email-row');
     if(emailRow) emailRow.style.display = eTecnico() ? 'none' : '';
+    // Chegou na aba com o form vazio? Pode ser reabertura depois do app ter
+    // fechado no meio de uma vistoria — oferece retomar.
+    if(typeof _visAtualizarBannerRascunho==='function') _visAtualizarBannerRascunho();
   }
   if(tab!=='nova') window._visPreCargaRec = null;
   if(tab==='hist') renderVisHistorico();
@@ -9605,6 +9800,7 @@ function toggleVisEquip(id){
   renderVisEquipGrid();
   const card = document.getElementById('vis-equip-card');
   if(card) card.style.display = visEquipSelecionados.length?'':'none';
+  _visAgendarRascunho();
 }
 
 let _visEquipsCustom=[]; // equipamentos vindos de um plano de acompanhamento
@@ -9728,6 +9924,7 @@ function setVisEquipStatus(id, status){
   if(!visEquipDados[id]) visEquipDados[id]={ status:'na', obs:'', fotos:[] };
   visEquipDados[id].status = status;
   renderVisEquipGrid();
+  _visAgendarRascunho();
 }
 
 function visUpdObs(id, val){
@@ -9744,6 +9941,7 @@ function visAddObs(id, txt, chipEl){
   if(ta) ta.value = novo;
   // Visual feedback: highlight chip briefly
   if(chipEl){ chipEl.style.background='var(--c1-light)'; chipEl.style.borderColor='var(--c1)'; setTimeout(()=>{ chipEl.style.background=''; chipEl.style.borderColor=''; },600); }
+  _visAgendarRascunho();
 }
 
 function visClickFotoSlot(id, idx){
@@ -9759,12 +9957,14 @@ function visCarregarFoto(inp, id, idx){
     if(!visEquipDados[id].fotos) visEquipDados[id].fotos=[];
     visEquipDados[id].fotos[idx] = compressed;
     renderVisEquipGrid();
+    _visAgendarRascunho();
   };
   r.readAsDataURL(f);
 }
 function visRemoverFoto(id, idx){
   if(visEquipDados[id]?.fotos) visEquipDados[id].fotos[idx]=null;
   renderVisEquipGrid();
+  _visAgendarRascunho();
 }
 
 // Faz upload de uma foto (base64) para o Supabase Storage e retorna a URL pública.
@@ -9840,6 +10040,7 @@ function autoCheckoutSeNecessario(){
     const diff = Math.floor((visCheckoutTime-visCheckinTime)/60000);
     info.textContent = `✅ Check-in: ${entradaTxt}  ·  Check-out: ${saidaTxt}${diff>0?' · '+diff+' min':''}`;
   }
+  _visAgendarRascunho();
 }
 
 function visCheckin(){
@@ -9860,6 +10061,7 @@ function visCheckin(){
     const h=Math.floor(diff/3600), m=Math.floor((diff%3600)/60), s=diff%60;
     if(timerEl) timerEl.textContent=(h?h+':':'')+(m<10&&h?'0':'')+m+':'+(s<10?'0':'')+s;
   },1000);
+  _visAgendarRascunho();
 }
 function visCheckout(){
   if(visCheckoutTime) return; // já registrado
@@ -9873,6 +10075,7 @@ function visCheckout(){
   const diff = visCheckinTime ? Math.floor((visCheckoutTime-visCheckinTime)/60000) : null;
   if(info) info.textContent = `✅ Check-in: ${entradaTxt}  ·  Check-out: ${saidaTxt}${diff!==null?' · '+diff+' min':''}`;
   toast('✅ Check-out registrado');
+  _visAgendarRascunho();
 }
 
 // ── Piscina em Vistoria (17/08, portado do fluxa-app v1) — só SELECIONA
@@ -10109,6 +10312,11 @@ async function salvarVistoria(){
     const veioDoPlano = !!(window._visLocalId); // lido ANTES de zerar
     const rec = await _montarRecVistoria();
     _persistVistoria(rec);          // local imediato + nuvem em background
+    // A vistoria já está gravada de verdade em fluxa_visitas (durável) — o
+    // rascunho de "em andamento" (chaveado por local_id/edit_id ainda
+    // vigentes aqui) não faz mais sentido, senão o banner de retomada
+    // aparece de novo por engano na próxima vistoria.
+    _visLimparRascunhoAtual();
     window._visLocalId = null;
 
     // Feedback IMEDIATO — não espera a rede.
@@ -10826,6 +11034,10 @@ function gerarRelatorioOS(osId, versao){
 
 // ── Abrir a aba de visitas já preenchida com agendamento ──
 function novaVistoria(cliNome, cliLocal, tecNome){
+  // Mesma proteção de iniciarVistoriaPlena — sem local_id aqui (vem da
+  // agenda/OS), então a chave é o slot "livre".
+  const _rasc=_visRascunhoPara(null, null);
+  if(_rasc){ _visAplicarRascunho(_rasc.snap, _rasc.chave); return; }
   visEquipSelecionados=[];
   visEquipDados={};
   _visEquipsCustom=[];
@@ -10880,6 +11092,11 @@ function toggleVisDados(){
 function editarVistoria(id){
   const vis=lsVisLer().find(x=>x.id===id);
   if(!vis){ toast('⚠️ Vistoria não encontrada'); return; }
+  // Se já tem edição desta MESMA vistoria em andamento (app fechou no meio
+  // de uma correção), retoma o rascunho em vez de recarregar do zero o
+  // último estado salvo (que estaria desatualizado em relação ao rascunho).
+  const _rasc=_visRascunhoPara(null, id);
+  if(_rasc){ _visAplicarRascunho(_rasc.snap, _rasc.chave); return; }
   const equips=(typeof vis.equipamentos==='string'?JSON.parse(vis.equipamentos||'[]'):vis.equipamentos)||[];
   // Reset de estado
   visEquipSelecionados=[]; visEquipDados={}; _visEquipsCustom=[];

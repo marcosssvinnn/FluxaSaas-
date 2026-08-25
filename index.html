@@ -2602,6 +2602,21 @@
     <!-- ── ABA: NOVA VISTORIA ── -->
     <div id="vis-view-nova">
 
+      <!-- Banner: rascunho de vistoria não finalizada encontrado (app fechou/
+           minimizou no meio de uma vistoria — nada foi perdido, só não foi
+           possível saber automaticamente qual vistoria retomar) -->
+      <div id="vis-rascunho-banner" style="display:none;align-items:center;gap:10px;padding:10px 14px;background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:12px;margin-bottom:12px">
+        <div style="font-size:20px">💾</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:700;color:var(--warn)">Vistoria não finalizada encontrada</div>
+          <div style="font-size:11px;color:var(--gray)" id="vis-rascunho-sub">O app fechou no meio de uma vistoria.</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-shrink:0">
+          <button class="ba" style="background:var(--c1);color:white;padding:7px 14px;font-size:12px" onclick="_visRetomarRascunhoBanner()">🔄 Retomar</button>
+          <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:7px 14px;font-size:12px" onclick="_visDescartarRascunhoBanner()">Descartar</button>
+        </div>
+      </div>
+
       <!-- Banner: contexto do plano (aparece quando aberto via "Fazer Vistoria") -->
       <div id="vis-plano-banner" style="display:none;align-items:center;gap:10px;padding:10px 14px;background:var(--c2);border-radius:12px;margin-bottom:12px;color:white">
         <button onclick="visTab('locais')" style="background:rgba(255,255,255,.15);border:none;cursor:pointer;color:white;font-size:12px;font-weight:700;padding:5px 10px;border-radius:50px;font-family:'Inter',sans-serif;flex-shrink:0">← Planos</button>

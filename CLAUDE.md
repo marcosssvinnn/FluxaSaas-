@@ -102,6 +102,101 @@ genérico "Fluxa" que o Capacitor usa por padrão), colocar o nome
   instalam por cima normalmente, sem perder dado nenhum do app (não há
   estado nativo — é PWA embrulhado, tudo mora no Supabase).
 
+### 🔗 Link de download personalizado (25/08)
+
+Tag/nome de arquivo do Release trocados de genérico pra marca:
+`android-apk-latest`/`fluxa-android.apk` → **`forthemp-android-latest`/
+`Forthemp.apk`**. Link novo:
+`https://github.com/marcosssvinnn/FluxaSaas-/releases/download/forthemp-android-latest/Forthemp.apk`.
+O Release antigo (`android-apk-latest`) fica parado, sem receber mais
+atualização — não apagado, só descontinuado.
+
+### 🔍 Vistoria — autosave defensivo contra kill de processo + sinal ruim (25/08)
+
+Pedido do Marcos, com contexto operacional real: a vistoria em campo é a
+funcionalidade PRINCIPAL do app no celular — visita a um condomínio percorre
+vários setores, avalia dezenas de equipamentos, tira fotos, **dura bastante
+tempo com o app minimizado e reaberto repetidamente** (atende ligação, troca
+de setor, etc.), em locais com **sinal de rede ruim**.
+
+**Achado real, investigando antes de codar**: `visEquipDados`/
+`visEquipSelecionados`/`visCheckinTime` (o estado inteiro da vistoria em
+andamento) eram só variáveis `let` **em memória** — nada ia pro disco até
+clicar "Finalizar Vistoria" no fim (`salvarVistoria`/`_persistVistoria`).
+Diferente do formulário de Orçamento/OS, que já tinham `salvarRascunho('form'
+|'os')` (C-03) — a Vistoria nunca teve o equivalente. Android pode matar o
+processo do app minimizado sob pressão de memória (bem provável aqui: muitas
+fotos base64 acumuladas em memória numa visita longa) — cada kill no meio de
+uma vistoria perdia TUDO, sem aviso nenhum, exatamente o cenário que o Marcos
+descreveu vivendo na prática.
+
+**Implementado — autosave local, sem tabela nova, sem depender de rede**:
+- `_visAgendarRascunho()` (debounce 700ms) chamado em todo ponto que muda o
+  estado da vistoria: `toggleVisEquip`, `setVisEquipStatus`, `visAddObs`,
+  foto adicionada/removida, `visCheckin`/`visCheckout`. Campos de texto do
+  formulário (cliente/local/obs/e-mail/datas) são cobertos por **um listener
+  delegado** (`input`/`change` em `#vis-view-nova`) — não precisou tocar em
+  cada handler já existente nesses campos.
+- **Flush imediato em `visibilitychange`→`hidden`** — o momento exato em que
+  o técnico minimiza é quando o Android mais provavelmente vai matar o
+  processo; não espera o debounce.
+- **Chaveado por local/edição** (`fluxa_vis_rascunhos`, dicionário — nunca um
+  slot único): iniciar uma vistoria diferente nunca apaga o progresso de
+  outra ainda não finalizada. Chave = `local:<id>` (veio de um plano),
+  `edit:<id>` (reabrindo uma já salva) ou `livre` (ad-hoc, ex. vindo de uma
+  OS/agendamento sem plano).
+- **Retomada automática e silenciosa** quando o alvo bate exato — reabrir o
+  MESMO plano (`iniciarVistoriaPlena`) ou a MESMA edição (`editarVistoria`)
+  restaura sozinho, com toast avisando quantos equipamentos já tinham sido
+  avaliados. **Banner manual** (`#vis-rascunho-banner`, "🔄 Retomar" /
+  "Descartar") quando o form está vazio mas existe *algum* rascunho
+  abandonado sem saber pra qual alvo — cobre o caminho mais comum na
+  prática: cold boot → toca "Vistorias" → clica na aba "Nova Vistoria"
+  manualmente (não sabe se tinha algo em andamento até ver o banner).
+- **TTL de 18h** — rascunho mais velho que isso é tratado como lixo (vistoria
+  já fechada por outro caminho, ou simplesmente abandonada) e ignorado.
+- **Limpo ao salvar de verdade** (`salvarVistoria`→`_visLimparRascunhoAtual`,
+  antes de zerar `_visLocalId`/`visEditId`) — a vistoria já está durável em
+  `fluxa_visitas` a essa altura, manter o rascunho geraria um banner de
+  retomada falso na próxima vistoria.
+- **Fallback de cota** (`_visRascunhosSalvar`) — vistoria grande (muitos
+  equipamentos × até 3 fotos cada) pode estourar o localStorage antes de
+  finalizar; mesmo padrão já usado em `lsVisSalvar` pra vistoria concluída —
+  na falta de espaço, salva sem as fotos (protege status/observação/
+  checklist, o que importa mais) e avisa explicitamente que fotos ainda não
+  salvas podem se perder nesse cenário raro.
+
+**Sincronização em rede ruim — já existia, não precisou de nada novo**: a
+gravação final já é local-first com `_pendingSync:true` + reenvio automático
+(`_reenviarPendentes`, a cada 180s online + no evento `online` + no
+refresh manual) — confirmado que cobre vistoria também, não só orçamento/OS.
+O gap real era só a PARTE de antes de "Finalizar", que este commit fecha.
+
+**Testado no Browser pane** (offline, `dbOk=false;db=null;` bare, ciclo
+completo, sem nenhuma chamada real a `*.supabase.co` confirmada via
+`read_network_requests`): preencher vistoria (cliente, 2 equipamentos com
+status/obs, check-in) → autosave forçado → **reload completo da página**
+(simula kill de processo — estado em memória zerado de verdade, confirmado
+antes de cada restauração) → banner de retomada aparece com o resumo certo
+("2 equipamento(s) já avaliados") → clicar "Retomar" restaura cliente,
+local, os 2 equipamentos com status/obs exatos, e o cronômetro de check-in
+retomado do horário original. Testado também o caminho exato (chave por
+`local_id`, via `iniciarVistoriaPlena`) isoladamente, sem contaminação de
+outro rascunho. `salvarVistoria()` real (offline) confirmado limpando o
+rascunho depois de salvar (dict fica vazio). Zero chamada de rede real em
+toda a bateria de teste.
+
+**Não verificado nesta sessão, ressalva explícita pro Marcos**: tudo acima
+foi testado no motor do Browser pane (Chromium desktop) — o mesmo
+`index.html`/`app.js`/`styles.css` que o Capacitor empacota sem alteração
+nenhuma, então a lógica (localStorage, eventos de visibilidade) se comporta
+igual dentro do WebView real do Android. O que **não** dá pra reproduzir
+daqui: o Android de fato matando o processo por pressão de memória (só um
+reload de página simula a perda de estado, não o gatilho real do SO), e a
+experiência tocando na tela de um aparelho físico. Recomendo testar uma
+vistoria de verdade no celular (minimizar de propósito no meio, esperar
+alguns minutos, reabrir) antes de confiar 100% em campo.
+
 ---
 
 ## 🛡️ PROTOCOLO DE VERIFICAÇÃO — OBRIGATÓRIO ANTES DE ENTREGAR QUALQUER MUDANÇA
