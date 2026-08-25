@@ -3631,15 +3631,58 @@ schema (migrações aplicadas e verificadas via Management API).
   (orçamento → OS → finalizar → relatório) com um clique real de ponta a
   ponta, já que esta sessão só testou via `javascript_exec`/mocks.
 
-### 🧪 Verificação do keystore estável — teste real, não só leitura do workflow (25/08)
+### 🔴 Keystore de debug NÃO estava estável de verdade — achado e corrigido com teste real (25/08)
 
-Antes de dizer ao Marcos que "não precisa mais reinstalar", testei de verdade
-em vez de confiar só na leitura do YAML: baixei o `.apk` publicado e extraí o
-certificado de assinatura (`unzip META-INF/CERT.RSA` + `openssl pkcs7
--print_certs`). Resultado deste build específico: `Not Before` bate EXATO
-com a janela de execução do próprio run (gerado na hora, não restaurado do
-cache) — checando de novo no próximo build pra confirmar se o cache
-`actions/cache@v4` está de fato persistindo entre execuções.
+A entrada anterior ("keystore de debug estável entre builds") registrava a
+INTENÇÃO — cache configurado — mas nunca tinha sido testada de fato. O
+Marcos pediu pra confirmar antes de continuar reinstalando o app toda hora.
+Testei de verdade em vez de confiar na leitura do YAML: baixei o `.apk`
+publicado, extraí o certificado de assinatura (`unzip META-INF/CERT.RSA` +
+`openssl pkcs7 -print_certs`) e comparei entre builds consecutivos.
+**Confirmado quebrado**: cada build gerava uma chave nova, mesmo com
+`actions/cache` configurado.
 
-<!-- teste de restauração do keystore, build 8 -->
-<!-- confirmação final: keystore estável -->
+**Investigação em 3 rounds, cada um com um teste real, não suposição:**
+1. `actions/cache@v4` (restore+save automático num único step) nunca
+   persistia — hipótese: chave `android-debug-keystore-v1` já tinha uma
+   entrada "presa" de uma tentativa anterior (chave de cache é imutável no
+   GitHub Actions — depois de criada, nenhum save novo sob a mesma chave
+   funciona, cai em silêncio). Troquei pra `actions/cache/restore` +
+   `actions/cache/save` explícitos (mais depurável) e caminho absoluto (sem
+   `~`) com chave nova (`v2`).
+2. Segundo teste (2 builds seguidos, cert comparado) — ainda diferente.
+   Adicionei diagnóstico temporário (dump de `cache-hit`, `ls`, hash do
+   keystore antes/depois do `gradlew`, embutido nas notas do Release pra
+   dar pra ler sem login no Actions — job log de Actions exige auth mesmo
+   em repo público). **Resultado do diagnóstico**: o arquivo restaurado
+   está no lugar certo, com o conteúdo certo, e **nunca muda** durante o
+   build inteiro (hash idêntico antes/depois do `gradlew assembleDebug`).
+3. **Causa raiz real**: `android/app/build.gradle`, do jeito que `cap add
+   android` gera, **não define `signingConfigs` nenhum** — só
+   `buildTypes.release`. O build `debug` cai no comportamento IMPLÍCITO
+   padrão do Android Gradle Plugin pra assinar, que evidentemente NÃO
+   resolve pro mesmo caminho (`/home/runner/.android/debug.keystore`) que a
+   gente restaura/cacheia — gera keystore próprio, em outro lugar, do jeito
+   dele, a cada run. O arquivo que eu cuidava ficava intocado o tempo todo,
+   simplesmente **nunca era usado**.
+
+**Fix definitivo**: `scripts/patch-android-debug-signing.py` (script
+dedicado, não heredoc dentro do YAML — heredoc indentado dentro de um bloco
+`run: |` é frágil, já quebrou uma vez por causa do marcador de fim
+precisar ficar sem indentação) edita `android/app/build.gradle` gerado,
+injetando `signingConfigs.debug` apontando explicitamente pro keystore que
+a gente controla, e liga `buildTypes.debug.signingConfig` a ele. Chamado
+pelo workflow logo antes do `gradlew assembleDebug`.
+
+**Confirmado com teste real, não só lógica**: 2 builds consecutivos depois
+do fix, certificado extraído e comparado via
+`openssl x509 -noout -fingerprint -serial` (não o `CERT.RSA` bruto — esse
+inclui a assinatura sobre o conteúdo do APK, que muda a cada commit mesmo
+com a mesma chave; o que importa é só o certificado em si) —
+**SHA256 fingerprint e serial idênticos nos dois builds**. Dali em diante,
+qualquer novo build/push nesta branch assina com a MESMA chave, e o Android
+aceita como atualização do app já instalado, sem pedir desinstalar.
+
+**Passos temporários de diagnóstico foram removidos** do workflow depois de
+confirmado — só ficou o fix em si (`scripts/patch-android-debug-signing.py`
++ os steps de cache/patch no `build-android-apk.yml`).
