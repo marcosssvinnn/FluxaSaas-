@@ -1,0 +1,84 @@
+name: Build Android APK
+
+# Compila um .apk instalável (fora da Play Store) empacotando o MESMO
+# index.html/app.js/styles.css do PWA via Capacitor — sem fork de código,
+# sem build step novo pro resto do projeto (mesma filosofia do repo).
+# O ambiente que gerou este workflow não tinha Node/Android SDK locais —
+# roda tudo aqui no runner do GitHub, que já vem com o necessário.
+
+on:
+  push:
+    branches: [ android-apk ]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write # necessário pra publicar o .apk como Release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Instalar dependências do Capacitor
+        run: npm install
+
+      - name: Gerar o projeto nativo Android (não fica commitado no repo)
+        run: npx cap add android
+
+      - name: Aplicar o ícone real do Fluxa (icons/icon-master-1024.png)
+        run: |
+          set -e
+          SRC=icons/icon-master-1024.png
+          declare -A SIZES=( [mdpi]=48 [hdpi]=72 [xhdpi]=96 [xxhdpi]=144 [xxxhdpi]=192 )
+          for density in "${!SIZES[@]}"; do
+            size=${SIZES[$density]}
+            dir="android/app/src/main/res/mipmap-${density}"
+            mkdir -p "$dir"
+            convert "$SRC" -resize "${size}x${size}" "$dir/ic_launcher.png"
+            convert "$SRC" -resize "${size}x${size}" "$dir/ic_launcher_round.png"
+            convert "$SRC" -resize "${size}x${size}" "$dir/ic_launcher_foreground.png"
+          done
+
+      - name: Sincronizar assets web pro projeto Android
+        run: npx cap sync android
+
+      - name: Compilar o APK (debug — sem keystore, pronto pra instalar direto)
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Renomear o APK gerado
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk fluxa-android.apk
+
+      - name: Subir como artefato do build
+        uses: actions/upload-artifact@v4
+        with:
+          name: fluxa-android-apk
+          path: fluxa-android.apk
+
+      - name: Publicar/atualizar Release com o .apk (link fixo pra baixar)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-apk-latest
+          name: Fluxa Android (build automático)
+          body: |
+            APK gerado automaticamente pelo GitHub Actions a partir do
+            commit ${{ github.sha }}. Baixe `fluxa-android.apk` abaixo e
+            instale direto no aparelho (é preciso permitir "instalar de
+            fontes desconhecidas" no Android, já que não vem da Play Store).
+          files: fluxa-android.apk
+          make_latest: false

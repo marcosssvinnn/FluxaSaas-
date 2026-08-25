@@ -1,0 +1,17 @@
+{
+  "name": "fluxa-android",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Empacotamento Android (Capacitor) do Fluxa — mesmo index.html/app.js/styles.css do PWA, sem fork de código.",
+  "scripts": {
+    "android:add": "cap add android",
+    "android:sync": "cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/core": "^6.2.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.2.0"
+  }
+}

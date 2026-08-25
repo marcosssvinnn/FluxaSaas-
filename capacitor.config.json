@@ -1,0 +1,12 @@
+{
+  "appId": "com.fluxa.app",
+  "appName": "Fluxa",
+  "webDir": ".",
+  "bundledWebRuntime": false,
+  "android": {
+    "allowMixedContent": false
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}

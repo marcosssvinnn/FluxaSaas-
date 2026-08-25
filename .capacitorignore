@@ -1,0 +1,17 @@
+.git
+.claude
+.gitignore
+.capacitorignore
+CLAUDE.md
+README.md
+docs
+fiscal-service
+supabase
+graphify-out
+marca
+android
+node_modules
+package.json
+package-lock.json
+capacitor.config.json
+*.sql
