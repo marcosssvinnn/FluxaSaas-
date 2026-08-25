@@ -90,23 +90,23 @@ jobs:
           ./gradlew assembleDebug --no-daemon
 
       - name: Renomear o APK gerado
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk fluxa-android.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk Forthemp.apk
 
       - name: Subir como artefato do build
         uses: actions/upload-artifact@v4
         with:
-          name: fluxa-android-apk
-          path: fluxa-android.apk
+          name: forthemp-android-apk
+          path: Forthemp.apk
 
       - name: Publicar/atualizar Release com o .apk (link fixo pra baixar)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: android-apk-latest
-          name: Fluxa Android (build automático)
+          tag_name: forthemp-android-latest
+          name: Forthemp — App Android (build automático)
           body: |
             APK gerado automaticamente pelo GitHub Actions a partir do
-            commit ${{ github.sha }}. Baixe `fluxa-android.apk` abaixo e
+            commit ${{ github.sha }}. Baixe `Forthemp.apk` abaixo e
             instale direto no aparelho (é preciso permitir "instalar de
             fontes desconhecidas" no Android, já que não vem da Play Store).
-          files: fluxa-android.apk
+          files: Forthemp.apk
           make_latest: false
