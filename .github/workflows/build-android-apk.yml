@@ -83,35 +83,8 @@ jobs:
         id: cache-keystore
         uses: actions/cache/restore@v4
         with:
-          # Caminho absoluto, não `~` — achado num teste real (comparando o
-          # certificado de assinatura de 2 builds seguidos via openssl): o
-          # `cache-hit` dava true, mas o keystore restaurado não aparecia no
-          # caminho que o step de baixo checava, e regenerava de qualquer
-          # jeito. `~` é expandido pelo Node da action e pelo bash de formas
-          # que podem não bater 100% — caminho absoluto elimina a ambiguidade.
-          # Chave nova (v2) porque chave de cache é imutável: a v1 já tinha
-          # uma entrada "presa" de alguma tentativa anterior, bloqueando
-          # qualquer save novo silenciosamente (save cai em "skipped").
           path: /home/runner/.android/debug.keystore
           key: android-debug-keystore-v2
-
-      - name: DIAGNÓSTICO — o que o restore realmente deixou em disco
-        run: |
-          {
-            echo "cache-hit output: '${{ steps.cache-keystore.outputs.cache-hit }}'"
-            echo "cache-primary-key: '${{ steps.cache-keystore.outputs.cache-primary-key }}'"
-            echo "cache-matched-key: '${{ steps.cache-keystore.outputs.cache-matched-key }}'"
-            echo "HOME=$HOME  whoami=$(whoami)  runner.os=${{ runner.os }}"
-            echo "--- ls /home/runner/.android/ ---"
-            ls -la /home/runner/.android/ 2>&1 || echo "(pasta /home/runner/.android não existe)"
-            echo "--- ls \$HOME/.android/ ---"
-            ls -la "$HOME/.android/" 2>&1 || echo "(pasta \$HOME/.android não existe)"
-            if [ -f /home/runner/.android/debug.keystore ]; then
-              echo "ARQUIVO EXISTE em /home/runner/.android/debug.keystore, tamanho: $(stat -c%s /home/runner/.android/debug.keystore 2>/dev/null || stat -f%z /home/runner/.android/debug.keystore)"
-            else
-              echo "ARQUIVO NÃO EXISTE em /home/runner/.android/debug.keystore"
-            fi
-          } | tee diag-keystore.txt
 
       - name: Gerar o keystore de debug só na 1ª vez (fica em cache pras próximas)
         run: |
@@ -123,19 +96,6 @@ jobs:
               -keyalg RSA -keysize 2048 -validity 10000 \
               -dname "CN=Android Debug,O=Android,C=US"
           fi
-          echo "--- depois do generate-if-missing ---" >> diag-keystore.txt
-          md5sum /home/runner/.android/debug.keystore >> diag-keystore.txt 2>&1 || shasum /home/runner/.android/debug.keystore >> diag-keystore.txt
-          stat /home/runner/.android/debug.keystore >> diag-keystore.txt 2>&1
-
-      - name: DIAGNÓSTICO 2 — signingConfig que o Gradle vai usar de verdade
-        working-directory: android
-        run: |
-          {
-            echo "--- android/app/build.gradle: signingConfigs / buildTypes.debug ---"
-            grep -n -A6 "signingConfigs\|buildTypes" app/build.gradle || echo "(nada encontrado em app/build.gradle)"
-            echo "--- procurando qualquer debug.keystore no projeto ---"
-            find . -iname "*.keystore" -o -iname "*.jks" 2>/dev/null
-          } >> ../diag-keystore.txt
 
       - name: Salvar o keystore de debug no cache (só quando foi gerado agora, não quando veio do cache)
         if: steps.cache-keystore.outputs.cache-hit != 'true'
@@ -144,19 +104,30 @@ jobs:
           path: /home/runner/.android/debug.keystore
           key: android-debug-keystore-v2
 
+      - name: Apontar o build debug pro NOSSO keystore explicitamente
+        working-directory: android
+        run: |
+          set -e
+          # Achado com diagnóstico real (3 builds seguidos, hash do keystore
+          # comparado antes/depois do gradlew via md5sum): o keystore restaurado
+          # do cache NUNCA é tocado pelo build (hash idêntico o tempo todo) — e
+          # mesmo assim o .apk final saía assinado com uma chave diferente a
+          # cada vez. Causa: android/app/build.gradle gerado pelo `cap add
+          # android` não define signingConfigs nenhum — só buildTypes.release —
+          # então o build debug cai no comportamento IMPLÍCITO padrão do
+          # Android Gradle Plugin, que evidentemente não está resolvendo pro
+          # mesmo caminho que a gente restaura (gera keystore próprio, em outro
+          # lugar, a cada run). Script dedicado (não heredoc inline — YAML +
+          # heredoc indentado é frágil) aponta o build debug pro arquivo que a
+          # gente já controla.
+          python3 ../scripts/patch-android-debug-signing.py
+          grep -n -A10 "signingConfigs\|buildTypes" app/build.gradle
+
       - name: Compilar o APK (debug — sem keystore, pronto pra instalar direto)
         working-directory: android
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
-
-      - name: DIAGNÓSTICO 3 — keystore mudou depois do gradlew?
-        run: |
-          {
-            echo "--- depois do gradlew assembleDebug ---"
-            md5sum /home/runner/.android/debug.keystore 2>&1 || shasum /home/runner/.android/debug.keystore
-            stat /home/runner/.android/debug.keystore 2>&1
-          } >> diag-keystore.txt
 
       - name: Renomear o APK gerado
         run: cp android/app/build/outputs/apk/debug/app-debug.apk Forthemp.apk
@@ -167,23 +138,15 @@ jobs:
           name: forthemp-android-apk
           path: Forthemp.apk
 
-      - name: Montar notas do Release (inclui o diagnóstico do keystore — lido sem precisar de login no Actions)
-        run: |
-          {
-            echo "APK gerado automaticamente pelo GitHub Actions a partir do commit ${{ github.sha }}."
-            echo "Baixe \`Forthemp.apk\` abaixo e instale direto no aparelho (é preciso permitir \"instalar de fontes desconhecidas\" no Android, já que não vem da Play Store)."
-            echo ""
-            echo "### Diagnóstico do keystore (temporário, pra depurar o cache)"
-            echo '```'
-            cat diag-keystore.txt
-            echo '```'
-          } > release-notes.txt
-
       - name: Publicar/atualizar Release com o .apk (link fixo pra baixar)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: forthemp-android-latest
           name: Forthemp — App Android (build automático)
-          body_path: release-notes.txt
+          body: |
+            APK gerado automaticamente pelo GitHub Actions a partir do
+            commit ${{ github.sha }}. Baixe `Forthemp.apk` abaixo e
+            instale direto no aparelho (é preciso permitir "instalar de
+            fontes desconhecidas" no Android, já que não vem da Play Store).
           files: Forthemp.apk
           make_latest: false
