@@ -35,6 +35,13 @@ jobs:
       - name: Instalar dependências do Capacitor
         run: npm install
 
+      - name: Montar www/ (cópia dos arquivos que já rodam no PWA, gerada a cada build — nada disso é commitado)
+        run: |
+          mkdir -p www
+          cp index.html app.js styles.css manifest.json native.js sw.js www/
+          cp -r icons www/icons
+          cp -r libs www/libs
+
       - name: Gerar o projeto nativo Android (não fica commitado no repo)
         run: npx cap add android
 
