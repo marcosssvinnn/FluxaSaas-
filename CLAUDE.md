@@ -9,6 +9,60 @@
 
 ---
 
+## 📱 Sprint 5 — .apk Android de verdade, fora da Play Store (25/08)
+
+Reverte parcialmente a decisão anterior ("sem Capacitor") — o Marcos pediu
+um `.apk` de verdade, não só a PWA. Confirmado com ele: **sideload direto,
+sem Play Store** (sem custo, sem conta de desenvolvedor, sem revisão da
+Google) — mesmo espírito "uso interno, sem loja" de sempre, só que agora
+com instalador de verdade em vez de "Adicionar à Tela de Início".
+
+**Arquitetura:** Capacitor empacota o MESMO `index.html`/`app.js`/
+`styles.css` do PWA — zero fork de código, só uma casca nativa por cima.
+`package.json`/`capacitor.config.json` novos na raiz (`appId:
+com.fluxa.app`, `webDir: www` — pasta gerada a cada build, nunca
+commitada, git-ignorada). **O ambiente que fez isso não tem Node/Android
+SDK/Gradle instalados** — o build de verdade roda no runner do GitHub
+Actions (`.github/workflows/build-android-apk.yml`), que já vem com tudo.
+
+- Branch dedicada **`android-apk`** (não mexe em `dev`/`main`) — dispara
+  o workflow a cada push nela, ou manualmente via "Run workflow" na aba
+  Actions do GitHub.
+- Debug build (`gradlew assembleDebug`) — sem keystore de assinatura,
+  exatamente o que sideload precisa; Play Store exigiria build assinado,
+  fora de escopo aqui.
+- Ícone real (`icons/icon-master-1024.png`, mesmo arquivo do PWA) aplicado
+  via ImageMagick nas 5 densidades de mipmap, dentro do próprio workflow.
+- **Publica como GitHub Release** (`tag: android-apk-latest`, sobrescrita
+  a cada build) — link fixo e público, sem login, mesmo o repo sendo
+  público: `https://github.com/marcosssvinnn/FluxaSaas-/releases/download/android-apk-latest/fluxa-android.apk`.
+
+**2 bugs reais achados iterando (sem log de build acessível pra este
+ambiente — GitHub exige login pra ver logs de Actions mesmo em repo
+público; diagnosticado só pelo status por step via API pública)**:
+1. `webDir: "."` (raiz do repo) — `cap add android` falhou sem log
+   legível; corrigido montando uma pasta `www/` só com os arquivos que
+   realmente rodam no PWA (mesma lista do `<script src=...>`/`<link
+   href=...>` do `index.html`), staged a cada build.
+2. Runner `ubuntu-latest` mais novo não tem `convert` (ImageMagick) pré-
+   instalado por padrão — `apt-get install imagemagick` condicional
+   (só se `command -v convert` falhar) adicionado ao step do ícone.
+
+3 tentativas até passar (build #3, `fbd2ee8`, 25/08 09:44 UTC) — as 2
+primeiras falharam rápido (16-30s), confirmado via
+`GET /repos/.../actions/runs/<id>/jobs` (status por step, público, sem
+precisar do log completo).
+
+**Como atualizar o .apk depois de mexer no app**: merge/cherry-pick pra
+`android-apk` (ou trabalhar direto nela) → push → o Release
+`android-apk-latest` atualiza sozinho.
+
+**Não feito, fora de escopo desta rodada**: assinatura de release (só
+debug), publicação na Play Store, versionCode/versionName dinâmico
+(fica no default do Capacitor, 1/"1.0").
+
+---
+
 ## 🛡️ PROTOCOLO DE VERIFICAÇÃO — OBRIGATÓRIO ANTES DE ENTREGAR QUALQUER MUDANÇA
 
 > **Regra do Marcos:** *"sempre verificar todos os ângulos e brechas do código para não aparecer bug no futuro."*
