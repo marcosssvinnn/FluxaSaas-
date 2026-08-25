@@ -3640,3 +3640,5 @@ certificado de assinatura (`unzip META-INF/CERT.RSA` + `openssl pkcs7
 com a janela de execução do próprio run (gerado na hora, não restaurado do
 cache) — checando de novo no próximo build pra confirmar se o cache
 `actions/cache@v4` está de fato persistindo entre execuções.
+
+<!-- teste de restauração do keystore, build 8 -->
