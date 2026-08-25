@@ -48,6 +48,10 @@ jobs:
       - name: Aplicar o ícone real do Fluxa (icons/icon-master-1024.png)
         run: |
           set -e
+          if ! command -v convert >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq imagemagick
+          fi
           SRC=icons/icon-master-1024.png
           declare -A SIZES=( [mdpi]=48 [hdpi]=72 [xhdpi]=96 [xxhdpi]=144 [xxxhdpi]=192 )
           for density in "${!SIZES[@]}"; do
