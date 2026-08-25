@@ -3642,3 +3642,4 @@ cache) — checando de novo no próximo build pra confirmar se o cache
 `actions/cache@v4` está de fato persistindo entre execuções.
 
 <!-- teste de restauração do keystore, build 8 -->
+<!-- confirmação final: keystore estável -->
