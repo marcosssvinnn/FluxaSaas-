@@ -80,7 +80,8 @@ jobs:
         run: npx cap sync android
 
       - name: Restaurar keystore de debug estável entre builds (permite atualizar o app já instalado, sem precisar desinstalar)
-        uses: actions/cache@v4
+        id: cache-keystore
+        uses: actions/cache/restore@v4
         with:
           path: ~/.android/debug.keystore
           key: android-debug-keystore-v1
@@ -95,6 +96,13 @@ jobs:
               -keyalg RSA -keysize 2048 -validity 10000 \
               -dname "CN=Android Debug,O=Android,C=US"
           fi
+
+      - name: Salvar o keystore de debug no cache (só quando foi gerado agora, não quando veio do cache)
+        if: steps.cache-keystore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: android-debug-keystore-v1
 
       - name: Compilar o APK (debug — sem keystore, pronto pra instalar direto)
         working-directory: android
