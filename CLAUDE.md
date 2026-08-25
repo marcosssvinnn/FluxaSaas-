@@ -61,6 +61,47 @@ precisar do log completo).
 debug), publicação na Play Store, versionCode/versionName dinâmico
 (fica no default do Capacitor, 1/"1.0").
 
+### 📱 Marca real da Forthemp + keystore de debug estável (25/08, mesmo dia)
+
+Pedido do Marcos: usar o logo REAL da Forthemp no ícone do app (não o
+genérico "Fluxa" que o Capacitor usa por padrão), colocar o nome
+"Forthemp" no app, e confirmar se dá pra atualizar depois de instalado.
+
+- **Ícone**: copiado `icons/icon-master-1024.png` do repo **v1**
+  (`~/Documents/fluxa-app`) — commitado lá em `1aac402` como o logo real
+  (símbolo "TF" em gradiente azul/roxo) — pra `android-assets/icon-
+  forthemp-1024.png` **neste repo (v2)**. Deliberadamente **não** sobrescrevi
+  `icons/icon-master-1024.png` do próprio v2 (usado pelo manifest/PWA
+  genérico do SaaS multi-tenant) — criei um asset dedicado só pro build
+  Android, pra não misturar a marca de um tenant específico (Forthemp) com
+  a branding neutra que o resto do produto v2 usa pra qualquer empresa. O
+  workflow (`build-android-apk.yml`, step "Aplicar o ícone") agora lê desse
+  arquivo novo em vez de `icons/icon-master-1024.png`.
+- **Nome do app**: `capacitor.config.json` → `appName: "Forthemp"` (era
+  "Fluxa"). **`appId` continua `com.fluxa.app`, sem mudar** — é isso que
+  precisa ficar estável entre builds pro Android aceitar uma instalação
+  como ATUALIZAÇÃO da anterior, em vez de pedir desinstalar primeiro; nome/
+  ícone são cosméticos e não afetam isso.
+- **Dá pra atualizar depois de instalado?** Antes desta mudança, **não de
+  verdade** — cada run do GitHub Actions gera um runner limpo, e o Android
+  Gradle Plugin cria um `~/.android/debug.keystore` NOVO (chave de
+  assinatura aleatória) na primeira vez que precisa dele, toda vez. Builds
+  consecutivos saíam assinados com certificados diferentes, e o Android
+  recusa instalar um APK como update de outro com assinatura diferente —
+  forçaria desinstalar e reinstalar a cada nova versão, mesmo com o mesmo
+  `appId`. **Corrigido**: dois steps novos no workflow, logo depois do
+  `cap sync android` — `actions/cache` com chave fixa
+  (`android-debug-keystore-v1`) restaura `~/.android/debug.keystore` de
+  builds anteriores; se não existir ainda (1ª vez), `keytool` gera um novo
+  com os parâmetros padrão do Android (`alias androiddebugkey`,
+  `storepass android`) e ele fica em cache dali pra frente. **Efeito
+  colateral esperado, avisado ao Marcos**: o APK já instalado de builds
+  ANTERIORES a este commit foi assinado com uma chave efêmera diferente —
+  a primeira atualização depois desta mudança ainda vai pedir desinstalar/
+  reinstalar uma vez; a partir daí (chave em cache), builds seguintes
+  instalam por cima normalmente, sem perder dado nenhum do app (não há
+  estado nativo — é PWA embrulhado, tudo mora no Supabase).
+
 ---
 
 ## 🛡️ PROTOCOLO DE VERIFICAÇÃO — OBRIGATÓRIO ANTES DE ENTREGAR QUALQUER MUDANÇA

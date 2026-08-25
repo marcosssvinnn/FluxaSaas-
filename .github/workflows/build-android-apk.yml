@@ -45,14 +45,14 @@ jobs:
       - name: Gerar o projeto nativo Android (não fica commitado no repo)
         run: npx cap add android
 
-      - name: Aplicar o ícone real do Fluxa (icons/icon-master-1024.png)
+      - name: Aplicar o ícone real da Forthemp (android-assets/icon-forthemp-1024.png)
         run: |
           set -e
           if ! command -v convert >/dev/null 2>&1; then
             sudo apt-get update -qq
             sudo apt-get install -y -qq imagemagick
           fi
-          SRC=icons/icon-master-1024.png
+          SRC=android-assets/icon-forthemp-1024.png
           declare -A SIZES=( [mdpi]=48 [hdpi]=72 [xhdpi]=96 [xxhdpi]=144 [xxxhdpi]=192 )
           for density in "${!SIZES[@]}"; do
             size=${SIZES[$density]}
@@ -65,6 +65,23 @@ jobs:
 
       - name: Sincronizar assets web pro projeto Android
         run: npx cap sync android
+
+      - name: Restaurar keystore de debug estável entre builds (permite atualizar o app já instalado, sem precisar desinstalar)
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: android-debug-keystore-v1
+
+      - name: Gerar o keystore de debug só na 1ª vez (fica em cache pras próximas)
+        run: |
+          set -e
+          mkdir -p ~/.android
+          if [ ! -f ~/.android/debug.keystore ]; then
+            keytool -genkeypair -v -keystore ~/.android/debug.keystore \
+              -storepass android -alias androiddebugkey -keypass android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
 
       - name: Compilar o APK (debug — sem keystore, pronto pra instalar direto)
         working-directory: android
