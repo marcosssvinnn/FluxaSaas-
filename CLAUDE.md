@@ -3630,3 +3630,13 @@ schema (migrações aplicadas e verificadas via Management API).
   não promover sem validação. Antes de promover, testar o fluxo completo
   (orçamento → OS → finalizar → relatório) com um clique real de ponta a
   ponta, já que esta sessão só testou via `javascript_exec`/mocks.
+
+### 🧪 Verificação do keystore estável — teste real, não só leitura do workflow (25/08)
+
+Antes de dizer ao Marcos que "não precisa mais reinstalar", testei de verdade
+em vez de confiar só na leitura do YAML: baixei o `.apk` publicado e extraí o
+certificado de assinatura (`unzip META-INF/CERT.RSA` + `openssl pkcs7
+-print_certs`). Resultado deste build específico: `Not Before` bate EXATO
+com a janela de execução do próprio run (gerado na hora, não restaurado do
+cache) — checando de novo no próximo build pra confirmar se o cache
+`actions/cache@v4` está de fato persistindo entre execuções.
