@@ -123,6 +123,19 @@ jobs:
               -keyalg RSA -keysize 2048 -validity 10000 \
               -dname "CN=Android Debug,O=Android,C=US"
           fi
+          echo "--- depois do generate-if-missing ---" >> diag-keystore.txt
+          md5sum /home/runner/.android/debug.keystore >> diag-keystore.txt 2>&1 || shasum /home/runner/.android/debug.keystore >> diag-keystore.txt
+          stat /home/runner/.android/debug.keystore >> diag-keystore.txt 2>&1
+
+      - name: DIAGNÓSTICO 2 — signingConfig que o Gradle vai usar de verdade
+        working-directory: android
+        run: |
+          {
+            echo "--- android/app/build.gradle: signingConfigs / buildTypes.debug ---"
+            grep -n -A6 "signingConfigs\|buildTypes" app/build.gradle || echo "(nada encontrado em app/build.gradle)"
+            echo "--- procurando qualquer debug.keystore no projeto ---"
+            find . -iname "*.keystore" -o -iname "*.jks" 2>/dev/null
+          } >> ../diag-keystore.txt
 
       - name: Salvar o keystore de debug no cache (só quando foi gerado agora, não quando veio do cache)
         if: steps.cache-keystore.outputs.cache-hit != 'true'
@@ -136,6 +149,14 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
+
+      - name: DIAGNÓSTICO 3 — keystore mudou depois do gradlew?
+        run: |
+          {
+            echo "--- depois do gradlew assembleDebug ---"
+            md5sum /home/runner/.android/debug.keystore 2>&1 || shasum /home/runner/.android/debug.keystore
+            stat /home/runner/.android/debug.keystore 2>&1
+          } >> diag-keystore.txt
 
       - name: Renomear o APK gerado
         run: cp android/app/build/outputs/apk/debug/app-debug.apk Forthemp.apk
