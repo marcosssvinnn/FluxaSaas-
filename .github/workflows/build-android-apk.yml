@@ -62,6 +62,19 @@ jobs:
             convert "$SRC" -resize "${size}x${size}" "$dir/ic_launcher_round.png"
             convert "$SRC" -resize "${size}x${size}" "$dir/ic_launcher_foreground.png"
           done
+          # O template padrão do Capacitor/Android Studio define o ícone via
+          # "adaptive icon" (mipmap-anydpi-v26/ic_launcher.xml, Android 8+) —
+          # esse XML tem PRIORIDADE sobre os .png acima em qualquer aparelho
+          # moderno, e normalmente aponta pra um drawable vetorial genérico
+          # (não pros .png por densidade que acabamos de sobrescrever). É
+          # exactly isso que fazia o ícone continuar mostrando o "F" genérico
+          # mesmo com os .png certos no lugar. Remove o XML adaptativo (e
+          # qualquer vetor de fundo/frente que ele referencie) pra forçar o
+          # Android a cair nos .png por densidade, que aí sim são os nossos.
+          rm -rf android/app/src/main/res/mipmap-anydpi-v26
+          rm -f android/app/src/main/res/drawable*/ic_launcher_background.xml
+          rm -f android/app/src/main/res/drawable*/ic_launcher_foreground.xml
+          rm -f android/app/src/main/res/values/ic_launcher_background.xml
 
       - name: Sincronizar assets web pro projeto Android
         run: npx cap sync android
