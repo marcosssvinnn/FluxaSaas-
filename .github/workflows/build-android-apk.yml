@@ -83,15 +83,24 @@ jobs:
         id: cache-keystore
         uses: actions/cache/restore@v4
         with:
-          path: ~/.android/debug.keystore
-          key: android-debug-keystore-v1
+          # Caminho absoluto, não `~` — achado num teste real (comparando o
+          # certificado de assinatura de 2 builds seguidos via openssl): o
+          # `cache-hit` dava true, mas o keystore restaurado não aparecia no
+          # caminho que o step de baixo checava, e regenerava de qualquer
+          # jeito. `~` é expandido pelo Node da action e pelo bash de formas
+          # que podem não bater 100% — caminho absoluto elimina a ambiguidade.
+          # Chave nova (v2) porque chave de cache é imutável: a v1 já tinha
+          # uma entrada "presa" de alguma tentativa anterior, bloqueando
+          # qualquer save novo silenciosamente (save cai em "skipped").
+          path: /home/runner/.android/debug.keystore
+          key: android-debug-keystore-v2
 
       - name: Gerar o keystore de debug só na 1ª vez (fica em cache pras próximas)
         run: |
           set -e
-          mkdir -p ~/.android
-          if [ ! -f ~/.android/debug.keystore ]; then
-            keytool -genkeypair -v -keystore ~/.android/debug.keystore \
+          mkdir -p /home/runner/.android
+          if [ ! -f /home/runner/.android/debug.keystore ]; then
+            keytool -genkeypair -v -keystore /home/runner/.android/debug.keystore \
               -storepass android -alias androiddebugkey -keypass android \
               -keyalg RSA -keysize 2048 -validity 10000 \
               -dname "CN=Android Debug,O=Android,C=US"
@@ -101,8 +110,8 @@ jobs:
         if: steps.cache-keystore.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
-          path: ~/.android/debug.keystore
-          key: android-debug-keystore-v1
+          path: /home/runner/.android/debug.keystore
+          key: android-debug-keystore-v2
 
       - name: Compilar o APK (debug — sem keystore, pronto pra instalar direto)
         working-directory: android
