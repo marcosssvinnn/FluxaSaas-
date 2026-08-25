@@ -95,6 +95,24 @@ jobs:
           path: /home/runner/.android/debug.keystore
           key: android-debug-keystore-v2
 
+      - name: DIAGNÓSTICO — o que o restore realmente deixou em disco
+        run: |
+          {
+            echo "cache-hit output: '${{ steps.cache-keystore.outputs.cache-hit }}'"
+            echo "cache-primary-key: '${{ steps.cache-keystore.outputs.cache-primary-key }}'"
+            echo "cache-matched-key: '${{ steps.cache-keystore.outputs.cache-matched-key }}'"
+            echo "HOME=$HOME  whoami=$(whoami)  runner.os=${{ runner.os }}"
+            echo "--- ls /home/runner/.android/ ---"
+            ls -la /home/runner/.android/ 2>&1 || echo "(pasta /home/runner/.android não existe)"
+            echo "--- ls \$HOME/.android/ ---"
+            ls -la "$HOME/.android/" 2>&1 || echo "(pasta \$HOME/.android não existe)"
+            if [ -f /home/runner/.android/debug.keystore ]; then
+              echo "ARQUIVO EXISTE em /home/runner/.android/debug.keystore, tamanho: $(stat -c%s /home/runner/.android/debug.keystore 2>/dev/null || stat -f%z /home/runner/.android/debug.keystore)"
+            else
+              echo "ARQUIVO NÃO EXISTE em /home/runner/.android/debug.keystore"
+            fi
+          } | tee diag-keystore.txt
+
       - name: Gerar o keystore de debug só na 1ª vez (fica em cache pras próximas)
         run: |
           set -e
@@ -128,15 +146,23 @@ jobs:
           name: forthemp-android-apk
           path: Forthemp.apk
 
+      - name: Montar notas do Release (inclui o diagnóstico do keystore — lido sem precisar de login no Actions)
+        run: |
+          {
+            echo "APK gerado automaticamente pelo GitHub Actions a partir do commit ${{ github.sha }}."
+            echo "Baixe \`Forthemp.apk\` abaixo e instale direto no aparelho (é preciso permitir \"instalar de fontes desconhecidas\" no Android, já que não vem da Play Store)."
+            echo ""
+            echo "### Diagnóstico do keystore (temporário, pra depurar o cache)"
+            echo '```'
+            cat diag-keystore.txt
+            echo '```'
+          } > release-notes.txt
+
       - name: Publicar/atualizar Release com o .apk (link fixo pra baixar)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: forthemp-android-latest
           name: Forthemp — App Android (build automático)
-          body: |
-            APK gerado automaticamente pelo GitHub Actions a partir do
-            commit ${{ github.sha }}. Baixe `Forthemp.apk` abaixo e
-            instale direto no aparelho (é preciso permitir "instalar de
-            fontes desconhecidas" no Android, já que não vem da Play Store).
+          body_path: release-notes.txt
           files: Forthemp.apk
           make_latest: false
