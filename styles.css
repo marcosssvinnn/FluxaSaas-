@@ -1019,6 +1019,10 @@
     .vis-equip-emoji{font-size:20px;flex-shrink:0}
     .vis-equip-nome{font-size:13px;font-weight:700;color:var(--c2);flex:1}
     .vis-equip-badge{font-size:10px;font-weight:700;padding:3px 10px;border-radius:50px;flex-shrink:0}
+    /* Renomear/remover no cabeçalho do equipamento. Alvo de 30px: o dedo
+       molhado do técnico no campo não acerta um ícone de 14px. */
+    .vis-equip-acao{flex-shrink:0;width:30px;height:30px;border:none;background:none;color:var(--gray);font-size:14px;cursor:pointer;border-radius:6px;line-height:1;padding:0}
+    .vis-equip-acao:hover{background:var(--gray-light);color:var(--tx)}
     .badge-bom{background:var(--green-bg);color:var(--green)}
     .badge-atencao{background:var(--yellow-bg);color:var(--yellow)}
     .badge-critico{background:var(--red-bg);color:var(--red)}

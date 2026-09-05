@@ -7103,6 +7103,31 @@ function fecharModalGenerico(id){
   const bg=document.getElementById(id||'rd-modal-dinamico'); if(bg) bg.remove();
 }
 
+// Prompt de texto no shell do app. Existe porque o prompt() nativo é bloqueado
+// em PWA instalado no Android e aparece como um diálogo do navegador (com o
+// domínio) no iOS — no meio de uma vistoria isso parece golpe, não o app.
+// onOk só é chamado com texto; cancelar não chama nada.
+function _promptTexto(titulo, valorInicial, onOk, opts){
+  const o=opts||{};
+  const id='rd-modal-prompt';
+  abrirModal({id, corpo:`
+    <div class="rd-modal-title">${esc(titulo||'')}</div>
+    ${o.msg?`<div style="font-size:13px;color:var(--gray);margin-bottom:10px">${esc(o.msg)}</div>`:''}
+    <input id="rd-prompt-inp" type="text" maxlength="${o.max||120}" value="${esc(valorInicial||'')}"
+      style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-mid);border-radius:8px;font-size:14px;font-family:inherit;outline:none">
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+      <button type="button" class="rd-btn rd-btn-secondary" onclick="fecharModalGenerico('${id}')">Cancelar</button>
+      <button type="button" class="rd-btn rd-btn-primary" id="rd-prompt-ok">${esc(o.labelOk||'Salvar')}</button>
+    </div>`});
+  const inp=document.getElementById('rd-prompt-inp');
+  const ok=()=>{ const v=(inp?.value||'').trim(); fecharModalGenerico(id); if(v) onOk&&onOk(v); };
+  document.getElementById('rd-prompt-ok').onclick=ok;
+  if(inp){
+    inp.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); ok(); } };
+    setTimeout(()=>{ inp.focus(); inp.select(); }, 60);
+  }
+}
+
 // ══════════════════════════════════════════════════
 //  MÓDULO 6 — NOTIFICAÇÕES WHATSAPP
 // ══════════════════════════════════════════════════
@@ -11077,6 +11102,7 @@ function visTab(tab){
     if(emailRow) emailRow.style.display = eTecnico() ? 'none' : '';
   }
   if(tab!=='nova') window._visPreCargaRec = null;
+  if(tab==='nova') _visAtualizarBtnDescartar();
   if(tab==='hist') renderVisHistorico();
   if(tab==='locais') renderLocaisTab();
 }
@@ -11105,7 +11131,81 @@ function toggleVisEquip(id){
   if(card) card.style.display = visEquipSelecionados.length?'':'none';
 }
 
-let _visEquipsCustom=[]; // equipamentos vindos de um plano de acompanhamento
+let _visEquipsCustom=[]; // equipamentos fora da lista padrão: do plano ou avulsos
+
+// Origem de um equipamento lido de um registro gravado. Vistorias salvas antes
+// deste campo existir não têm `origem`; nelas o prefixo do id é o único sinal,
+// e na dúvida cai em "do plano" — que era o único caso possível na época.
+function _visOrigemEquip(e){
+  return e.origem || (String(e.id||'').startsWith('adhoc_') ? 'avulso' : 'plano');
+}
+
+// ── Equipamento avulso (fora dos 9 chips padrão) ──────────────────────────
+// Mesma estrutura dos equipamentos que vêm do plano — muda só a `origem`, que
+// existe pra não rotular como "do plano" algo que o técnico digitou na hora.
+// Tudo o mais (grid, rascunho, gravação, PDF, pré-carga) já era genérico e
+// funciona sem alteração.
+function visAdhocAbrir(){
+  const f=document.getElementById('vis-adhoc-form'), b=document.getElementById('vis-adhoc-abrir');
+  if(!f) return;
+  f.style.display='flex'; if(b) b.style.display='none';
+  document.getElementById('vis-adhoc-nome')?.focus();
+}
+function visAdhocFechar(){
+  const f=document.getElementById('vis-adhoc-form'), b=document.getElementById('vis-adhoc-abrir');
+  if(f) f.style.display='none'; if(b) b.style.display='';
+  const i=document.getElementById('vis-adhoc-nome'); if(i) i.value='';
+}
+function visAdhocConfirmar(){
+  const i=document.getElementById('vis-adhoc-nome');
+  const nome=(i?.value||'').trim();
+  if(!nome){ toast('Dê um nome ao equipamento'); i?.focus(); return; }
+  _visAddEquipAvulso(nome);
+  visAdhocFechar();
+  toast('⚙️ '+nome+' adicionado');
+}
+function _visAddEquipAvulso(nome, dados){
+  const id='adhoc_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+  _visEquipsCustom.push({id, nome, emoji:'⚙️', modelo:'', potencia:'', origem:'avulso'});
+  visEquipDados[id]=dados||{status:'na',obs:'',fotos:[]};
+  renderVisEquipGrid();
+  const card=document.getElementById('vis-equip-card'); if(card) card.style.display='';
+  _salvarRascunhoVisDeb();
+  return id;
+}
+// Renomear serve pro caso real de "Motobomba Principal" ser, naquele local, a
+// "Bomba da cascata". Um equipamento PADRÃO renomeado vira avulso e sai dos
+// chips: manter o id padrão com outro nome faria a pré-carga da próxima
+// vistoria devolver o nome de fábrica e apagar a correção silenciosamente.
+function visRenomearEquip(id){
+  const custom=(_visEquipsCustom||[]).find(e=>e.id===id);
+  const def=VIS_EQUIPAMENTOS_DEFAULT.find(e=>e.id===id);
+  const atual=custom?custom.nome:(def?def.nome:'');
+  if(!atual) return;
+  _promptTexto('Renomear equipamento', atual, novo=>{
+    const n=(novo||'').trim(); if(!n||n===atual) return;
+    if(custom){ custom.nome=n; renderVisEquipGrid(); _salvarRascunhoVisDeb(); toast('Renomeado'); return; }
+    // padrão → avulso, levando junto status/obs/fotos já preenchidos
+    const d=visEquipDados[id]||{status:'na',obs:'',fotos:[]};
+    visEquipSelecionados=visEquipSelecionados.filter(x=>x!==id);
+    delete visEquipDados[id];
+    _visAddEquipAvulso(n, d);
+    renderVisChips();
+    toast('Renomeado');
+  });
+}
+function visRemoverEquipAvulso(id){
+  const eq=(_visEquipsCustom||[]).find(e=>e.id===id); if(!eq) return;
+  confirmar('Remover "'+eq.nome+'" desta vistoria? O que já foi preenchido nele será perdido.', ()=>{
+    _visEquipsCustom=_visEquipsCustom.filter(e=>e.id!==id);
+    delete visEquipDados[id];
+    renderVisEquipGrid();
+    const card=document.getElementById('vis-equip-card');
+    if(card) card.style.display=(visEquipSelecionados.length||_visEquipsCustom.length)?'':'none';
+    _salvarRascunhoVisDeb();
+    toast('Removido');
+  }, 'Remover equipamento');
+}
 
 // ── Grid de vistoria por equipamento ──
 function renderVisEquipGrid(){
@@ -11116,20 +11216,24 @@ function renderVisEquipGrid(){
   const hasEquips=visEquipSelecionados.length>0||_visEquipsCustom.length>0;
   if(card) card.style.display=hasEquips?'':'none';
 
-  // Renderiza equipamentos customizados do plano (se existirem)
+  // Equipamentos fora dos chips padrão, em dois grupos: o que veio do plano do
+  // local e o que o técnico acrescentou na hora. Misturar os dois numa seção
+  // só chamada "do plano" faria o relatório afirmar algo que não é verdade.
   const customIds=_visEquipsCustom.map(e=>e.id);
-  if(_visEquipsCustom.length){
-    const secTit=document.createElement('div');
-    secTit.style.cssText='font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);margin-bottom:8px';
-    secTit.textContent='Equipamentos do plano';
-    el.appendChild(secTit);
-    _visEquipsCustom.forEach(ceq=>{
+  const secao=(titulo,lista)=>{
+    if(!lista.length) return;
+    const t=document.createElement('div');
+    t.style.cssText='font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);margin:12px 0 8px';
+    t.textContent=titulo;
+    el.appendChild(t);
+    lista.forEach(ceq=>{
       const id=ceq.id;
       if(!visEquipDados[id]) visEquipDados[id]={status:'na',obs:'',fotos:[]};
-      const d=visEquipDados[id];
-      el.appendChild(buildEquipBlock(id,ceq.emoji||'⚙️',ceq.nome,d,ceq.modelo,ceq.potencia));
+      el.appendChild(buildEquipBlock(id,ceq.emoji||'⚙️',ceq.nome,visEquipDados[id],ceq.modelo,ceq.potencia,{remover:true}));
     });
-  }
+  };
+  secao('Equipamentos do plano', _visEquipsCustom.filter(e=>e.origem!=='avulso'));
+  secao('Acrescentados nesta vistoria', _visEquipsCustom.filter(e=>e.origem==='avulso'));
 
   // Renderiza equipamentos padrão selecionados pelos chips
   const stdIds=visEquipSelecionados.filter(id=>!customIds.includes(id));
@@ -11142,7 +11246,7 @@ function renderVisEquipGrid(){
       const def=VIS_EQUIPAMENTOS_DEFAULT.find(x=>x.id===id);
       if(!def) return;
       const d=visEquipDados[id]||{status:'na',obs:'',fotos:[]};
-      el.appendChild(buildEquipBlock(id,def.emoji,def.nome,d,'',''));
+      el.appendChild(buildEquipBlock(id,def.emoji,def.nome,d,'','',{remover:false}));
     });
   }
 
@@ -11167,7 +11271,7 @@ function renderVisEquipGrid(){
   })();
 }
 
-function buildEquipBlock(id,emoji,nome,d,modelo,potencia){
+function buildEquipBlock(id,emoji,nome,d,modelo,potencia,opts){
   const badgeMap={bom:'badge-bom',atencao:'badge-atencao',critico:'badge-critico',na:'badge-na'};
   const badgeTxt={bom:'✅ Bom',atencao:'⚠️ Atenção',critico:'🔴 Crítico',na:'— N/A'};
   const stClass='status-'+(d.status||'na');
@@ -11188,6 +11292,8 @@ function buildEquipBlock(id,emoji,nome,d,modelo,potencia){
     <div class="vis-equip-hdr" onclick="toggleVisEquipBody('${id}')">
       <div class="vis-equip-emoji">${emoji}</div>
       <div style="flex:1;min-width:0"><div class="vis-equip-nome">${esc(nome)}</div>${subInfo}</div>
+      <button class="vis-equip-acao" title="Renomear" onclick="event.stopPropagation();visRenomearEquip('${id}')">✎</button>
+      ${opts&&opts.remover?`<button class="vis-equip-acao" title="Remover desta vistoria" onclick="event.stopPropagation();visRemoverEquipAvulso('${id}')">✕</button>`:''}
       <div class="vis-equip-badge ${badgeMap[d.status||'na']}">${badgeTxt[d.status||'na']}</div>
       <div class="vis-equip-toggle" id="vis-arr-${id}">▼</div>
     </div>
@@ -11313,7 +11419,13 @@ function _salvarRascunhoVis(){
     _syncRascunhoNuvemDeb();
   }catch(e){ console.warn('[rascunhoVis]', e?.message||e); }
 }
-function _salvarRascunhoVisDeb(){ clearTimeout(_visDraftTimer); _visDraftTimer=setTimeout(_salvarRascunhoVis, 700); }
+function _salvarRascunhoVisDeb(){
+  clearTimeout(_visDraftTimer);
+  _visDraftTimer=setTimeout(_salvarRascunhoVis, 700);
+  // Fora do debounce: o link de descartar tem que aparecer/sumir junto com a
+  // ação da pessoa, não 700ms depois dela.
+  _visAtualizarBtnDescartar();
+}
 function _limparRascunhoVis(){
   try{ lsSet(LS_VIS_DRAFT,''); }catch(e){ console.warn('[limparRascunhoVis]',e?.message||e); }
   _visDraftRestaurado=false;
@@ -11557,6 +11669,9 @@ function _visPiscinaSelect(val){ _visPiscinaSelecionadaId=val||null; }
 // ── Autocomplete cliente no campo vis-cli ──
 function mostrarSugestoesCliVis(val){
   const sug = document.getElementById('vis-cli-suggestions'); if(!sug) return;
+  // O rascunho só era gravado ao mexer em equipamento. Quem digitava o cliente
+  // e o app ia pra segundo plano perdia até esse nome.
+  _salvarRascunhoVisDeb();
   setV('vis-cli-id',''); // digitou de novo → invalida vínculo de uma sugestão anterior
   _visPiscinaSelecionadaId=null; _visRenderPiscinas();
   if(!val||val.length<2){ sug.style.display='none'; return; }
@@ -11613,7 +11728,7 @@ function confirmarPreCarga(){
   const customEquips = equips.filter(e=>!stdDefs.includes(e.id));
   // Reset estado
   visEquipSelecionados = stdEquips.map(e=>e.id);
-  _visEquipsCustom = customEquips.map(e=>({id:e.id, nome:e.nome, emoji:e.emoji||'⚙️', modelo:e.modelo||'', potencia:e.potencia||''}));
+  _visEquipsCustom = customEquips.map(e=>({id:e.id, nome:e.nome, emoji:e.emoji||'⚙️', modelo:e.modelo||'', potencia:e.potencia||'', origem:_visOrigemEquip(e)}));
   // Status todos reset para 'na' — técnico preenche de novo
   visEquipDados = {};
   equips.forEach(e=>{ visEquipDados[e.id]={status:'na',obs:'',fotos:[]}; });
@@ -11637,7 +11752,7 @@ function _montarEquipamentosVistoria(){
   return [
     ...(_visEquipsCustom||[]).map(ceq=>{
       const d=visEquipDados[ceq.id]||{status:'na',obs:'',fotos:[]};
-      return {id:ceq.id,nome:ceq.nome,emoji:ceq.emoji||'⚙️',modelo:ceq.modelo||'',potencia:ceq.potencia||'',status:d.status,obs:d.obs||'',fotos:(d.fotos||[]).filter(Boolean)};
+      return {id:ceq.id,nome:ceq.nome,emoji:ceq.emoji||'⚙️',modelo:ceq.modelo||'',potencia:ceq.potencia||'',origem:ceq.origem||'plano',status:d.status,obs:d.obs||'',fotos:(d.fotos||[]).filter(Boolean)};
     }),
     ...visEquipSelecionados.filter(id=>!customIds.includes(id)).map(id=>{
       const def=VIS_EQUIPAMENTOS_DEFAULT.find(x=>x.id===id)||{id,nome:id,emoji:''};
@@ -11838,8 +11953,45 @@ function _limparFormVistoria(){
   const dd = document.getElementById('vis-data'); if(dd) dd.value = _ld;
   const mm = document.getElementById('vis-mes-ref'); if(mm) mm.value = _ld.slice(0,7);
   const st = document.getElementById('vis-email-status'); if(st) st.textContent='';
+  // Os chips ficavam marcados depois de limpar o form. Como cliente e local
+  // são zerados aqui, a vistoria seguinte começava com os equipamentos do
+  // local ANTERIOR já selecionados — pronta pra registrar equipamento que não
+  // existe no lugar onde o técnico está.
+  visEquipSelecionados = [];
   renderVisChips();
   renderVisEquipGrid();
+  _visAtualizarBtnDescartar();
+}
+
+// ── Descartar vistoria em andamento ──
+// Só aparece quando há algo pra descartar: o link permanente convidaria a
+// apagar uma tela que já está vazia.
+function _visEmAndamento(){
+  return !!(
+    (document.getElementById('vis-cli')?.value||'').trim() ||
+    (document.getElementById('vis-loc')?.value||'').trim() ||
+    visEquipSelecionados.length || (_visEquipsCustom||[]).length ||
+    visCheckinTime || _visAssinaturaTecnico
+  );
+}
+function _visAtualizarBtnDescartar(){
+  const b=document.getElementById('vis-descartar-btn');
+  if(b) b.style.display=_visEmAndamento()?'':'none';
+}
+function descartarVistoria(){
+  if(!_visEmAndamento()){ toast('Não há vistoria em andamento'); return; }
+  const cli=(document.getElementById('vis-cli')?.value||'').trim();
+  const nEq=visEquipSelecionados.length+(_visEquipsCustom||[]).length;
+  confirmar({
+    titulo:'Descartar vistoria',
+    msg:'Tudo que foi preenchido nesta vistoria — status, observações e fotos — será perdido. Isso não afeta vistorias já finalizadas.',
+    detalhe:[
+      {k:'Cliente', v:cli||'(em branco)'},
+      {k:'Equipamentos', v:String(nEq)},
+    ],
+    destrutivo:true, labelSim:'Descartar', labelNao:'Continuar preenchendo',
+    onSim:()=>{ _limparFormVistoria(); toast('Vistoria descartada'); }
+  });
 }
 
 // Item marcado 🔴 crítico sem nenhuma foto: a foto é a prova visual que
@@ -12889,7 +13041,7 @@ function editarVistoria(id){
   // Equipamentos: separa padrão de custom e PRESERVA status/obs/fotos
   const stdDefs=VIS_EQUIPAMENTOS_DEFAULT.map(x=>x.id);
   visEquipSelecionados=equips.filter(e=>stdDefs.includes(e.id)).map(e=>e.id);
-  _visEquipsCustom=equips.filter(e=>!stdDefs.includes(e.id)).map(e=>({id:e.id,nome:e.nome,emoji:e.emoji||'⚙️',modelo:e.modelo||'',potencia:e.potencia||''}));
+  _visEquipsCustom=equips.filter(e=>!stdDefs.includes(e.id)).map(e=>({id:e.id,nome:e.nome,emoji:e.emoji||'⚙️',modelo:e.modelo||'',potencia:e.potencia||'',origem:_visOrigemEquip(e)}));
   equips.forEach(e=>{ visEquipDados[e.id]={status:e.status||'na',obs:e.obs||'',fotos:(e.fotos||[]).filter(Boolean)}; });
   renderVisChips();
   renderVisEquipGrid();
