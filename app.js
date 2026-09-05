@@ -4250,12 +4250,55 @@ async function mudarSt(id, sel){
 }
 // Núcleo compartilhado de mudança de status (select do histórico + funil CRM).
 // extras = campos adicionais a gravar junto (ex.: motivo_perda no CRM).
+// Congela o custo do item NO MOMENTO DA APROVAÇÃO. Sem isso, a margem de um
+// orçamento antigo seria recalculada com o CMP de hoje — e a resposta muda
+// sozinha toda vez que o preço de compra do produto muda, o que é o oposto do
+// que "quanto ganhamos nesta venda" significa. Só grava uma vez: item já
+// congelado nunca é reescrito, nem se o custo do produto mudar depois.
+function _congelarCustoOrc(orc){
+  if(!orc || !Array.isArray(orc.servicos)) return false;
+  let mudou=false;
+  orc.servicos.forEach(s=>{
+    if(!s || !s.produto_id) return;
+    if(s.custo_unit!=null) return;
+    const p=produtoById(s.produto_id);
+    if(!p || p.custo==null || p.custo==='') return;
+    const cu=parseFloat(p.custo)||0;
+    if(!cu) return;
+    s.custo_unit=cu;
+    s.custo_total=cu*Math.abs(parseInt(s.qty)||1);
+    s.custo_em=_hojeLocal();
+    mudou=true;
+  });
+  return mudou;
+}
+// Margem a partir do custo congelado. `cobertura` = quanto do valor tem custo
+// conhecido — sem esse número a margem parece precisa quando na verdade é
+// parcial (item sem produto vinculado, ou produto sem custo cadastrado, não
+// entra na conta e inflaria o resultado em silêncio).
+function _margemOrc(orc){
+  const svcs=(orc?.servicos)||[];
+  let receita=0, custo=0, receitaComCusto=0;
+  svcs.forEach(s=>{
+    if(!s) return;
+    const qty=Math.abs(parseInt(s.qty)||1);
+    const val=(parseFloat(s.p)||0)*qty;
+    receita+=val;
+    if(s.custo_unit!=null){ custo+=(parseFloat(s.custo_unit)||0)*qty; receitaComCusto+=val; }
+  });
+  const cobertura = receita>0 ? receitaComCusto/receita : 0;
+  return {receita, custo, lucro:receita-custo, margemPct: receita>0?((receita-custo)/receita*100):0, cobertura};
+}
+
 async function _setStatusOrc(id, st, extras){
   const changes={status:st, etapa_desde:new Date().toISOString(), ...(extras||{})};
   if(st==='aprovado') changes.data_aprovacao=new Date().toISOString();
   // Sair de "pendente" limpa a situação/decisão prevista — não fazem mais sentido fora da negociação
   if(st!=='pendente' && extras?.crm_situacao===undefined){ changes.crm_situacao=null; changes.crm_decisao_prevista=null; }
   const o=todosOrc.find(x=>x.id===id); if(o) Object.assign(o, changes);
+  // Congela ANTES de gravar, pra que servicos[] já saia com custo_unit
+  // preenchido no mesmo update — não numa escrita separada que pode falhar.
+  if(st==='aprovado' && o && _congelarCustoOrc(o)) changes.servicos=o.servicos;
   lsOrcAtualizar(id, changes);
   if(o) sincronizarBaixaOrcamento(o);
   atualizarDash();
@@ -4360,7 +4403,19 @@ function _orcMontarTopbar(o){
   if(tituloEl) tituloEl.textContent='Orçamento #'+String(o.numero||'').padStart(3,'0')+' · '+(o.cliente||'—');
   if(subEl){
     const dtRef=o.status==='aprovado'&&o.data_aprovacao?'aprovado em '+_dataBR(o.data_aprovacao):'criado em '+_dataBR(o.data_criacao);
-    subEl.textContent=(eVendas()?'':brl(o.total||0)+' · ')+dtRef;
+    // Margem só pra gestor, e só quando o custo já foi congelado (aprovado).
+    // A cobertura vai junto SEMPRE que for parcial: uma margem calculada sobre
+    // metade do valor parece precisa e não é — sem esse aviso, o número
+    // engana mais do que informa.
+    let margemTx='';
+    if(!eVendas() && o.status==='aprovado'){
+      const m=_margemOrc(o);
+      if(m.cobertura>0){
+        const cobTx = m.cobertura<0.999 ? ` (custo de ${Math.round(m.cobertura*100)}% do valor)` : '';
+        margemTx=` · margem ${m.margemPct.toFixed(0)}%${cobTx}`;
+      }
+    }
+    subEl.textContent=(eVendas()?'':brl(o.total||0)+' · ')+dtRef+margemTx;
   }
   if(badgeEl){
     const st=o.status||'pendente';
@@ -6412,6 +6467,18 @@ function iniciarRealtimeSync(){
       // Reconcilia a reserva de estoque quando o status muda (ex.: cliente aprovou
       // pelo portal → este app, logado como gestor, faz a reserva). É idempotente.
       try{ if(typeof sincronizarReservaOrcamento==='function' && !eVendas()) sincronizarReservaOrcamento(novo); }catch(e){ console.warn('[rt orc reserva]', e?.message||e); }
+      // Aprovação pelo PORTAL não passa por _setStatusOrc (roda como anon, via
+      // RPC) — o custo é congelado aqui, no app do gestor, pelo mesmo motivo
+      // que a reserva de estoque é. Idempotente: item já congelado é ignorado.
+      try{
+        if(novo.status==='aprovado' && !eVendas()){
+          const alvo=todosOrc.find(x=>x.id===novo.id);
+          if(alvo && _congelarCustoOrc(alvo)){
+            lsOrcAtualizar(alvo.id,{servicos:alvo.servicos});
+            if(dbOk&&db) orcSyncUpdate(alvo.id,{servicos:alvo.servicos}).catch(e=>console.warn('[rt custo]', e?.message||e));
+          }
+        }
+      }catch(e){ console.warn('[rt orc custo]', e?.message||e); }
     })
     .on('postgres_changes',_rtCfg('DELETE','orcamentos'), p=>{
       const id=p.old.id;
