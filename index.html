@@ -1592,6 +1592,69 @@
 </div>
 
 <!-- ══ DOCUMENTO OS (print) ══ -->
+<!-- ══ DOCUMENTO ORDEM DE ENTREGA (print) ══
+     Venda de produto avulso (químico, peça) não vira OS: o material só sai e
+     alguém no local recebe. Este é o papel que vai junto com a mercadoria —
+     quem recebe confere item a item, anota divergência e assina.
+     Derivado do orçamento, sem registro próprio no banco: reimprimir não
+     duplica nada. Reusa as mesmas classes .pd-* dos outros documentos. -->
+<div class="pdoc" id="pdoc-entrega">
+  <div class="pd-header" id="pd-header-ent">
+    <div class="pd-hdr-brand">
+      <img id="pd-hdr-logo-ent" class="pd-hdr-logo-img" alt="logo">
+      <div class="pd-hdr-logo-initials" id="pd-hdr-init-ent"></div>
+      <div class="pd-hdr-txt">
+        <div class="pd-hdr-nome" id="pd-nm-ent"></div>
+        <div class="pd-hdr-sub" id="pd-sb-ent"></div>
+        <div class="pd-hdr-tagline" id="pd-tag-ent"></div>
+      </div>
+    </div>
+    <div class="pd-hdr-doc">
+      <div class="pd-doctype-badge">Ordem de Entrega</div>
+      <div class="pd-docnum" id="pd-num-ent"></div>
+    </div>
+  </div>
+  <div class="pd-meta-strip">
+    <div class="pd-meta-left" id="pd-cont-ent"></div>
+    <div class="pd-meta-right" id="pd-meta-ent"></div>
+  </div>
+  <div class="pd-content">
+    <div class="pd-sl">Entregar para</div>
+    <div class="pd-cli-card">
+      <div class="pd-cli-bar" id="pd-cli-bar-ent"></div>
+      <div class="pd-cli-info">
+        <div class="pd-cli-nm" id="pd-cli-nm-ent"></div>
+        <div class="pd-cli-loc" id="pd-cli-loc-ent"></div>
+      </div>
+    </div>
+    <div class="pd-sl">Confira item a item</div>
+    <div class="pd-tbl-wrap">
+      <table class="pd-tbl">
+        <thead><tr><th style="width:38px;text-align:center">OK</th><th style="width:26px">#</th><th>Descrição</th><th style="width:74px;text-align:center">Qtd</th></tr></thead>
+        <tbody id="pd-tbody-ent"></tbody>
+      </table>
+    </div>
+    <div class="pd-obs-card" id="pd-obs-ent">
+      <div class="pd-obs-bar" id="pd-obs-bar-ent"></div>
+      <div class="pd-obs-inner">
+        <div class="pd-obs-lbl">Faltou algo ou veio com avaria? Anote aqui</div>
+        <div class="pd-obs-txt" id="pd-obs-txt-ent" style="min-height:46px;border-bottom:1px dashed #9aa6bd"></div>
+      </div>
+    </div>
+    <div class="pd-sig-area">
+      <div class="pd-sig-blk">
+        <div class="pd-sig-line"></div>
+        <div class="pd-sig-name">Recebido por — nome legível e assinatura</div>
+      </div>
+      <div class="pd-sig-blk">
+        <div class="pd-sig-line"></div>
+        <div class="pd-sig-name" id="pd-sign-resp-ent">Entregue por</div>
+      </div>
+    </div>
+  </div>
+  <div class="pd-foot" id="pd-foot-ent"></div>
+</div>
+
 <div class="pdoc" id="pdoc-os">
   <!-- HEADER -->
   <div class="pd-header" id="pd-header-os">

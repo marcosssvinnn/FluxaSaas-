@@ -3389,6 +3389,57 @@ function preencherDocOS(d, num){
   }
 }
 
+// ══ ORDEM DE ENTREGA ══════════════════════════════
+// Venda de produto avulso (químico, peça) não vira OS: o material só sai e
+// alguém no local — em geral zelador ou porteiro — recebe. Faltava o papel que
+// essa pessoa confere e assina.
+//
+// É derivada do orçamento e NÃO cria registro no banco: reimprimir quantas
+// vezes quiser não duplica nada e não precisou de schema novo.
+// Sem preços, de propósito: o que se confere é O QUE chegou, e quem recebe
+// costuma não ter nada a ver com o valor negociado.
+function preencherDocEntrega(o){
+  const LC=getLojaConfig(o.loja_id||lojaAtiva);
+  const c1=LC.cor, c2=LC.cor2;
+  document.getElementById('pd-header-ent').style.background=c2;
+  document.getElementById('pd-foot-ent').style.background=c2;
+  document.getElementById('pd-cli-bar-ent').style.background=c1;
+  document.getElementById('pd-obs-bar-ent').style.background=c1;
+  const logoEl=document.getElementById('pd-hdr-logo-ent'), initEl=document.getElementById('pd-hdr-init-ent');
+  if(LC.logoB64){ logoEl.src=LC.logoB64; logoEl.className='pd-hdr-logo-img has-logo'; initEl.className='pd-hdr-logo-initials'; }
+  else { logoEl.className='pd-hdr-logo-img'; initEl.textContent=(LC.nome||'?').charAt(0).toUpperCase(); initEl.className='pd-hdr-logo-initials show-init'; }
+  setV_el('pd-nm-ent',LC.nome,'textContent');
+  setV_el('pd-sb-ent',LC.sub,'textContent');
+  const tagEl=document.getElementById('pd-tag-ent');
+  if(tagEl){ tagEl.textContent=LC.tagline||''; tagEl.style.display=LC.tagline?'block':'none'; }
+  setV_el('pd-cont-ent',[LC.tel,LC.cidades].filter(Boolean).join('  ·  ')||LC.nome,'textContent');
+  const num=String(o.numero||'').padStart(3,'0');
+  setV_el('pd-num-ent','#'+num,'textContent');
+  // Data da entrega fica em BRANCO: a entrega acontece dias depois da
+  // aprovação, e quem preenche é quem recebe, no dia.
+  document.getElementById('pd-meta-ent').innerHTML=
+    `Referente ao Orçamento <strong>#${num}</strong><br>Data da entrega: ____ / ____ / ______`;
+  setV_el('pd-cli-nm-ent',o.cliente||'—','textContent');
+  setV_el('pd-cli-loc-ent',o.local_servico||'','textContent');
+  setV_el('pd-sign-resp-ent','Entregue por — '+(LC.nome||''),'textContent');
+  setV_el('pd-foot-ent',(LC.nome||'')+(LC.tel?'   ·   '+LC.tel:'')+(LC.cidades?'   ·   '+LC.cidades:''),'textContent');
+  // TODOS os itens, não só os com produto_id: químico digitado à mão não tem
+  // vínculo de produto e mesmo assim precisa ser conferido.
+  const tb=document.getElementById('pd-tbody-ent'); tb.innerHTML='';
+  (o.servicos||[]).forEach((s,i)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td style="text-align:center;font-size:15px;color:#9aa6bd">☐</td><td>${i+1}</td><td>${esc(s.desc||'')}</td><td style="text-align:center">${parseInt(s.qty)||1}</td>`;
+    tb.appendChild(tr);
+  });
+}
+function gerarOrdemEntrega(id){
+  const o=todosOrc.find(x=>x.id===id);
+  if(!o){ toast('Orçamento não encontrado'); return; }
+  if(!(o.servicos||[]).length){ toast('Este orçamento não tem itens a entregar'); return; }
+  preencherDocEntrega(o);
+  imprimirDoc('ent');
+}
+
 // ──────────────────────────────────────────────────
 //  HISTÓRICO
 // ──────────────────────────────────────────────────
@@ -4174,6 +4225,7 @@ function renderTabela(){
         <button class="tb" title="Duplicar" onclick="duplicarOrc('${o.id}')">⧉</button>
         ${(()=>{ const osVinc=(todosOS||[]).find(x=>x.orcamento_id===o.id); if(osVinc){ const stOS=osVinc.status||'agendado'; const stLabel={agendado:'agendada',em_andamento:'em andamento',concluido:'concluída'}[stOS]||stOS; return `<button class="tb" title="OS #${String(osVinc.numero||'').padStart(3,'0')} — ${stLabel}" onclick="verDetalhesOS('${osVinc.id}')" style="background:#16a34a;color:white;border-color:#16a34a;font-weight:700">✅ OS#${String(osVinc.numero||'').padStart(3,'0')}</button>`; } if(o.status==='aprovado') return `<button class="tb" title="Gerar Ordem de Serviço" onclick="gerarOS_deOrc('${o.id}')" style="background:#C45E0A;color:white;border-color:#C45E0A;font-weight:700">📋 Gerar OS</button>`; return `<button class="tb" title="Gerar OS" onclick="gerarOS_deOrc('${o.id}')">📋</button>`; })()}
         ${orcTemEntregaPendente(o)?`<button class="tb g" title="Marcar como entregue (baixa do estoque)" onclick="entregarOrcamento(getNC('${o.id}'),'manual')">📦 Entregar</button>`:''}
+        ${o.status==='aprovado'&&(o.servicos||[]).length?`<button class="tb" title="Ordem de Entrega — papel que vai junto com o material, pra quem recebe conferir e assinar" onclick="gerarOrdemEntrega('${o.id}')">🧾 Entrega</button>`:''}
         ${ocultarFinanceiro?'':(_recebDoOrc(o.id).length
             ? `<button class="tb g" title="Cobrança lançada em parcelas — acompanhe em A Receber" onclick="go('produtividade')">💰</button>`
             : (o.status==='aprovado'
@@ -6475,6 +6527,11 @@ function _nomeArquivoImpressao(modo){
       const dt  = (numEl?.textContent||'').replace(/\//g,'-');
       return cli ? `Relatorio_${cli}_${dt}` : `Relatorio_${dt||'servico'}`;
     }
+    if(modo==='ent'){
+      const cli=(document.getElementById('pd-cli-nm-ent')?.textContent||'').replace(/[^a-zA-Z0-9\u00C0-\u024F\s]/g,'').trim().replace(/\s+/g,'_');
+      const num=(document.getElementById('pd-num-ent')?.textContent||'').replace(/[^0-9]/g,'');
+      return cli&&num ? `Entrega_${cli}_${num}` : (num?`Entrega_${num}`:'Entrega');
+    }
     const refMode = modo==='os' ? 'os' : 'orc';
     const numEl = document.getElementById('pd-num-'+refMode);
     const cliEl = document.getElementById('pd-cli-nm-'+refMode);
@@ -6495,6 +6552,8 @@ window.addEventListener('beforeprint',()=>{
   // pdoc-visita: se n\u00E3o for modo vis, garante que n\u00E3o aparece
   const pdocVis = document.getElementById('pdoc-visita');
   if(pdocVis && !showVis) pdocVis.classList.remove('print-active');
+  const pdocEnt = document.getElementById('pdoc-entrega');
+  if(pdocEnt && printMode!=='ent') pdocEnt.classList.remove('print-active');
   // O nome do arquivo (document.title) j\u00E1 foi setado por imprimirDoc() antes de
   // window.print() \u2014 n\u00E3o repete o backup aqui (sen\u00E3o capturaria o t\u00EDtulo J\u00C1
   // renomeado como "original" e o afterprint restauraria o nome errado). S\u00F3
@@ -6507,6 +6566,8 @@ window.addEventListener('afterprint',()=>{
   document.getElementById('pdoc-orc').classList.remove('print-active');
   document.getElementById('pdoc-os').classList.remove('print-active');
   document.getElementById('pdoc-visita')?.classList.remove('print-active');
+  document.getElementById('pdoc-relatorio-os')?.classList.remove('print-active');
+  document.getElementById('pdoc-entrega')?.classList.remove('print-active');
   document.title = _printTitleBackup || 'Sistema de Orçamentos';
   printMode = '';
 });
@@ -6525,6 +6586,7 @@ function imprimirDoc(modo){
   document.getElementById('pdoc-os')?.classList.toggle('print-active',  showOs);
   document.getElementById('pdoc-visita')?.classList.toggle('print-active', showVis);
   document.getElementById('pdoc-relatorio-os')?.classList.toggle('print-active', showRos);
+  document.getElementById('pdoc-entrega')?.classList.toggle('print-active', modo==='ent');
   // Nome do arquivo sugerido no "Salvar como PDF": mesma lógica do print-active
   // acima — setado aqui, síncrono, ANTES de window.print(), e não dentro do
   // listener de beforeprint, porque esse evento não dispara no Android Chrome
