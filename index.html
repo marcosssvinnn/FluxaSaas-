@@ -1047,6 +1047,10 @@
         <button class="fb on" data-tec-st="pendente" onclick="filtTecOS(this)">⏳ Agendadas</button>
         <button class="fb" data-tec-st="concluido" onclick="filtTecOS(this)">✅ Concluídas</button>
         <button class="fb" data-tec-st="todos" onclick="filtTecOS(this)">Todas</button>
+        <!-- O técnico é quem consome material em campo, mas não tem acesso à tela
+             de Estoque. Sem este atalho não existe caminho nenhum pra ele dar
+             baixa — é a origem de estoque que só registra entrada. -->
+        <button class="ba" style="background:var(--c1);color:white;padding:8px 12px;font-size:12.5px;font-weight:700" onclick="abrirBaixaRapida()">⚡ Dar baixa</button>
       </div>
     </div>
     <div id="tec-os-lista"><div class="load"><div class="spin"></div> Carregando…</div></div>
@@ -2205,6 +2209,7 @@
         <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:9px 14px;font-size:13px" onclick="abrirOCListModal()">📄 Ordens de Compra</button>
         <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:9px 14px;font-size:13px" onclick="abrirListaCompras()">🛒 Lista de compras</button>
         <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:9px 14px;font-size:13px" onclick="abrirImportProdutos()">📥 Importar planilha</button>
+        <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:9px 14px;font-size:13px" onclick="abrirBaixaRapida()">⚡ Dar baixa</button>
         <button class="btn-primary" onclick="abrirProdutoModal()" style="padding:9px 16px">＋ Novo produto</button>
       </div>
     </div>
@@ -3156,6 +3161,47 @@ window.onerror = function(msg, src, line, col, err){
   <div id="fluxa-error-detail" style="font-size:11px;color:#9ca3af;background:#e5e7eb;border-radius:8px;padding:8px 14px;margin-bottom:24px;max-width:480px;word-break:break-word"></div>
   <button onclick="window.location.reload()" style="background:#C45E0A;color:white;border:none;border-radius:10px;padding:12px 28px;font-size:15px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif">🔄 Recarregar o app</button>
   <div style="margin-top:12px;font-size:12px;color:#9ca3af">Seus dados estão salvos — nada foi perdido.</div>
+</div>
+
+
+<!-- ══ MODAL: BAIXA RÁPIDA DE MATERIAL ══
+     Saída de material em 3 toques, de qualquer lugar, sem depender de
+     orçamento nem de OS. O MOTIVO é obrigatório porque as saídas não são
+     todas iguais — sem ele, "saiu 3 cloros" não diz se a empresa ganhou
+     (venda) ou perdeu (quebra). -->
+<div class="rd-modal-bg" id="baixa-modal-bg" onclick="if(event.target===this)fecharBaixaRapida()">
+  <div class="rd-modal">
+    <h3>Dar baixa de material</h3>
+    <div class="rd-field">
+      <label class="rd-field-lbl">Produto</label>
+      <div class="rd-field-box"><input type="text" id="baixa-busca" placeholder="Digite o nome ou código…" oninput="baixaBuscar(this.value)" autocomplete="off" style="width:100%"></div>
+      <div id="baixa-sugestoes" style="max-height:210px;overflow:auto;margin-top:6px"></div>
+    </div>
+    <div id="baixa-form" style="display:none">
+      <div id="baixa-selecionado" style="background:var(--c1-light);border-radius:8px;padding:9px 11px;margin-bottom:10px;font-size:12.5px"></div>
+      <div class="rd-field">
+        <label class="rd-field-lbl">Para que saiu?</label>
+        <div id="baixa-motivos" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      </div>
+      <div class="rd-field">
+        <label class="rd-field-lbl">Quantidade</label>
+        <div class="rd-field-box"><input type="text" inputmode="decimal" id="baixa-qtd" placeholder="0" oninput="baixaAtualizarResumo()" style="width:100%"></div>
+      </div>
+      <div class="rd-field" id="baixa-valor-wrap" style="display:none">
+        <label class="rd-field-lbl">Valor da venda (R$)</label>
+        <div class="rd-field-box"><input type="text" inputmode="decimal" id="baixa-valor" placeholder="0,00" oninput="baixaAtualizarResumo()" style="width:100%"></div>
+      </div>
+      <div class="rd-field">
+        <label class="rd-field-lbl">Cliente / OS <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--gray)">(opcional)</span></label>
+        <div class="rd-field-box"><input type="text" id="baixa-ref" placeholder="ex: Cond. Ibiza — manutenção" style="width:100%"></div>
+      </div>
+      <div id="baixa-resumo" style="font-size:12px;color:var(--gray);margin-bottom:10px;line-height:1.5"></div>
+    </div>
+    <div class="rd-modal-acts">
+      <button class="rd-modal-btn rd-modal-btn-nao" onclick="fecharBaixaRapida()">Cancelar</button>
+      <button class="rd-modal-btn rd-modal-btn-sim" id="baixa-btn" onclick="confirmarBaixaRapida()">Confirmar baixa</button>
+    </div>
+  </div>
 </div>
 
 <script src="native.js"></script>

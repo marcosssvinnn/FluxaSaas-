@@ -5252,9 +5252,24 @@ async function _excluirOSConfirmado(id){
 //  MINHAS OS — vista consolidada do técnico
 // ──────────────────────────────────────────────────
 let tecOSFiltro = 'pendente';
+// Ponto ÚNICO de "para onde este perfil vai". Antes a regra estava espalhada
+// pelos pontos de login; quem quiser mudar o destino, mude AQUI.
+function _telaInicialPerfil(sess){
+  const p=(sess||getSessao())?.perfil;
+  if(p==='tecnico') return 'minhas-os';
+  if(p==='vendas')  return 'form';
+  if(p==='gestor'||p==='master') return 'painel';
+  return 'form';
+}
 async function loadMinhasOS(){
   const sess = getSessao();
-  if(!sess || sess.perfil !== 'tecnico'){ go('home'); return; }
+  // 'home' não existe como página — go('home') lançava TypeError em
+  // getElementById(...).classList e interrompia a função no meio, deixando
+  // TODAS as páginas sem a classe .on: tela em branco, sem nenhum aviso.
+  // Não é alcançado pelo fluxo normal (nenhum botão leva gestor/vendas a
+  // "Minhas OS"), mas é caminho morto perigoso — link direto, teste ou uma
+  // mudança futura de sidebar quebrariam a navegação em silêncio.
+  if(!sess || sess.perfil !== 'tecnico'){ go(_telaInicialPerfil(sess)); return; }
   let lista = [];
   if(dbOk && db){
     try{
@@ -7461,6 +7476,155 @@ async function _recebConfirmarModal(orcId){
   const criadas=await _recebCriarParcelas(orcId,{n, primeiroVenc:venc, forma});
   if(criadas) toast(`✅ ${criadas} parcela${criadas!==1?'s':''} lançada${criadas!==1?'s':''}`);
   renderContasReceber();
+}
+
+// ══════════════════════════════════════════════════
+//  BAIXA RÁPIDA DE MATERIAL
+// ══════════════════════════════════════════════════
+// O estoque só registra bem o que ENTRA. Material consumido em serviço sai
+// pela OS (quando alguém lembra de lançar) e o resto — venda de balcão avulsa,
+// quebra, uso interno — não tinha caminho nenhum. Aqui sai em 3 toques, de
+// qualquer tela, sem depender de orçamento nem de OS.
+//
+// O MOTIVO é obrigatório porque as saídas não são todas iguais: sem ele,
+// "saiu 3 cloros" não diz se a empresa ganhou (venda) ou perdeu (quebra) —
+// e o ref grava isso de forma consultável depois.
+const BAIXA_MOTIVOS=[
+  {id:'venda',       nome:'💰 Venda',          cor:'var(--ok)',   pedeValor:true,  desc:'Vendido ao cliente — gera receita e entra na lista de compras'},
+  {id:'uso_servico', nome:'🔧 Uso em serviço', cor:'var(--c1)',   pedeValor:false, desc:'Consumido numa manutenção/OS'},
+  {id:'perda',       nome:'🗑️ Perda / avaria', cor:'var(--bad)',  pedeValor:false, desc:'Quebra, vencimento ou extravio'},
+  {id:'uso_interno', nome:'🏠 Uso interno',    cor:'var(--gray)', pedeValor:false, desc:'Consumo da própria empresa'}
+];
+let _baixaProdId=null, _baixaMotivo='venda';
+
+// De qual unidade o material sai. Com uma unidade ativa, é ela; com "Todas"
+// selecionado, é a unidade DO PRÓPRIO PRODUTO — que é a resposta certa, não um
+// palpite (registrarMovimento já usa esse mesmo fallback). Bloquear aqui, como
+// o v1 faz, travaria a baixa pra sempre num tenant que ainda não cadastrou
+// nenhuma unidade.
+function _baixaLoja(){
+  return lojaAtiva || produtoById(_baixaProdId)?.loja_id || LOJA_PADRAO_ID || '';
+}
+// Só avisa quando a unidade não veio da seleção do topo E existe mais de uma —
+// aí vale mostrar de onde o material vai sair antes de confirmar.
+function _baixaLojaAmbigua(){
+  const lojas=(typeof LOJAS!=='undefined'&&LOJAS)?LOJAS:[];
+  return !lojaAtiva && lojas.length>1;
+}
+
+function abrirBaixaRapida(produtoId){
+  _baixaProdId=produtoId||null; _baixaMotivo='venda';
+  setV('baixa-busca',''); setV('baixa-qtd',''); setV('baixa-valor',''); setV('baixa-ref','');
+  const sug=document.getElementById('baixa-sugestoes'); if(sug) sug.innerHTML='';
+  const form=document.getElementById('baixa-form'); if(form) form.style.display=_baixaProdId?'':'none';
+  const res=document.getElementById('baixa-resumo'); if(res) res.innerHTML='';
+  _baixaRenderMotivos();
+  if(_baixaProdId) _baixaSelecionar(_baixaProdId);
+  document.getElementById('baixa-modal-bg')?.classList.add('on');
+  if(!_baixaProdId) setTimeout(()=>document.getElementById('baixa-busca')?.focus(), 80);
+}
+function fecharBaixaRapida(){ document.getElementById('baixa-modal-bg')?.classList.remove('on'); }
+
+function baixaBuscar(termo){
+  const el=document.getElementById('baixa-sugestoes'); if(!el) return;
+  const t=(termo||'').trim().toLowerCase();
+  if(t.length<2){ el.innerHTML=''; return; }
+  const achados=produtosVisiveis().filter(p=>
+    (p.nome||'').toLowerCase().includes(t) || (p.codigo||'').toLowerCase().includes(t)
+  ).slice(0,8);
+  if(!achados.length){ el.innerHTML='<div style="font-size:12px;color:var(--gray);padding:8px">Nenhum produto encontrado.</div>'; return; }
+  el.innerHTML=achados.map(p=>{
+    const disp=disponivelProduto(p.id);
+    return `<button type="button" class="tb" style="display:block;width:100%;text-align:left;margin-bottom:5px;padding:9px 11px" onclick="_baixaSelecionar('${p.id}')">
+      <div style="font-weight:700;color:var(--c2);font-size:12.5px">${esc(p.nome)}</div>
+      <div style="font-size:11px;color:var(--gray)">${p.codigo?esc(p.codigo)+' · ':''}tem ${fmtQtd(disp)} ${esc(p.unidade||'un')}</div>
+    </button>`;
+  }).join('');
+}
+function _baixaSelecionar(pid){
+  const p=produtoById(pid); if(!p) return;
+  _baixaProdId=pid;
+  const disp=disponivelProduto(pid);
+  const el=document.getElementById('baixa-selecionado');
+  if(el) el.innerHTML=`<strong style="color:var(--c2)">${esc(p.nome)}</strong><br>
+     <span style="color:var(--gray)">Disponível agora: <strong>${fmtQtd(disp)} ${esc(p.unidade||'un')}</strong>${parseFloat(p.custo)>0?` · custo ${brl(parseFloat(p.custo))}`:''}</span>`;
+  const sug=document.getElementById('baixa-sugestoes'); if(sug) sug.innerHTML='';
+  setV('baixa-busca', p.nome);
+  const form=document.getElementById('baixa-form'); if(form) form.style.display='';
+  _baixaAplicarMotivo();
+  baixaAtualizarResumo();
+  setTimeout(()=>document.getElementById('baixa-qtd')?.focus(), 60);
+}
+function _baixaRenderMotivos(){
+  const el=document.getElementById('baixa-motivos'); if(!el) return;
+  el.innerHTML=BAIXA_MOTIVOS.map(m=>{
+    const on=_baixaMotivo===m.id;
+    return `<button type="button" class="tb" title="${esc(m.desc)}" onclick="baixaSetMotivo('${m.id}')"
+      style="font-size:11.5px;padding:8px 10px;${on?`background:${m.cor};color:#fff;border-color:${m.cor};font-weight:700`:''}">${m.nome}</button>`;
+  }).join('');
+}
+// Extraída porque precisa rodar TAMBÉM ao abrir: o motivo inicial é "venda"
+// (que pede valor) e, sem isto, o campo só aparecia se a pessoa trocasse de
+// motivo e voltasse.
+function _baixaAplicarMotivo(){
+  const cfg=BAIXA_MOTIVOS.find(m=>m.id===_baixaMotivo);
+  const wrap=document.getElementById('baixa-valor-wrap');
+  if(wrap) wrap.style.display=cfg?.pedeValor?'':'none';
+  if(cfg?.pedeValor && !gV('baixa-valor')){
+    const p=produtoById(_baixaProdId);
+    if(p && parseFloat(p.preco_venda)>0) setV('baixa-valor', String(parseFloat(p.preco_venda)).replace('.',','));
+  }
+}
+function baixaSetMotivo(id){ _baixaMotivo=id; _baixaRenderMotivos(); _baixaAplicarMotivo(); baixaAtualizarResumo(); }
+function baixaAtualizarResumo(){
+  const el=document.getElementById('baixa-resumo'); if(!el) return;
+  const p=produtoById(_baixaProdId); if(!p){ el.innerHTML=''; return; }
+  const qtd=parseFloat((gV('baixa-qtd')||'').replace(',','.'))||0;
+  const disp=disponivelProduto(_baixaProdId);
+  const cfg=BAIXA_MOTIVOS.find(m=>m.id===_baixaMotivo);
+  let txt='';
+  if(qtd>0){
+    txt=`Vai sair <strong>${fmtQtd(qtd)} ${esc(p.unidade||'un')}</strong> · saldo depois: <strong>${fmtQtd(disp-qtd)}</strong>`;
+    // Negativo NÃO bloqueia: no modelo "vende e depois compra" é justamente o
+    // que joga o item na lista de compras. Mas avisa, pra não passar batido.
+    if(disp-qtd<0) txt+=` <span style="color:var(--warn);font-weight:700">— fica negativo e entra na lista de compras</span>`;
+    if(_baixaLojaAmbigua()){
+      const nomeLoja=(typeof getLojaNome==='function')?getLojaNome(_baixaLoja()):_baixaLoja();
+      if(nomeLoja) txt+=`<br><span style="color:var(--gray)">Sai da unidade <strong>${esc(nomeLoja)}</strong> (a do produto)</span>`;
+    }
+    if(cfg?.pedeValor){
+      const v=parseFloat((gV('baixa-valor')||'').replace(',','.'))||0;
+      if(v>0){
+        const total=v*qtd, custo=(parseFloat(p.custo)||0)*qtd;
+        txt+=`<br>Venda: <strong>${brl(total)}</strong>`+(custo>0?` · margem: <strong style="color:${total-custo>=0?'var(--ok)':'var(--bad)'}">${brl(total-custo)}</strong>`:'');
+      }
+    }
+  }
+  el.innerHTML=txt;
+}
+function confirmarBaixaRapida(){
+  const p=produtoById(_baixaProdId);
+  if(!p){ toast('⚠️ Escolha o produto'); return; }
+  const qtd=parseFloat((gV('baixa-qtd')||'').replace(',','.'))||0;
+  if(qtd<=0){ toast('⚠️ Informe a quantidade'); document.getElementById('baixa-qtd')?.focus(); return; }
+  const loja=_baixaLoja();
+  const cfg=BAIXA_MOTIVOS.find(m=>m.id===_baixaMotivo)||BAIXA_MOTIVOS[0];
+  const ref=(gV('baixa-ref')||'').trim();
+  const valor=cfg.pedeValor?(parseFloat((gV('baixa-valor')||'').replace(',','.'))||0):0;
+  const motivoTxt=[cfg.nome.replace(/^\S+\s/,''), ref?('— '+ref):'', valor>0?`(${brl(valor*qtd)})`:''].filter(Boolean).join(' ');
+  const btn=document.getElementById('baixa-btn');
+  if(btn){ btn.disabled=true; btn.textContent='Registrando…'; }
+  registrarMovimento({
+    produto_id:_baixaProdId, tipo:'saida', quantidade:-Math.abs(qtd),
+    custo_unit:parseFloat(p.custo)||0,
+    motivo:motivoTxt,
+    ref:'baixa:'+cfg.id,   // permite filtrar por tipo de saída depois
+    lojaId:loja
+  });
+  if(btn){ btn.disabled=false; btn.textContent='Confirmar baixa'; }
+  fecharBaixaRapida();
+  if(typeof renderEstoque==='function' && document.getElementById('page-estoque')?.classList.contains('on')) renderEstoque();
+  toast(`✅ Baixa de ${fmtQtd(qtd)} ${p.unidade||'un'} — ${cfg.nome.replace(/^\S+\s/,'')}`);
 }
 
 function renderContasReceber(){
