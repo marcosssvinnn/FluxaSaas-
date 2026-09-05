@@ -1088,6 +1088,15 @@
         </div>
         <div class="fl"><label>Local / Endereço</label><input type="text" id="os-loc" placeholder="Endereço do serviço"></div>
       </div>
+      <!-- Vínculo OPCIONAL ao equipamento (Fase 10-11): aparece só quando o
+           cliente selecionado tem equipamento cadastrado. Marcar aqui faz a OS
+           entrar na timeline daquele aparelho com precisão de dispositivo. -->
+      <div class="row" id="os-equip-row" style="display:none">
+        <div class="fl" style="grid-column:1/-1">
+          <label>Equipamento <span style="font-weight:400;color:var(--gray);text-transform:none">(opcional — entra no prontuário do aparelho)</span></label>
+          <select id="os-equip-id"><option value="">— nenhum —</option></select>
+        </div>
+      </div>
       <div class="row f3">
         <div class="fl">
           <label>Empresa</label>

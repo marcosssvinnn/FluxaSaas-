@@ -3286,7 +3286,7 @@ async function gerarOSPDF(modo='os'){
   let numStr='???';
   const orcId=osOrcId||null;
   const lojaIdOS=gV('os-loja')||LOJA_PADRAO_ID;
-  const camposBase={orcamento_id:orcId,loja_id:lojaIdOS,cliente:dados.cli,cliente_id:gV('os-cli-id')||await _autoSalvarCliente(dados.cli,null,dados.loc,dados.cnpj,lojaIdOS,dados.cpf)||null,local_servico:dados.loc,cnpj:dados.cnpj||null,cpf_cliente:dados.cpf||null,data_servico:dados.data,hora:dados.hora,tecnico:dados.tec,servicos:dados.svcs,materiais:dados.mat,obs_tecnica:dados.obs,total:dados.tot,fotos:dados.fotos,video_link:dados.videoLink||null,checklist:dados.checklist.length?JSON.stringify(dados.checklist):null};
+  const camposBase={orcamento_id:orcId,loja_id:lojaIdOS,cliente:dados.cli,cliente_id:gV('os-cli-id')||await _autoSalvarCliente(dados.cli,null,dados.loc,dados.cnpj,lojaIdOS,dados.cpf)||null,local_servico:dados.loc,cnpj:dados.cnpj||null,cpf_cliente:dados.cpf||null,data_servico:dados.data,hora:dados.hora,tecnico:dados.tec,servicos:dados.svcs,materiais:dados.mat,obs_tecnica:dados.obs,total:dados.tot,fotos:dados.fotos,video_link:dados.videoLink||null,checklist:dados.checklist.length?JSON.stringify(dados.checklist):null,equipamento_id:gV('os-equip-id')||null};
   if(dbOk&&db){
     try{
       // Sobe fotos pro Storage antes de gravar — a linha no banco fica leve (URL, não
@@ -4737,6 +4737,7 @@ function gerarOS_deOrc(id){
   osEditId = null;
   osOrcId = id;
   setV('os-cli',o.cliente||''); setV('os-cli-id',o.cliente_id||''); setV('os-loc',o.local_servico||''); setV('os-cnpj',o.cnpj||''); setV('os-cpf',o.cpf_cliente||'');
+  _osPopularEquipamentos(o.equipamento_id||'');
   setV('os-loja',o.loja_id||lojaAtiva||LOJA_PADRAO_ID);
   setV('os-data',o.data_servico||''); setV('os-total',String(o.total||0));
   osSvcs=(o.servicos||[]).map(s=>({id:Date.now()+Math.random(),d:s.desc}));
@@ -4771,6 +4772,7 @@ function novaOS(){
   osMateriais=[]; _osMatRenderLista(); setV('os-mat-busca','');
   const _sugMat=document.getElementById('os-mat-sugestoes'); if(_sugMat) _sugMat.innerHTML='';
   setV('os-video-link',''); setV('os-cli-id','');
+  { const _er=document.getElementById('os-equip-row'); if(_er) _er.style.display='none'; const _es=document.getElementById('os-equip-id'); if(_es) _es.innerHTML='<option value="">— nenhum —</option>'; }
   setV('os-loja', lojaAtiva||LOJA_PADRAO_ID);
   document.getElementById('os-src-badge').textContent='';
   document.getElementById('btn-os-both').style.display='none';
@@ -5372,6 +5374,7 @@ function _abrirOSForm(o){
   osEditId=o.id;
   osOrcId=o.orcamento_id||null;
   setV('os-cli',o.cliente||''); setV('os-cli-id',o.cliente_id||''); setV('os-loc',o.local_servico||'');
+  _osPopularEquipamentos(o.equipamento_id||'');
   setV('os-data',o.data_servico||''); setV('os-hora',o.hora||'08:00');
   // Técnico: auto-preencher com o usuário logado se o campo estiver vazio
   const nomeSessao=getSessao()?.nome||'';
@@ -6571,8 +6574,32 @@ function mostrarSugestoesCliOS(val){
 function selecionarSugestaoCliOS(id,nome,end,cnpj){
   setV('os-cli',nome); setV('os-cli-id',id||''); if(end) setV('os-loc',end); if(cnpj) setV('os-cnpj',cnpj);
   document.getElementById('os-cli-suggestions').style.display='none';
+  _osPopularEquipamentos();
 }
 function hideSugCliOS(){ const b=document.getElementById('os-cli-suggestions'); if(b) b.style.display='none'; }
+
+// Popula o select de equipamento da OS com os aparelhos do cliente atual.
+// Mostra a linha só quando há o que escolher — campo vazio não ajuda ninguém.
+// (Fase 10-11: vínculo opcional OS→equipamento.)
+function _osPopularEquipamentos(selecionadoId){
+  const sel=document.getElementById('os-equip-id');
+  const row=document.getElementById('os-equip-row');
+  if(!sel||!row) return;
+  const cid=gV('os-cli-id')||'';
+  const nomeCli=_normNome(gV('os-cli')||'');
+  const lista=(todosEq||[]).filter(e=>{
+    if(cid && e.cliente_id===cid) return true;
+    if(!cid && nomeCli && _normNome(e.cliente_nome||'')===nomeCli) return true;
+    return false;
+  });
+  if(!lista.length){ row.style.display='none'; sel.innerHTML='<option value="">— nenhum —</option>'; return; }
+  row.style.display='';
+  sel.innerHTML='<option value="">— nenhum —</option>'+lista.map(e=>{
+    const lbl=[e.tipo,e.marca,e.modelo].filter(Boolean).join(' ')||'Equipamento';
+    return `<option value="${esc(e.id)}">${esc(lbl)}${e.numero_serie?' · '+esc(e.numero_serie):''}</option>`;
+  }).join('');
+  if(selecionadoId) sel.value=selecionadoId;
+}
 
 // ──────────────────────────────────────────────────
 //  MODAL BUSCA CLIENTE
@@ -10114,11 +10141,16 @@ function _eqEventos(eq){
     });
   }catch(e){ console.warn('[prontuario:vis]', e?.message||e); }
 
-  // OS do cliente
+  // OS — precisa se marcada a este equipamento (equipamento_id), senão do cliente.
+  // OS com equipamento_id de OUTRO aparelho do mesmo cliente NÃO entram: se o
+  // técnico já disse qual era, respeitar isso é o ponto do vínculo.
   (todosOS||[]).filter(doCliente).forEach(o=>{
+    const desteEquip = o.equipamento_id && o.equipamento_id===eq.id;
+    const deOutroEquip = o.equipamento_id && o.equipamento_id!==eq.id;
+    if(deOutroEquip) return;
     eventos.push({ tipo:'os', data:o.data_servico||o.data_criacao||'', titulo:`OS #${String(o.numero||'').padStart(3,'0')}`,
       ref:o.id, detalhe:(o.servicos||[]).map(x=>typeof x==='string'?x:x.desc).filter(Boolean).slice(0,2).join(' · ')||'—',
-      status:o.status, cliente:true });
+      status:o.status, cliente:!desteEquip });
   });
 
   // Orçamentos do cliente
