@@ -65,6 +65,22 @@ function renderAuditoria(){
   }).join('');
 }
 function eVendas(){ const s=getSessao(); return s?.perfil==='vendas'; }
+
+// ── EVENT DELEGATION (Fase 4, R-9) ──────────────────────────────────────
+// Remove o acoplamento HTML→nome-global que o onclick inline cria: o elemento
+// declara data-act="funcao" (+ data-a="arg1|arg2") e UM listener no document
+// despacha. closest() resolve aninhamento (o mais interno vence), então botão
+// dentro de linha clicável dispensa stopPropagation. Migração incremental —
+// convive com onclick inline ainda não convertido; a nav é a 1ª área migrada.
+document.addEventListener('click', e=>{
+  const el=e.target.closest('[data-act]'); if(!el) return;
+  const fn=window[el.getAttribute('data-act')]; if(typeof fn!=='function') return;
+  const raw=el.getAttribute('data-a');
+  fn(...(raw!=null && raw!=='' ? raw.split('|') : []));
+});
+// Intenção nomeada pro que era `novaOS();go('os')` no menu (o resto dos
+// compostos da nav colapsou: go() já fecha a sidebar; fazerLogout() também).
+function irNovaOS(){ novaOS(); go('os'); }
 function eTecnico(){ const s=getSessao(); return s?.perfil==='tecnico'; }
 function getLojaFiltro(){ const s=getSessao(); return s?.loja_id||null; }
 
