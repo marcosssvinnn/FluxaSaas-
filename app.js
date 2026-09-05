@@ -2040,6 +2040,7 @@ function go(p){
     setTimeout(renderGraficoDash,200);
     setTimeout(renderPainelCRM,250);
     setTimeout(renderPainelFilaHoje,250); // task #45 — junta funil+estoque; roda de novo abaixo se a cadência ligar depois
+    setTimeout(_notifAtualizarBadge,300); // sino reflete os mesmos alertas, alcançáveis de qualquer tela
     // Cadência de recompra — atrás de flag (ver comentário em renderPainelCadencia).
     // Só carrega piscinas se a flag estiver ligada, pra não gastar query à toa.
     if(flagAtiva('crm_cadencia')){
@@ -13706,6 +13707,111 @@ function renderPainelCadencia(){
 //  listaEncomendas() já calculam em outro lugar (cada um continua sendo a
 //  fonte de verdade do próprio número) e ordena junto.
 // ══════════════════════════════════════════════════
+// ──────────────────────────────────────────────────
+//  ALERTAS DERIVADOS NO SINO
+// ──────────────────────────────────────────────────
+// O sino já existia com o histórico de push (native.js). O que faltava era
+// o que a fila "Precisa de você hoje" mostra: alertas DERIVADOS dos dados
+// (follow-up vencido, recompra atrasada, material faltando). Esses só
+// apareciam na tela do painel — quem não abre o painel nunca via. Aqui eles
+// entram no mesmo sino, alcançáveis de qualquer tela, sem duplicar nenhum
+// cálculo: só agrega os motores que já existem.
+//
+// Dispensar (✕) é snooze de 1 dia, não "marcar lido": alerta derivado não é
+// um evento que aconteceu, é uma CONDIÇÃO — some quando o dado muda e volta
+// se a condição voltar. Push é o contrário (evento), e continua lido de vez.
+const LS_NOTIF_DISMISS='fluxa_notif_dismiss';
+function _notifDismissLer(){ try{ return JSON.parse(ls(LS_NOTIF_DISMISS)||'{}'); }catch(e){ return {}; } }
+function _notifDismissAtivo(id){ const t=_notifDismissLer()[id]; return !!t && (Date.now()-t)<86400000; }
+function notifDispensar(id, ev){
+  if(ev) ev.stopPropagation();
+  const m=_notifDismissLer(); m[id]=Date.now();
+  try{ lsSet(LS_NOTIF_DISMISS, JSON.stringify(m)); }catch(e){ console.warn('[notifDismiss]', e?.message||e); }
+  toast('Ok, não aviso de novo por hoje');
+  if(typeof renderNotificacoes==='function') renderNotificacoes();
+}
+// Cada bloco com try/catch próprio: erro num motor não pode apagar os avisos
+// dos outros.
+function getNotificacoes(){
+  const out=[];
+  try{
+    if(_crmAtivo()){
+      const {fuDue}=_crmComputarStats();
+      const atrasados=fuDue.filter(o=>_crmFuStatus(o)==='atrasado').length;
+      if(fuDue.length) out.push({id:'crm-fila', cor:'var(--c1)', icone:'📞',
+        titulo:`${fuDue.length} follow-up${fuDue.length!==1?'s':''} a fazer`,
+        sub: atrasados?`${atrasados} já atrasado${atrasados!==1?'s':''}`:'previstos pra hoje',
+        acao:'Ver', fn:"go('crm')"});
+    }
+  }catch(e){ console.warn('[notif:fila]', e?.message||e); }
+  try{
+    if(flagAtiva('crm_cadencia')){
+      const cad=cadenciaCandidatos();
+      if(cad.length) out.push({id:'crm-cadencia', cor:'var(--c1)', icone:'🔁',
+        titulo:`${cad.length} cliente${cad.length!==1?'s':''} atrasado${cad.length!==1?'s':''} na recompra`,
+        sub:'Pelo próprio ritmo de consumo, já deveriam ter voltado',
+        acao:'Ver', fn:"go('painel')"});
+    }
+  }catch(e){ console.warn('[notif:cadencia]', e?.message||e); }
+  try{
+    if(eGestor()){
+      const enc=listaEncomendas();
+      if(enc.length) out.push({id:'estoque-encomenda', cor:'var(--red)', icone:'📦',
+        titulo:`${enc.length} produto${enc.length!==1?'s':''} em falta`,
+        sub:`Vendido sem saldo — o mais crítico é ${enc[0].p.nome}`,
+        acao:'Ver', fn:"go('estoque')"});
+    }
+  }catch(e){ console.warn('[notif:encomenda]', e?.message||e); }
+  try{
+    if(eGestor()){
+      const grupos=_dupGrupos();
+      const fichas=grupos.reduce((a,g)=>a+g.qtd,0);
+      if(fichas) out.push({id:'clientes-duplicados', cor:'var(--yellow)', icone:'👥',
+        titulo:`${fichas} ficha${fichas!==1?'s':''} de cliente duplicada${fichas!==1?'s':''}`,
+        sub:'Nenhuma tem histórico vinculado — dá pra limpar com segurança',
+        acao:'Revisar', fn:"go('clientes')"});
+    }
+  }catch(e){ console.warn('[notif:duplicados]', e?.message||e); }
+  return out.filter(n=>n.id && !_notifDismissAtivo(n.id));
+}
+// Throttle: getNotificacoes() varre clientes/orçamentos/estoque, e o badge é
+// chamado de vários pontos de navegação. 5s é curto o bastante pra parecer
+// instantâneo e longo o bastante pra não recalcular em cascata.
+let _notifBadgeUltimo=0;
+function _notifAtualizarBadge(forcar){
+  if(!forcar && Date.now()-_notifBadgeUltimo<5000) return;
+  _notifBadgeUltimo=Date.now();
+  try{ if(typeof _fluxaAtualizarBadgeNotif==='function') _fluxaAtualizarBadgeNotif(); }
+  catch(e){ console.warn('[notif badge]', e?.message||e); }
+}
+function _notifCorBadge(cor){
+  if(cor==='var(--red)') return 'icon-badge-red';
+  if(cor==='var(--yellow)') return 'icon-badge-yellow';
+  if(cor==='var(--c1)') return 'icon-badge-c1';
+  return 'icon-badge-gray';
+}
+// HTML dos alertas derivados, consumido por renderNotificacoes() (native.js).
+// Fica aqui porque depende dos motores de negócio, que só existem no app.js.
+function _notifDerivadosHTML(){
+  let itens=[];
+  try{ itens=getNotificacoes(); }catch(e){ console.warn('[notif]', e?.message||e); return {html:'', qtd:0}; }
+  const html=itens.map(n=>`
+    <div class="notif-item notif-item-derivado nao-lida">
+      <div class="notif-derivado-linha">
+        <div class="icon-badge ${_notifCorBadge(n.cor)}">${n.icone}</div>
+        <div style="flex:1;min-width:0">
+          <div class="notif-item-titulo">${esc(n.titulo)}</div>
+          <div class="notif-item-corpo">${esc(n.sub||'')}</div>
+        </div>
+      </div>
+      <div class="notif-derivado-acts">
+        <button class="tb g" onclick="closeNotificacoes();${n.fn}">${esc(n.acao)}</button>
+        <button class="tb d" onclick="notifDispensar('${n.id}',event)" title="Dispensar por hoje">✕</button>
+      </div>
+    </div>`).join('');
+  return {html, qtd:itens.length};
+}
+
 function _filaHojeItens(){
   const itens=[];
   if(_crmAtivo()){

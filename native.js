@@ -343,9 +343,15 @@ async function _fluxaAtualizarBadgeNotif(){
   const badge = document.getElementById('notif-badge');
   if (!badge) return;
   const lista = await fluxaListarNotificacoes(50);
-  const naoLidas = lista.filter((n) => !n.lida).length;
-  badge.textContent = naoLidas > 9 ? '9+' : String(naoLidas);
-  badge.style.display = naoLidas > 0 ? 'flex' : 'none';
+  // Push não lido + alertas derivados (follow-up, recompra, estoque) — o
+  // contador precisa somar os dois, senão o sino fica mudo justamente quando
+  // só há alerta derivado, que é o caso mais comum no dia a dia.
+  let derivados = 0;
+  try{ if (typeof getNotificacoes === 'function') derivados = getNotificacoes().length; }
+  catch(e){ console.warn('[notif] badge derivados', e?.message||e); }
+  const total = lista.filter((n) => !n.lida).length + derivados;
+  badge.textContent = total > 9 ? '9+' : String(total);
+  badge.style.display = total > 0 ? 'flex' : 'none';
 }
 
 function _fluxaTempoRelativo(ts){
@@ -362,14 +368,20 @@ async function renderNotificacoes(){
   const el = document.getElementById('notif-lista');
   if (!el) return;
   const lista = await fluxaListarNotificacoes(30);
-  el.innerHTML = lista.length
-    ? lista.map((n) => `
+  // Alertas derivados primeiro: são condição em aberto ("resolva isto"),
+  // enquanto o push é registro do que já aconteceu.
+  let der = { html: '', qtd: 0 };
+  try{ if (typeof _notifDerivadosHTML === 'function') der = _notifDerivadosHTML(); }
+  catch(e){ console.warn('[notif] derivados', e?.message||e); }
+  const pushHtml = lista.map((n) => `
       <button class="notif-item${n.lida ? '' : ' nao-lida'}" onclick="_fluxaAbrirNotif(${n.id})">
         <div class="notif-item-titulo">${esc(n.title || 'Fluxa')}</div>
         <div class="notif-item-corpo">${esc(n.body || '')}</div>
         <div class="notif-item-tempo">${_fluxaTempoRelativo(n.recebidaEm)}</div>
-      </button>`).join('')
-    : '<div class="notif-vazio">Nenhuma notificação ainda</div>';
+      </button>`).join('');
+  el.innerHTML = (der.qtd || lista.length)
+    ? der.html + pushHtml
+    : '<div class="notif-vazio">✅ Nada pendente agora</div>';
   _fluxaAtualizarBadgeNotif();
 }
 
