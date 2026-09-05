@@ -467,6 +467,88 @@ em produção, servida por HTTPS de verdade).
 
 ---
 
+## Sessão 2026-09-04/05 — porte do Forthemp (v1) pro Fluxa: 10 recursos
+
+> Pedido do Marcos: *"dê uma olhada no estado que tá no sistema da Fortemp,
+> porque já tá bem mais desenvolvido... e eu quero trazer todos esses
+> aperfeiçoamentos pra esse da Fluxa"* — com a restrição explícita
+> **"nesse chat você tem que trabalhar exclusivamente com o sistema da
+> Fluxa"**: o v1 (`~/Documents/fluxa-app`) foi lido só como referência,
+> nunca editado.
+>
+> ⚠️ **Separar os dois sistemas de vez continua pendente** — o Marcos disse
+> que depois de trazer as referências vai precisar de algo que impeça os dois
+> de se misturarem de novo. Não foi feito nesta sessão, é tarefa própria.
+
+### Lição de método (custou um mapeamento errado)
+Mapear lacuna com `grep` **só no `app.js`** produziu falso negativo grave: eu
+registrei que o Fluxa não tinha central de notificações nem push. Tinha —
+sino, badge, histórico em IndexedDB, VAPID, `push_subscriptions` e a Edge
+Function `enviar-push` já existiam, só que em `native.js`/`sw.js`. Outros dois
+falsos positivos pelo mesmo erro: o modal "Finalizar serviço" existia com
+outro NOME (`abrirFinalizarOS`, não `abrirModalFinalizarOS`), e a tabela
+`os_materiais` já estava no banco, só nunca era populada.
+**Regra:** conferir em TODOS os arquivos (`app.js native.js sw.js index.html
+styles.css supabase/`) e por comportamento, não por nome de função do outro
+repo.
+
+### Os 10 recursos (todos na `dev`, um commit cada, testados no navegador)
+1. **Fotos Antes/Depois na OS** — captura em dois grids de 6; o relatório
+   emparelha lado a lado. `ordens_servico.fotos` passa a guardar
+   `{antes,depois}`; `_osFotosNormalizar()` é o ponto único de leitura e trata
+   registro antigo (array simples) como 100% "depois".
+2. **Limpeza de fichas duplicadas** — `_dupGrupos()` em 3 passadas, nunca
+   remove ficha com histórico; checa as 5 tabelas que referenciam
+   `clientes.id`. Escopo por empresa vem de graça (`lsCliLer()` já é filtrado
+   por `EMPRESA_ID`).
+3. **Alertas derivados no sino** — follow-up, recompra, estoque em falta e
+   duplicatas passam a aparecer de qualquer tela, não só dentro do painel.
+   Derivado é CONDIÇÃO (✕ = snooze de 1 dia); push é EVENTO (lido de vez).
+4. **Vistoria: assinatura do técnico + recomendações + aviso de crítico sem
+   foto** (`setup-v2-delta33.sql`). Assinatura é bloqueio pra finalizar; foto
+   em item crítico é aviso, nunca bloqueio.
+5. **Botão "Orçar N"** — vistoria vira orçamento sem redigitar, crítico
+   primeiro, carregando o laudo do técnico na descrição. Preço em branco de
+   propósito.
+6. **Rascunho de vistoria** (`setup-v2-delta34.sql`) — local (a cada toque,
+   `visibilitychange`/`pagehide`) + nuvem (`vistoria_rascunhos`, 1 por
+   usuário). Cota estourada salva sem as fotos pendentes E avisa.
+7. **Materiais estruturados na OS** — busca produto → baixa NA HORA. Guarda
+   contra baixa dupla quando o produto já é item do orçamento vinculado.
+8. **Custo congelado + margem** — `custo_unit` gravado na aprovação, nunca
+   reescrito. `_margemOrc()` devolve `cobertura` junto: margem sobre metade do
+   valor parece precisa e não é.
+9. **A Receber por parcela** (`setup-v2-delta35.sql`) — aging, vencimento,
+   cobrança lançada na aprovação. **Só pra frente**: sem parcela, o orçamento
+   segue no `valor_recebido` de sempre.
+10. **Dossiê de assembleia** — laudo com a consequência de NÃO fazer, texto
+    determinístico por tipo × status (sem IA: offline, sem custo, sem risco de
+    inventar consequência que o técnico não constatou).
+
+### 🔴 Bugs reais achados no caminho (não estavam no mapa)
+- **`excluirCliente()` nunca apagava do banco** — e `carregarClientesRemoto`
+  trata o banco como fonte de verdade, então o cliente voltava no próximo
+  sync, **sempre**. Corrigido com delete remoto + tombstone
+  (`fluxa_cli_tombstones`), que também REENVIA o delete que falhou.
+- **Corrida de navegação ao finalizar vistoria** — `salvarVistoria()` agenda
+  `visTab('locais')` quando veio de plano, e `finalizarVistoria` agendava
+  `visTab('hist')` por cima, sem saber: dois `setTimeout` concorrentes
+  redesenhando duas listas grandes. Mesmo bug que o v1 já teve.
+
+### Decisão em aberto (do Marcos, não de engenharia)
+**Migrar os recebimentos antigos** pro modelo de parcela exigiria inventar
+data de vencimento pra dívida que nunca teve uma. O sistema novo roda ao lado
+sem tocar no antigo — dá pra decidir sem pressa.
+
+### 3 migrações aplicadas e verificadas em produção
+`delta33` (4 colunas em `vistorias`), `delta34` (`vistoria_rascunhos`, RLS por
+empresa), `delta35` (`recebimentos`, RLS restrita a gestor/master — dado
+financeiro não deve ser legível por vendas/técnico nem pela API).
+
+sw.js: fluxa-v42 → fluxa-v52. Tudo em `dev`, **nada promovido pra `main`**.
+
+---
+
 ## 📦 ESTOQUE (controle inteligente)
 
 Tabelas: `produtos` e `estoque_movimentos` (id texto `prod_*`/`mov_*`). **Saldo = soma dos movimentos** (ledger), nunca um contador editável. Só gestor edita; carregado no login (`loadEstoque`). `registrarMovimento(...)` é local-first + sync resiliente — **NUNCA** decremente um número, sempre crie um movimento.
