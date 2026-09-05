@@ -3216,7 +3216,7 @@ async function gerarOSPDF(modo='os'){
   const dados={
     cli:gV('os-cli')||'—', loc:gV('os-loc'), cnpj:gV('os-cnpj')||null, cpf:gV('os-cpf')||null, data:gV('os-data'), hora:gV('os-hora'),
     tec:gV('os-tec'), tot:parseFloat(gV('os-total'))||0,
-    mat:gV('os-mat'), obs:gV('os-obs'),
+    mat:_osMatTextoFinal(), obs:gV('os-obs'),
     svcs:osSvcs.filter(s=>s.d.trim()).map(s=>s.d.trim()),
     fotos:{antes:osFotosAntes.filter(Boolean), depois:osFotosDepois.filter(Boolean)}, videoLink:gV('os-video-link'),
     checklist: osChecklist.filter(x=>x.checked),
@@ -3241,6 +3241,7 @@ async function gerarOSPDF(modo='os'){
         if(error) throw error;
         numStr=String(existente?.numero||'').padStart(3,'0')||'???';
         _salvarOSLocal({...existente,...payload}, osEditId, existente?.numero);
+        await _osSyncMateriais(osEditId);
         toast('✅ OS atualizada');
       } else {
         const {data:insOS,error}=await dbInsertNumerado('ordens_servico',{...payload,status:'agendado'});
@@ -3255,6 +3256,9 @@ async function gerarOSPDF(modo='os'){
           }
           todosOS.unshift(insOS);
           osEditId=insOS.id;
+          // Só agora existe id real — gravar antes deixaria os materiais
+          // órfãos, presos ao id local que acabou de deixar de existir.
+          await _osSyncMateriais(insOS.id);
         }
       }
     }catch(e){
@@ -4589,6 +4593,8 @@ function novaOS(){
   populaTecCheckIn();
   osOrcId = null;
   osFotosAntes=[]; osFotosDepois=[]; renderOSFotosSlots();
+  osMateriais=[]; _osMatRenderLista(); setV('os-mat-busca','');
+  const _sugMat=document.getElementById('os-mat-sugestoes'); if(_sugMat) _sugMat.innerHTML='';
   setV('os-video-link',''); setV('os-cli-id','');
   setV('os-loja', lojaAtiva||LOJA_PADRAO_ID);
   document.getElementById('os-src-badge').textContent='';
@@ -4910,6 +4916,11 @@ function _abrirOSForm(o){
   const _fot=_osFotosNormalizar(o.fotos);
   osFotosAntes=_fot.antes.slice(0,6); osFotosDepois=_fot.depois.slice(0,6);
   renderOSFotosSlots();
+  // Materiais estruturados: limpa na hora e busca do banco em background
+  // (a guarda de osEditId dentro de _osLoadMateriais evita popular a OS
+  // errada se a pessoa trocar de OS enquanto a promise resolve).
+  osMateriais=[]; _osMatRenderLista();
+  _osLoadMateriais(o.id);
   // Checklist: carrega da OS salva ou usa o padrão
   try{
     osChecklist=o.checklist?(typeof o.checklist==='string'?JSON.parse(o.checklist):o.checklist):OS_CHECKLIST_DEFAULT.map(x=>({...x}));
@@ -5004,6 +5015,160 @@ function confirmarItensOS(){
   });
   entregarOrcamento(orc, 'validar', qtyMap);
   atualizarPainelItensOS();
+}
+
+// ── Materiais utilizados na OS — seletor de produto ──────────────────────
+// O campo era texto livre e ficava vazio na maioria das OS. O problema não é
+// onde o campo está: é que "escrever o que usei" não é um lançamento — alguém
+// depois precisaria ler a frase e dar baixa à mão, e ninguém faz isso.
+// Escolher da lista dá baixa no estoque NA HORA: o momento "usei isso" JÁ é o
+// lançamento. Reversível — remover devolve o estoque com um estorno.
+let osMateriais=[];
+
+// Produto que já é item do orçamento vinculado a esta OS já teve (ou vai ter)
+// baixa por aquele caminho ("aprovar = sai do estoque"), com um ref diferente
+// ('baixa:orc:...'). Adicionar o mesmo produto aqui usa 'os_mat:...' e sairia
+// DUAS vezes do estoque. Não bloqueia — pode ser consumo real além do
+// previsto — mas avisa antes.
+function _osMatProdutoNoOrcamento(pid){
+  if(!osOrcId) return false;
+  const orc=(todosOrc||[]).find(o=>o.id===osOrcId);
+  if(!orc) return false;
+  return (orc.servicos||[]).some(s=>s&&s.produto_id===pid);
+}
+function osMatBuscarProduto(termo){
+  const el=document.getElementById('os-mat-sugestoes'); if(!el) return;
+  const t=(termo||'').trim().toLowerCase();
+  if(t.length<2){ el.innerHTML=''; return; }
+  const achados=produtosVisiveis().filter(p=>
+    (p.nome||'').toLowerCase().includes(t) || (p.codigo||'').toLowerCase().includes(t)
+  ).slice(0,8);
+  if(!achados.length){ el.innerHTML='<div style="font-size:12px;color:var(--gray);padding:8px">Nenhum produto encontrado.</div>'; return; }
+  el.innerHTML=achados.map(p=>{
+    const disp=disponivelProduto(p.id);
+    const jaNoOrc=_osMatProdutoNoOrcamento(p.id);
+    return `<button type="button" class="tb" style="display:block;width:100%;text-align:left;margin-bottom:5px;padding:9px 11px" onclick="osMatAddItem('${p.id}')">
+      <div style="font-weight:700;color:var(--c2);font-size:12.5px">${esc(p.nome)}</div>
+      <div style="font-size:11px;color:var(--gray)">${p.codigo?esc(p.codigo)+' · ':''}tem ${fmtQtd(disp)} ${esc(p.unidade||'un')}${jaNoOrc?' · <span style="color:var(--warn)">já é item do orçamento</span>':''}</div>
+    </button>`;
+  }).join('');
+}
+function osMatAddItem(pid){
+  if(_osMatProdutoNoOrcamento(pid)){
+    confirmar({
+      titulo:'Produto já contabilizado no orçamento',
+      msg:'Este produto já é item do orçamento vinculado a esta OS — o estoque dele já foi (ou vai ser) baixado por esse caminho. Adicionar aqui soma OUTRA baixa, além dessa. Só confirme se for consumo real a mais do que o orçamento previa.',
+      labelSim:'Adicionar mesmo assim',
+      onSim:()=>_osMatAddItemConfirmado(pid)
+    });
+    return;
+  }
+  _osMatAddItemConfirmado(pid);
+}
+function _osMatAddItemConfirmado(pid){
+  const p=produtoById(pid); if(!p) return;
+  const loja=gV('os-loja')||lojaAtiva||LOJA_PADRAO_ID;
+  const ja=osMateriais.find(i=>i.produto_id===pid);
+  if(ja){ ja.qtd=(parseFloat(ja.qtd)||0)+1; }
+  else{ osMateriais.push({produto_id:pid, nome:p.nome, unidade:p.unidade||'un', qtd:1, custo_unit:parseFloat(p.custo)||0}); }
+  const numOS=(todosOS.find(x=>x.id===osEditId)||{}).numero;
+  registrarMovimento({
+    produto_id:pid, tipo:'saida', quantidade:-1, custo_unit:parseFloat(p.custo)||0,
+    motivo:'Material usado em OS'+(numOS?' #'+numOS:''),
+    ref:'os_mat:'+(osEditId||'nova')+':'+pid+':'+Date.now(), lojaId:loja
+  });
+  setV('os-mat-busca',''); const sug=document.getElementById('os-mat-sugestoes'); if(sug) sug.innerHTML='';
+  _osMatRenderLista();
+  document.getElementById('os-mat-busca')?.focus();
+}
+function osMatRemoverItem(idx){
+  const it=osMateriais[idx]; if(!it) return;
+  const loja=gV('os-loja')||lojaAtiva||LOJA_PADRAO_ID;
+  registrarMovimento({
+    produto_id:it.produto_id, tipo:'entrada', quantidade:Math.abs(parseFloat(it.qtd)||0), custo_unit:it.custo_unit,
+    motivo:'Estorno — item removido da OS', ref:'os_mat_estorno:'+(osEditId||'nova')+':'+it.produto_id+':'+Date.now(), lojaId:loja
+  });
+  osMateriais.splice(idx,1);
+  _osMatRenderLista();
+}
+function _osMatRenderLista(){
+  const el=document.getElementById('os-mat-lista'); if(!el) return;
+  if(!osMateriais.length){ el.innerHTML=''; return; }
+  el.innerHTML=osMateriais.map((i,idx)=>`
+    <div style="display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--gray-light)">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;color:var(--c2);font-size:12.5px">${esc(i.nome)}</div>
+        <div style="font-size:11px;color:var(--gray)">${fmtQtd(i.qtd)} ${esc(i.unidade)} · baixado do estoque</div>
+      </div>
+      <button type="button" onclick="osMatRemoverItem(${idx})" aria-label="Remover e devolver ao estoque" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:16px;font-weight:700;padding:0 4px">×</button>
+    </div>`).join('');
+}
+// ordens_servico.materiais continua sendo UMA STRING — PDF e histórico não
+// mudam de formato. Aqui só junta o estruturado (já baixado) com o texto livre.
+function _osMatTextoFinal(){
+  const partes=[];
+  if(osMateriais.length) partes.push(osMateriais.map(i=>`${fmtQtd(i.qtd)}x ${i.nome}`).join(', '));
+  const livre=(gV('os-mat')||'').trim();
+  if(livre) partes.push(livre);
+  return partes.join(' · ');
+}
+// Isola a parte de TEXTO LIVRE dentro da string acima, pro relatório mostrar
+// a nota separada da tabela estruturada. Reconstrói o prefixo do MESMO jeito
+// que _osMatTextoFinal monta; registro sem estruturado nenhum → a string
+// inteira É texto livre. Se há estruturado mas o prefixo não bate (edição
+// manual antiga), não mostra nada — melhor omitir que duplicar.
+function _osMatObsLivre(os){
+  const raw=(os.materiais||'').trim();
+  if(!raw) return '';
+  const estruturados=(os._materiaisRelatorio||[]).map(m=>`${fmtQtd(m.qtd)}x ${m.nome}`).join(', ');
+  if(!estruturados) return raw;
+  if(raw.startsWith(estruturados)) return raw.slice(estruturados.length).replace(/^\s*·\s*/,'').trim();
+  return '';
+}
+// A baixa de estoque já aconteceu na hora (registrarMovimento). Isto só guarda
+// A LISTA, pra reabrir a OS (ou montar o relatório) mostrar os chips de volta
+// em vez do texto corrido. Delete-then-insert: listas pequenas, mais simples e
+// seguro que reconciliar delta.
+// Só com id real: uma OS local ganha id NOVO ao sincronizar, e gravar
+// materiais antes disso os deixaria órfãos, presos ao id que deixa de existir.
+async function _osSyncMateriais(osId){
+  if(!(dbOk&&db&&osId&&!String(osId).startsWith('local_'))) return;
+  try{
+    await db.from('os_materiais').delete().eq('os_id',osId);
+    if(osMateriais.length){
+      const rows=osMateriais.map((m,i)=>({
+        id:'osm_'+osId+'_'+i+'_'+Date.now(), os_id:osId, produto_id:m.produto_id,
+        descricao:m.nome||'', qtd:parseFloat(m.qtd)||0, custo_unit:parseFloat(m.custo_unit)||0
+      }));
+      for(const r of rows) await dbInsert('os_materiais', r);
+    }
+  }catch(e){ console.warn('[_osSyncMateriais]', e?.message||e); }
+}
+async function _osLoadMateriais(osId){
+  if(!(dbOk&&db&&osId&&!String(osId).startsWith('local_'))) return;
+  try{
+    const {data}=await db.from('os_materiais').select('*').eq('os_id',osId).eq('empresa_id',EMPRESA_ID);
+    if(data&&data.length && osEditId===osId){ // ainda é a mesma OS aberta
+      osMateriais=data.map(r=>{
+        const p=produtoById(r.produto_id);
+        return {produto_id:r.produto_id, nome:p?.nome||r.descricao||'Produto', unidade:p?.unidade||'un',
+                qtd:parseFloat(r.qtd)||0, custo_unit:parseFloat(r.custo_unit)||0};
+      });
+      _osMatRenderLista();
+    }
+  }catch(e){ console.warn('[_osLoadMateriais]', e?.message||e); }
+}
+// Materiais já gravados desta OS, pro relatório (a lista em tela é osMateriais).
+async function _osMateriaisParaRelatorio(osId){
+  if(!(dbOk&&db&&osId&&!String(osId).startsWith('local_'))) return [];
+  try{
+    const {data}=await db.from('os_materiais').select('*').eq('os_id',osId).eq('empresa_id',EMPRESA_ID);
+    return (data||[]).map(r=>{
+      const p=produtoById(r.produto_id);
+      return {nome:p?.nome||r.descricao||'Produto', unidade:p?.unidade||'un',
+              qtd:parseFloat(r.qtd)||0, custo_unit:parseFloat(r.custo_unit)||0};
+    });
+  }catch(e){ console.warn('[_osMateriaisParaRelatorio]', e?.message||e); return []; }
 }
 
 function excluirOS(id){
@@ -8097,13 +8262,16 @@ function _fazerCheckoutConfirmado(){
   const chkOk = (osChecklist||[]).filter(x=>x.checked || x.servico);
   const dadosPreenchidos = {
     obs_tecnica: gV('os-obs')||'',
-    materiais: gV('os-mat')||'',
+    materiais: _osMatTextoFinal(),
     fotos: {antes:(osFotosAntes||[]).filter(Boolean), depois:(osFotosDepois||[]).filter(Boolean)},
     video_link: gV('os-video-link')||null,
     checklist: chkOk.length?JSON.stringify(chkOk):null,
     tecnico: gV('os-tec-checkin')||gV('os-tec')||''
   };
   if(dbOk&&db&&osCheckinId&&!String(osCheckinId).startsWith('local_')){
+    // Lista estruturada de material vai pra tabela própria; a string em
+    // ordens_servico.materiais continua sendo a versão legível de sempre.
+    _osSyncMateriais(osCheckinId);
     // checkin_time/checkout_time são os nomes reais das colunas no banco
     dbUpdate('ordens_servico', {
       checkin_time:checkinAt.toISOString(),
@@ -11303,12 +11471,23 @@ function preencherRelatorioOS(os, versao){
     }).join('')||'<div style="font-size:12px;color:#6b7280">Nenhum serviço registrado.</div>';
   }
 
-  // Material aplicado — texto livre (os_materiais estruturado é a próxima
-  // etapa natural quando o app tiver chips reais aqui, ver migração)
+  // Material aplicado — tabela estruturada (os_materiais) + a nota de texto
+  // livre isolada. O texto livre precisa aparecer separado: antes, material
+  // digitado só na observação NUNCA saía no PDF, mesmo já salvo no banco.
   const matWrap=document.getElementById('pd-ros-mat-wrap');
   const matEl=document.getElementById('pd-ros-mat');
-  if(matWrap){ matWrap.style.display=os.materiais?'block':'none'; }
-  if(matEl) matEl.textContent=os.materiais||'';
+  const matObsEl=document.getElementById('pd-ros-mat-obs');
+  const matsEstrut=os._materiaisRelatorio||[];
+  const matObs=_osMatObsLivre(os);
+  if(matWrap) matWrap.style.display=(matsEstrut.length||matObs)?'block':'none';
+  if(matEl){
+    matEl.innerHTML = matsEstrut.length
+      ? `<table class="pd-vis-sumtable"><tbody>${matsEstrut.map(m=>`
+          <tr><td style="padding:4px 0">${esc(m.nome)}</td>
+          <td style="padding:4px 0;text-align:right;white-space:nowrap">${fmtQtd(m.qtd)} ${esc(m.unidade||'un')}</td></tr>`).join('')}</tbody></table>`
+      : '';
+  }
+  if(matObsEl) matObsEl.textContent=matObs||'';
 
   // Condições encontradas — a observação técnica, texto que o síndico
   // realmente lê (per o diagnóstico)
@@ -11377,8 +11556,9 @@ function preencherRelatorioOS(os, versao){
 }
 
 // Gera o relatório (window.print(), mesmo padrão de vistoria/orçamento/OS)
-function gerarRelatorioOS(osId, versao){
+async function gerarRelatorioOS(osId, versao){
   const os=(todosOS||[]).find(x=>x.id===osId); if(!os){ toast('OS não encontrada'); return; }
+  os._materiaisRelatorio = await _osMateriaisParaRelatorio(osId);
   preencherRelatorioOS(os, versao||'cliente');
   imprimirDoc('ros');
 }
