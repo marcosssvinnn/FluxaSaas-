@@ -4186,7 +4186,7 @@ function renderTabela(){
       </div></td>
     </tr>`;
   });
-  h+='</tbody></table></div>';
+  h+='</tbody></table></div>'+_rzBotaoReset('orc');
   // Paginação (16/08) — só aparece com mais de 1 página do que já está
   // carregado; independente do "Carregar mais" abaixo (esse busca MAIS do
   // servidor, isto pagina o que já está na memória).
@@ -4205,6 +4205,7 @@ function renderTabela(){
   // indicador). Cobrar/agendar N coisas uma por uma não acontece.
   if(semOSCount>0) h+=`<div style="text-align:center;padding:6px 0 14px"><button type="button" class="rd-btn rd-btn-primary" onclick="_orcAgendarLoteAbrir()">Agendar as ${semOSCount} aprovada${semOSCount!==1?'s':''} sem OS</button></div>`;
   document.getElementById('hist-body').innerHTML=h;
+  _rzInit(document.querySelector('#hist-body table.ht'), 'orc');
   _iniciarScrollHint(document.querySelector('#hist-body .htw'));
 }
 
@@ -4997,6 +4998,100 @@ function _osLoteCancelar(){
   });
 }
 
+// ══════════════════════════════════════════════════
+//  COLUNAS REDIMENSIONÁVEIS
+// ══════════════════════════════════════════════════
+// Nome de produto e "cliente + serviço" têm tamanho muito variável: qualquer
+// largura fixa corta alguém. Em vez de escolher um número melhor, deixa a
+// pessoa arrastar — e lembra a escolha por navegador.
+//
+// Funciona em <table> comum (o Fluxa não usa grid nas tabelas): a largura vai
+// no <th> e só vale com table-layout:fixed, senão o navegador trata como
+// sugestão e recalcula pelo conteúdo.
+function _rzChave(tid){ return 'fluxa_col_w_'+tid; }
+function _rzLer(tid){
+  try{ const a=JSON.parse(ls(_rzChave(tid))||'null');
+    return Array.isArray(a)&&a.every(n=>typeof n==='number'&&n>20)?a:null;
+  }catch(e){ return null; }
+}
+function _rzSalvar(tid,ws){ try{ lsSet(_rzChave(tid), JSON.stringify(ws)); }catch(e){ console.warn('[colRz]',e?.message||e); } }
+function _rzResetar(tid){
+  try{ lsDel(_rzChave(tid)); }catch(e){ console.warn('[colRz reset]',e?.message||e); }
+  const tbl=document.querySelector(`table[data-rz="${tid}"]`);
+  if(tbl){ tbl.classList.remove('col-rz-tbl'); tbl.style.width='';
+    [...tbl.querySelectorAll('th')].forEach(th=>{ th.style.width=''; }); _rzInit(tbl, tid); }
+  toast('Larguras restauradas');
+}
+// A tabela é width:100%. Sob table-layout:fixed isso faz o navegador
+// redistribuir a sobra por todas as colunas sempre que a soma das larguras
+// fica abaixo do container — encolher UMA coluna inchava todas as outras. Com
+// a largura total escrita à mão, cada coluna fica exatamente onde foi posta.
+function _rzLargura(tbl, ths){
+  const soma=ths.reduce((a,t)=>a+(parseFloat(t.style.width)||t.getBoundingClientRect().width),0);
+  tbl.style.width=Math.round(soma)+'px';
+}
+// Chamar DEPOIS de escrever o innerHTML da tabela. A última coluna não ganha
+// alça (não há borda à direita dela pra arrastar), mas tem largura fixada
+// junto com as outras — ver comentário em congelar().
+function _rzInit(tbl, tid){
+  if(!tbl) return;
+  tbl.dataset.rz=tid;
+  const ths=[...tbl.querySelectorAll('thead th')];
+  if(ths.length<2) return;
+  const arrastaveis=ths.slice(0,-1);
+  // Congela TODAS as colunas, inclusive a última. Deixar a última em "auto"
+  // parecia elegante (absorveria a sobra), mas sob table-layout:fixed ela é
+  // espremida até 0px assim que a soma das outras passa da largura do
+  // container — a coluna de Ações sumia da tela no primeiro arraste largo.
+  const congelar=()=>{
+    if(tbl.classList.contains('col-rz-tbl')) return;
+    const atuais=ths.map(t=>Math.round(t.getBoundingClientRect().width));
+    tbl.classList.add('col-rz-tbl');
+    ths.forEach((t,j)=>{ t.style.width=atuais[j]+'px'; });
+    _rzLargura(tbl, ths);
+  };
+  const salvar=()=>_rzSalvar(tid, ths.map(t=>Math.round(parseFloat(t.style.width)||t.getBoundingClientRect().width)));
+  const salvas=_rzLer(tid);
+  if(salvas && salvas.length===ths.length){
+    tbl.classList.add('col-rz-tbl');
+    ths.forEach((th,i)=>{ th.style.width=salvas[i]+'px'; });
+    _rzLargura(tbl, ths);
+  }
+  arrastaveis.forEach(th=>{
+    if(th.querySelector('.col-rz')) return;
+    th.classList.add('col-rz-host');
+    const h=document.createElement('span');
+    h.className='col-rz'; h.setAttribute('aria-hidden','true'); h.title='Arraste para redimensionar';
+    th.appendChild(h);
+    let x0=0, w0=0;
+    // w0 sai do style.width já aplicado, não de uma nova medição: medir de
+    // novo depois de congelar devolvia um número diferente do que estava
+    // escrito no elemento, e a coluna andava mais que o dedo/mouse.
+    const mover=cx=>{ th.style.width=Math.max(50, w0+(cx-x0))+'px'; _rzLargura(tbl, ths); };
+    const soltar=()=>{
+      h.classList.remove('rz-on');
+      document.removeEventListener('mousemove',mm); document.removeEventListener('mouseup',soltar);
+      document.removeEventListener('touchmove',tm); document.removeEventListener('touchend',soltar);
+      salvar();
+    };
+    const mm=e=>mover(e.clientX);
+    const tm=e=>{ if(e.touches[0]) mover(e.touches[0].clientX); };
+    const pegar=cx=>{
+      congelar();
+      x0=cx; w0=parseFloat(th.style.width)||th.getBoundingClientRect().width;
+      h.classList.add('rz-on');
+    };
+    h.addEventListener('mousedown', e=>{ e.preventDefault(); e.stopPropagation(); pegar(e.clientX);
+      document.addEventListener('mousemove',mm); document.addEventListener('mouseup',soltar); });
+    h.addEventListener('touchstart', e=>{ if(!e.touches[0]) return; e.stopPropagation(); pegar(e.touches[0].clientX);
+      document.addEventListener('touchmove',tm,{passive:true}); document.addEventListener('touchend',soltar); }, {passive:true});
+  });
+}
+// Link de restaurar, só quando a pessoa já mexeu em alguma largura.
+function _rzBotaoReset(tid){
+  return _rzLer(tid) ? `<div style="text-align:right"><button type="button" class="col-rz-reset" onclick="_rzResetar('${tid}')">↺ Restaurar larguras</button></div>` : '';
+}
+
 function renderOSTabela(){
   populaFiltTecOS();
   let lista=todosOS;
@@ -5058,9 +5153,10 @@ function renderOSTabela(){
       </div></td>
     </tr>`;
   });
-  h+='</tbody></table></div>';
+  h+='</tbody></table></div>'+_rzBotaoReset('os');
   if(_osTemMais) h+=`<div style="text-align:center;padding:14px 0"><button id="os-carregar-mais" class="fb" onclick="_carregarMaisOS()">Carregar mais antigas…</button></div>`;
   document.getElementById('osh-body').innerHTML=h;
+  _rzInit(document.querySelector('#osh-body table.ht'), 'os');
   // A seleção some sozinha se a OS saiu da lista (filtro/busca mudou) — manter
   // um id selecionado que não está mais visível faria a barra prometer uma
   // ação sobre algo que a pessoa não vê.
@@ -7588,6 +7684,19 @@ function _orcAprovadosSemReceb(){
     .filter(o=>o.status==='aprovado' && !_recebDoOrc(o.id).length && _orcSaldoAReceber(o)>0.005);
 }
 
+// Prazo médio de recebimento: quantos dias, em média, o dinheiro leva pra
+// entrar depois de vencer. Só conta parcela PAGA (sem data de pagamento não há
+// prazo a medir) e devolve null quando não há nenhuma — mostrar "0 dias" com
+// zero parcela paga faria parecer que a empresa recebe à vista.
+function _recebPMR(parcelas){
+  const pagas=(parcelas||[]).filter(r=>r.data_pagamento && r.vencimento);
+  if(!pagas.length) return null;
+  const soma=pagas.reduce((a,r)=>{
+    const v=new Date(r.vencimento+'T12:00:00'), p=new Date(r.data_pagamento+'T12:00:00');
+    return a+Math.round((p-v)/86400000);
+  },0);
+  return {dias: soma/pagas.length, n: pagas.length};
+}
 function _recebDiasAtraso(r){
   if(r.data_pagamento || !r.vencimento) return 0;
   const hoje=new Date(_hojeLocal()+'T12:00:00');
@@ -8002,8 +8111,14 @@ function renderContasReceber(){
       const porFaixa={};
       abertas.forEach(r=>{ const f=_recebFaixaAging(r); porFaixa[f]=(porFaixa[f]||0)+(parseFloat(r.valor)||0); });
       const maior=Math.max(...Object.values(porFaixa),1);
+      const pmr=_recebPMR(parcelas);
+      // Negativo é bom (pagam antes) — dizer "-5d após o vencimento" faria
+      // parecer erro. Cada sentido tem sua frase.
+      const pmrTx = pmr
+        ? ` · na média, pagam ${Math.abs(pmr.dias)<0.5?'no dia do vencimento':Math.abs(pmr.dias).toFixed(0)+'d '+(pmr.dias>0?'depois':'antes')+' do vencimento'} (${pmr.n} parcela${pmr.n!==1?'s':''} paga${pmr.n!==1?'s':''})`
+        : '';
       agingEl.innerHTML=`<div class="rd-card">
-        <div class="rd-card-title">Idade do saldo em aberto</div>
+        <div class="rd-card-title">Idade do saldo em aberto<span style="font-weight:400;color:var(--gray);font-size:11.5px">${pmrTx}</span></div>
         <div style="display:flex;gap:10px;align-items:flex-end;height:110px;margin-top:10px">
           ${_RECEB_FAIXAS.map(f=>{
             const v=porFaixa[f.id]||0;

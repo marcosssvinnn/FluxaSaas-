@@ -473,6 +473,16 @@
     .ht th:last-child,.ht td:last-child{width:1%;white-space:nowrap}
     .ht tr:hover td{background:#fafafa}
     .ht tr:last-child td{border-bottom:none}
+    /* Alça de arrastar largura de coluna — invisível até o hover, mas com
+       12px de área de toque (o traço de 1px sozinho é impossível de pegar). */
+    .col-rz{position:absolute;top:0;right:-6px;width:12px;height:100%;cursor:col-resize;user-select:none;touch-action:none;z-index:2}
+    .col-rz::after{content:'';position:absolute;left:5px;top:20%;height:60%;width:2px;background:transparent;border-radius:2px;transition:background .15s}
+    .col-rz:hover::after,.col-rz.rz-on::after{background:var(--c1)}
+    th.col-rz-host{position:relative}
+    /* Sem table-layout:fixed a largura setada no th é só uma sugestão. */
+    table.col-rz-tbl{table-layout:fixed}
+    table.col-rz-tbl td{overflow:hidden;text-overflow:ellipsis}
+    .col-rz-reset{font-size:11px;color:var(--gray);background:none;border:none;cursor:pointer;padding:6px 0;font-family:inherit;text-decoration:underline}
     .on{font-weight:700;color:var(--c1)}
     .ocl{font-weight:600}.oloc{font-size:12px;color:var(--gray);margin-top:1px}
     .osvc{font-size:12px;color:var(--gray);max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
