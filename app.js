@@ -1642,10 +1642,20 @@ async function carregarClientesRemoto(){
     const {data,error}=await db.from('clientes').select('*').eq('empresa_id',EMPRESA_ID).order('nome',{ascending:true});
     if(error) throw error;
     const local=lsCliLer();
-    const dbIds=new Set((data||[]).map(x=>x.id));
+    // Respeita tombstones: ficha apagada não volta. Se ainda estiver no banco,
+    // o delete anterior falhou — tenta de novo em vez de ressuscitar na tela.
+    let remoto=data||[];
+    const tomb=new Set(_cliTombLer());
+    if(tomb.size){
+      remoto.filter(r=>tomb.has(r.id)).forEach(r=>{
+        try{ db.from('clientes').delete().eq('id',r.id).then(()=>{}).catch(()=>{}); }catch(e){ console.warn('[cliTomb]',e?.message||e); }
+      });
+      remoto=remoto.filter(r=>!tomb.has(r.id));
+    }
+    const dbIds=new Set(remoto.map(x=>x.id));
     // Merge: BD é fonte de verdade + preserva clientes criados offline
-    const merged=[...(data||[])];
-    const soLocal=local.filter(l=>!dbIds.has(l.id));
+    const merged=[...remoto];
+    const soLocal=local.filter(l=>!dbIds.has(l.id) && !tomb.has(l.id));
     soLocal.forEach(l=>merged.push(l));
     lsCliSalvar(merged);
     if(document.getElementById('page-clientes').classList.contains('on')) renderClientes();
@@ -5233,6 +5243,7 @@ function renderClientes(){
       </div>
     </div>`;
   }).join('');
+  renderAvisoDuplicatas();
 }
 
 function novoOrcParaCliente(id){
@@ -5368,8 +5379,215 @@ function verHistoricoCliente(cliId){
   document.body.appendChild(m);
 }
 
+// ⚠️ carregarClientesRemoto trata o banco como fonte de verdade, então apagar
+// só do localStorage NÃO resolve: o cliente volta no próximo sync, sempre.
+// Precisa do delete remoto de verdade + tombstone pro caso do delete falhar
+// (senão a ficha some da tela e continua viva no banco, ressuscitando depois).
+function _cliTombLer(){ try{ return JSON.parse(ls('fluxa_cli_tombstones')||'[]'); }catch(e){ return []; } }
+function _cliTombAdd(id){ const t=_cliTombLer(); if(!t.includes(id)){ t.push(id); lsSet('fluxa_cli_tombstones', JSON.stringify(t.slice(-500))); } }
+
 function excluirCliente(id){
-  confirmar('Excluir este cliente?', ()=>{ const lista=lsCliLer().filter(x=>x.id!==id); lsCliSalvar(lista); renderClientes(); toast('🗑 Cliente removido'); }, 'Excluir Cliente');
+  confirmar({
+    titulo:'Excluir cliente',
+    msg:'A ficha sai do cadastro. Orçamentos, OS e vistorias já vinculados a ela continuam existindo, mas perdem o vínculo com o cliente.',
+    destrutivo:true, labelSim:'Excluir',
+    onSim:async()=>{
+      _cliTombAdd(id);
+      lsCliSalvar(lsCliLer().filter(x=>x.id!==id));
+      renderClientes(); renderAvisoDuplicatas();
+      if(dbOk&&db&&!String(id).startsWith('cli_')){
+        try{ const {error}=await db.from('clientes').delete().eq('id',id); if(error) throw error; }
+        catch(e){ console.warn('[excluirCliente]',e?.message||e); }
+      }
+      toast('🗑 Cliente removido');
+    }
+  });
+}
+
+// ──────────────────────────────────────────────────
+//  FICHAS DUPLICADAS — auditoria e limpeza segura
+// ──────────────────────────────────────────────────
+// Ficha clonada por engano: o auto-cadastro cria ficha nova sempre que o nome
+// não bate no cache local DAQUELE aparelho, sem checar o servidor primeiro —
+// cada aparelho que salva um orçamento pro mesmo cliente pela primeira vez
+// gera sua própria cópia, quase sempre com telefone/endereço em branco.
+// Aqui só entra clone que é seguro apagar; qualquer ambiguidade real fica de
+// fora de propósito (é decisão de gente, não de código).
+function _cliCampo(c,a,b){ return (c?.[a]||c?.[b]||'').toString(); }
+function _dupGrupos(){
+  // lsCliLer() já vem escopado por empresa (carregarClientesRemoto filtra por
+  // EMPRESA_ID), então não há risco de agrupar cliente de outro tenant.
+  const cli=lsCliLer()||[];
+  const orcs=todosOrc||[], osArr=todosOS||[];
+  const vis=(typeof lsVisLer==='function')?lsVisLer():[];
+  const eqs=(typeof todosEq!=='undefined'&&todosEq)?todosEq:[];
+  const locs=(typeof locaisVistoria!=='undefined'&&locaisVistoria)?locaisVistoria:[];
+  // clientes.id é referenciado por 5 tabelas — checar só orçamento/OS/vistoria
+  // deixaria passar ficha em uso por equipamento (base instalada) ou por
+  // local de vistoria recorrente.
+  const usado=id => orcs.some(o=>String(o.cliente_id)===String(id))
+    || osArr.some(o=>String(o.cliente_id)===String(id))
+    || vis.some(v=>String(v.cliente_id)===String(id))
+    || eqs.some(e=>String(e.cliente_id)===String(id))
+    || locs.some(l=>String(l.cliente_id)===String(id));
+  const grupos=[];
+  const processados=new Set();
+  const nm=s=>_normNome(s);
+
+  // PASSADA 1 — mesmo nome, exatamente 1 cópia em uso. Divergência de
+  // endereço/telefone nas OUTRAS é irrelevante: ficha com zero uso não
+  // carrega histórico de ninguém pra proteger. 0 ou 2+ em uso cai adiante.
+  const porNome={};
+  cli.forEach(c=>{ const k=nm(c.nome); (porNome[k]=porNome[k]||[]).push(c); });
+  Object.keys(porNome).forEach(k=>{
+    const fichas=porNome[k]; if(fichas.length<2) return;
+    const comUso=fichas.filter(f=>usado(f.id));
+    if(comUso.length!==1) return;
+    const remover=fichas.filter(f=>f.id!==comUso[0].id);
+    if(!remover.length) return;
+    fichas.forEach(f=>processados.add(f.id));
+    grupos.push({nome:fichas[0].nome, manterId:comUso[0].id, removerIds:remover.map(f=>f.id), qtd:remover.length,
+      endereco:_cliCampo(comUso[0],'end','endereco'), telefone:_cliCampo(comUso[0],'tel','telefone')});
+  });
+
+  // PASSADA 2 — mesmo nome, NENHUMA cópia em uso. Endereço/telefone podem
+  // divergir (o caso mais comum é justamente um preenchido e outro em
+  // branco). CNPJ divergente bloqueia: são pessoas jurídicas diferentes.
+  // Mantém a ficha mais COMPLETA, não a mais antiga — a cópia mais nova às
+  // vezes é a única com tipo/e-mail preenchido.
+  const completude=f=>(_cliCampo(f,'tel','telefone')?1:0)+(_cliCampo(f,'end','endereco')?1:0)+(f.cnpj?1:0)+(f.cpf?1:0)+(f.tipo?1:0)+(f.email_responsavel?1:0);
+  const porNome0={};
+  cli.forEach(c=>{ if(processados.has(c.id)) return; const k=nm(c.nome); (porNome0[k]=porNome0[k]||[]).push(c); });
+  Object.keys(porNome0).forEach(k=>{
+    const fichas=porNome0[k]; if(fichas.length<2) return;
+    if(fichas.some(f=>usado(f.id))) return;
+    const cnpjs=new Set(fichas.map(f=>(f.cnpj||'').trim()).filter(Boolean));
+    if(cnpjs.size>1) return;
+    const manter=fichas.slice().sort((a,b)=>completude(b)-completude(a) || String(a.id).localeCompare(String(b.id)))[0];
+    const remover=fichas.filter(f=>f.id!==manter.id);
+    if(!remover.length) return;
+    fichas.forEach(f=>processados.add(f.id));
+    grupos.push({nome:fichas[0].nome, manterId:manter.id, removerIds:remover.map(f=>f.id), qtd:remover.length,
+      endereco:_cliCampo(manter,'end','endereco'), telefone:_cliCampo(manter,'tel','telefone')});
+  });
+
+  // PASSADA 3 — tripla exata (nome+endereço+telefone). Cobre o que sobrou:
+  // 2+ cópias em uso do mesmo nome, mas com alguma tripla idêntica entre
+  // elas. Duas fichas em uso com a tripla igual continuam ambíguas e não
+  // são tocadas.
+  const porTripla={};
+  cli.forEach(c=>{
+    if(processados.has(c.id)) return;
+    const k=nm(c.nome)+'|'+nm(_cliCampo(c,'end','endereco'))+'|'+nm(_cliCampo(c,'tel','telefone'));
+    (porTripla[k]=porTripla[k]||[]).push(c);
+  });
+  Object.keys(porTripla).forEach(k=>{
+    const fichas=porTripla[k]; if(fichas.length<2) return;
+    const cnpjs=new Set(fichas.map(f=>(f.cnpj||'').trim()).filter(Boolean));
+    if(cnpjs.size>1) return;
+    const comUso=fichas.filter(f=>usado(f.id));
+    if(comUso.length>1) return; // ambíguo — não mexe
+    const manter=comUso[0] || fichas.slice().sort((a,b)=>completude(b)-completude(a) || String(a.id).localeCompare(String(b.id)))[0];
+    const remover=fichas.filter(f=>f.id!==manter.id);
+    if(!remover.length) return;
+    grupos.push({nome:fichas[0].nome, manterId:manter.id, removerIds:remover.map(f=>f.id), qtd:remover.length,
+      endereco:_cliCampo(manter,'end','endereco'), telefone:_cliCampo(manter,'tel','telefone')});
+  });
+
+  return grupos.sort((a,b)=>b.qtd-a.qtd);
+}
+
+function renderAvisoDuplicatas(){
+  const el=document.getElementById('cli-dup-aviso'); if(!el) return;
+  const grupos=_dupGrupos();
+  if(!grupos.length){ el.style.display='none'; el.innerHTML=''; return; }
+  const totalFichas=grupos.reduce((a,g)=>a+g.qtd,0);
+  el.style.display='';
+  el.innerHTML=`<div class="rd-card rd-card-warn" style="margin-bottom:14px">
+    <div style="font-size:13px;font-weight:700;color:var(--warn);margin-bottom:4px">
+      ${totalFichas} ficha${totalFichas!==1?'s':''} duplicada${totalFichas!==1?'s':''}</div>
+    <div style="font-size:12px;color:var(--gray);margin-bottom:9px">
+      ${grupos.length} cliente${grupos.length!==1?'s':''} com cópia repetida no cadastro. Nenhuma das cópias a remover tem orçamento, OS, vistoria, equipamento ou plano vinculado — o histórico fica intacto na ficha que sobra.</div>
+    <button class="rd-btn rd-btn-secondary" onclick="abrirRevisaoDuplicatas()">Revisar e limpar</button>
+  </div>`;
+}
+
+let _dupGruposAtual=[];
+async function abrirRevisaoDuplicatas(){
+  // Este é o instante mais crítico (logo antes de uma exclusão em massa) —
+  // não dá pra confiar no cache que a aba tinha de uma visita anterior.
+  toast('Atualizando antes de montar a lista…');
+  await carregarClientesRemoto();
+  if(typeof loadHist==='function') await loadHist();
+  if(typeof loadOSHist==='function') await loadOSHist();
+  if(typeof loadEquipamentos==='function') await loadEquipamentos();
+  if(typeof loadLocaisRemoto==='function') await loadLocaisRemoto();
+  _dupGruposAtual=_dupGrupos();
+  renderAvisoDuplicatas();
+  if(!_dupGruposAtual.length){ toast('Nada duplicado pra limpar'); return; }
+  const totalFichas=_dupGruposAtual.reduce((a,g)=>a+g.qtd,0);
+  const linhas=_dupGruposAtual.map(g=>`
+    <div style="padding:9px 0;border-bottom:1px solid var(--line)">
+      <div style="font-size:13px;font-weight:700;color:var(--c2)">${esc(g.nome||'(sem nome)')}</div>
+      <div style="font-size:11.5px;color:var(--tx3)">${[g.endereco,g.telefone].filter(Boolean).map(x=>esc(x)).join(' · ')||'sem endereço/telefone cadastrado'}</div>
+      <div style="font-size:11.5px;color:var(--warn)">mantém 1 ficha · remove ${g.qtd} cópia${g.qtd!==1?'s':''}</div>
+    </div>`).join('');
+  abrirModal({id:'dup-modal-bg', largura:'wide', corpo:`
+    <h3>Limpar fichas duplicadas</h3>
+    <p class="rd-modal-sub">${_dupGruposAtual.length} cliente${_dupGruposAtual.length!==1?'s':''}, ${totalFichas} ficha${totalFichas!==1?'s':''} a remover. Nenhuma delas tem histórico vinculado — o que já existe continua ligado à ficha mantida.</p>
+    ${linhas}
+    <div class="rd-modal-acts">
+      <button class="rd-modal-btn rd-modal-btn-nao" onclick="fecharModalGenerico('dup-modal-bg')">Cancelar</button>
+      <button class="rd-modal-btn rd-modal-btn-sim destrutivo" onclick="confirmarLimpezaDuplicatas()">Remover ${totalFichas} ficha${totalFichas!==1?'s':''}</button>
+    </div>`});
+}
+
+async function confirmarLimpezaDuplicatas(){
+  const grupos=_dupGruposAtual;
+  const totalFichas=grupos.reduce((a,g)=>a+g.qtd,0);
+  // O modal fica aberto com progresso real: fechar no clique fazia a limpeza
+  // parecer travada (ou "sumida") enquanto centenas de deletes rodavam.
+  atualizarModal(`
+    <h3>Removendo fichas duplicadas…</h3>
+    <div id="dup-progresso-txt" style="font-size:13px;color:var(--tx3);margin-bottom:8px">0 de ${totalFichas}</div>
+    <div style="height:8px;background:var(--line);border-radius:50px;overflow:hidden">
+      <div id="dup-progresso-barra" style="height:100%;width:0%;background:var(--c1);transition:width .2s"></div>
+    </div>
+    <div style="font-size:11.5px;color:var(--tx3);margin-top:8px">Não feche esta aba até terminar.</div>`, 'dup-modal-bg');
+
+  const todos=grupos.flatMap(g=>g.removerIds);
+  let cli=lsCliLer();
+  let removidas=0, falhas=0;
+  const LOTE=15;
+  for(let i=0;i<todos.length;i+=LOTE){
+    const lote=todos.slice(i,i+LOTE);
+    await Promise.all(lote.map(async id=>{
+      // Tombstone só DEPOIS de confirmar o delete no banco — tombar antes
+      // esconderia localmente uma ficha que na real continua no banco.
+      if(String(id).startsWith('cli_')){ cli=cli.filter(c=>c.id!==id); removidas++; return; }
+      if(!(dbOk&&db)){ falhas++; return; }
+      try{
+        const {error}=await db.from('clientes').delete().eq('id',id);
+        if(error) throw error;
+        _cliTombAdd(id);
+        cli=cli.filter(c=>c.id!==id);
+        removidas++;
+      }catch(e){ console.warn('[limpezaDup]',e?.message||e); falhas++; }
+    }));
+    lsCliSalvar(cli); // grava a cada lote — aba fechada no meio não perde o já feito
+    const txt=document.getElementById('dup-progresso-txt'); if(txt) txt.textContent=`${removidas+falhas} de ${totalFichas}`;
+    const barra=document.getElementById('dup-progresso-barra'); if(barra) barra.style.width=((removidas+falhas)/totalFichas*100)+'%';
+  }
+
+  if(typeof logAcao==='function') logAcao('limpeza_duplicatas', `${removidas} fichas duplicadas removidas em ${grupos.length} clientes${falhas?` · ${falhas} falharam`:''}`);
+  renderClientes(); renderAvisoDuplicatas();
+  atualizarModal(`
+    <div style="text-align:center">
+      <div style="font-size:32px;margin-bottom:8px">${falhas?'⚠️':'✅'}</div>
+      <div style="font-size:15px;font-weight:800;color:var(--c2);margin-bottom:14px">${removidas} ficha${removidas!==1?'s':''} duplicada${removidas!==1?'s':''} removida${removidas!==1?'s':''}${falhas?`<br><span style="color:var(--bad);font-size:13px">${falhas} falharam — continuam no banco, tente de novo</span>`:''}</div>
+      <button class="rd-modal-btn rd-modal-btn-sim" style="width:100%" onclick="fecharModalGenerico('dup-modal-bg')">Fechar</button>
+    </div>`, 'dup-modal-bg');
+  toast(falhas?`⚠️ ${removidas} removidas, ${falhas} falharam`:`✅ ${removidas} fichas duplicadas removidas`);
 }
 
 let _cliEditId = null;
