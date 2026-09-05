@@ -2086,6 +2086,10 @@ function go(p){
     // Todos os perfis caem direto na aba Locais (acompanhamento mensal)
     // "Nova Vistoria" fica acessível pela aba, mas não é a tela inicial
     visTab('locais');
+    // Vistoria interrompida no meio (tela apagou, app fechou) volta de onde
+    // parou. Local primeiro; se a nuvem tiver algo mais novo — outro
+    // aparelho — ela vence.
+    if(!_restaurarRascunhoVis()) _restaurarRascunhoNuvem();
   }
   // Atualiza técnicos disponíveis quando abre form de OS
   if(p==='os'){
@@ -6890,6 +6894,7 @@ function confirmarAssinaturaVis(){
     nome: (document.getElementById('vis-tec')?.value||'')||(s?.nome||'')
   };
   renderVisAssinaturaStatus();
+  _salvarRascunhoVisDeb();
   toast('✅ Assinatura registrada');
 }
 function renderVisAssinaturaStatus(){
@@ -10029,11 +10034,13 @@ function setVisEquipStatus(id, status){
   if(!visEquipDados[id]) visEquipDados[id]={ status:'na', obs:'', fotos:[] };
   visEquipDados[id].status = status;
   renderVisEquipGrid();
+  _salvarRascunhoVisDeb();
 }
 
 function visUpdObs(id, val){
   if(!visEquipDados[id]) visEquipDados[id]={ status:'na', obs:'', fotos:[] };
   visEquipDados[id].obs = val;
+  _salvarRascunhoVisDeb();
 }
 
 function visAddObs(id, txt, chipEl){
@@ -10060,13 +10067,152 @@ function visCarregarFoto(inp, id, idx){
     if(!visEquipDados[id].fotos) visEquipDados[id].fotos=[];
     visEquipDados[id].fotos[idx] = compressed;
     renderVisEquipGrid();
+    _salvarRascunhoVisDeb();
   };
   r.readAsDataURL(f);
 }
 function visRemoverFoto(id, idx){
   if(visEquipDados[id]?.fotos) visEquipDados[id].fotos[idx]=null;
   renderVisEquipGrid();
+  _salvarRascunhoVisDeb();
 }
+
+// ══ RASCUNHO AUTOMÁTICO DA VISTORIA ══════════════════════════════════════
+// O navegador do celular DESCARTA a página quando a tela apaga ou o app vai
+// pra segundo plano — e uma vistoria de condomínio leva a manhã inteira.
+// Sem isto, o técnico perde tudo no meio da visita e ninguém sabe por quê.
+const LS_VIS_DRAFT='fluxa_vis_draft';
+let _visDraftTimer=null, _visDraftCloudTimer=null, _visDraftRestaurado=false;
+let _ultimoAvisoRascunhoCheio=0;
+const _VIS_DRAFT_CAMPOS=['vis-cli','vis-cli-id','vis-loc','vis-data','vis-mes-ref','vis-hora','vis-obs','vis-recom','vis-email-resp','vis-tec'];
+const _VIS_DRAFT_MAX_MS=12*60*60*1000; // >12h não é "vistoria em andamento"
+
+function _salvarRascunhoVis(){
+  try{
+    const cli=document.getElementById('vis-cli')?.value||'';
+    // só salva se há algo em andamento — senão sobrescreve rascunho bom com vazio
+    if(!cli && !visEquipSelecionados.length && !(_visEquipsCustom||[]).length && !visCheckinTime) return;
+    const d={ t:Date.now(), campos:{},
+      sel:visEquipSelecionados, custom:_visEquipsCustom, dados:visEquipDados,
+      checkin:visCheckinTime?visCheckinTime.getTime():null,
+      checkout:visCheckoutTime?visCheckoutTime.getTime():null,
+      localId:window._visLocalId||null, editId:visEditId||null, draftId:_visDraftId||null,
+      piscinaId:_visPiscinaSelecionadaId||null,
+      assinatura:_visAssinaturaTecnico||null };
+    _VIS_DRAFT_CAMPOS.forEach(fid=>{ const el=document.getElementById(fid); if(el) d.campos[fid]=el.value; });
+    // setItem DIRETO, não lsSet: o lsSet tem catch próprio e engoliria o
+    // QuotaExceededError — o fallback sem-fotos abaixo nunca rodaria, e a
+    // perda seria silenciosa.
+    try{ localStorage.setItem(LS_VIS_DRAFT, JSON.stringify(d)); }
+    catch(eq){
+      // Cota estourada (fotos pesam). Salvar sem as fotos ainda não enviadas
+      // é melhor que perder o rascunho inteiro — mas o técnico precisa saber.
+      const semFotos=JSON.parse(JSON.stringify(d));
+      let tinhaFotoPendente=false;
+      Object.values(semFotos.dados||{}).forEach(x=>{
+        if(x&&x.fotos) x.fotos=x.fotos.map(f=>{ if(f&&String(f).startsWith('http')) return f; if(f) tinhaFotoPendente=true; return null; });
+      });
+      try{ localStorage.setItem(LS_VIS_DRAFT, JSON.stringify(semFotos)); }catch(e2){ console.warn('[rascunhoVis:quota]', e2?.message||e2); }
+      if(tinhaFotoPendente && Date.now()-_ultimoAvisoRascunhoCheio > 60000){
+        _ultimoAvisoRascunhoCheio=Date.now();
+        toast('⚠️ Muitas fotos no rascunho local — as que ainda não subiram podem se perder se o app fechar. Mantenha a internet ligada até finalizar.');
+      }
+    }
+    _syncRascunhoNuvemDeb();
+  }catch(e){ console.warn('[rascunhoVis]', e?.message||e); }
+}
+function _salvarRascunhoVisDeb(){ clearTimeout(_visDraftTimer); _visDraftTimer=setTimeout(_salvarRascunhoVis, 700); }
+function _limparRascunhoVis(){
+  try{ lsSet(LS_VIS_DRAFT,''); }catch(e){ console.warn('[limparRascunhoVis]',e?.message||e); }
+  _visDraftRestaurado=false;
+  _apagarRascunhoNuvem();
+}
+
+// ── Backup na nuvem (tabela vistoria_rascunhos) ──
+// O rascunho local não sobrevive se o celular morrer, for perdido ou tiver os
+// dados limpos — e a equipe já saiu do local. 1 rascunho ativo por usuário.
+function _draftCloudId(){
+  const n=_normNome(getSessao()?.nome||'');
+  return n?('draft_'+n.replace(/[^a-z0-9]/g,'_')):null;
+}
+function _syncRascunhoNuvemDeb(){ clearTimeout(_visDraftCloudTimer); _visDraftCloudTimer=setTimeout(_syncRascunhoNuvem, 4000); }
+async function _syncRascunhoNuvem(){
+  try{
+    if(!dbOk||!db) return;
+    const id=_draftCloudId(); if(!id) return;
+    const raw=ls(LS_VIS_DRAFT); if(!raw) return;
+    const r=await dbUpsert('vistoria_rascunhos', {id, empresa_id:EMPRESA_ID, usuario:getSessao()?.nome||'', dados:JSON.parse(raw), updated_at:new Date().toISOString()});
+    if(r&&r.error) console.warn('[rascunhoNuvem]', r.error.message);
+  }catch(e){ console.warn('[rascunhoNuvem]', e?.message||e); }
+}
+function _apagarRascunhoNuvem(){
+  try{
+    const id=_draftCloudId();
+    if(dbOk&&db&&id) db.from('vistoria_rascunhos').delete().eq('id',id).then(()=>{}).catch(e=>console.warn('[rascunhoNuvem:del]',e?.message||e));
+  }catch(e){ console.warn('[rascunhoNuvem:del]', e?.message||e); }
+}
+// Restaura da nuvem quando ela é MAIS NOVA que o local (ou o local nem existe)
+// — o caso real é o celular ter quebrado e o técnico logar em outro aparelho.
+async function _restaurarRascunhoNuvem(){
+  try{
+    if(!dbOk||!db) return false;
+    const id=_draftCloudId(); if(!id) return false;
+    const {data,error}=await db.from('vistoria_rascunhos').select('dados').eq('id',id).limit(1);
+    if(error||!data||!data.length||!data[0].dados) return false;
+    const nuvem=data[0].dados;
+    if(Date.now()-(nuvem.t||0) > _VIS_DRAFT_MAX_MS) return false;
+    let local=null; try{ local=JSON.parse(ls(LS_VIS_DRAFT)||'null'); }catch(e){ console.warn('[rascunhoNuvem:parse]',e?.message||e); }
+    if(local && (local.t||0) >= (nuvem.t||0)) return false; // local já é igual ou mais novo
+    localStorage.setItem(LS_VIS_DRAFT, JSON.stringify(nuvem));
+    _visDraftRestaurado=false;
+    return _restaurarRascunhoVis();
+  }catch(e){ console.warn('[rascunhoNuvem:rest]', e?.message||e); return false; }
+}
+function _restaurarRascunhoVis(){
+  if(_visDraftRestaurado) return false;
+  let d=null; try{ d=JSON.parse(ls(LS_VIS_DRAFT)||'null'); }catch(e){ return false; }
+  if(!d||!d.t) return false;
+  if(Date.now()-d.t > _VIS_DRAFT_MAX_MS){ _limparRascunhoVis(); return false; }
+  _visDraftRestaurado=true;
+  visEquipSelecionados=d.sel||[];
+  _visEquipsCustom=d.custom||[];
+  visEquipDados=d.dados||{};
+  window._visLocalId=d.localId||null; visEditId=d.editId||null; _visDraftId=d.draftId||null;
+  _visPiscinaSelecionadaId=d.piscinaId||null;
+  visCheckinTime=d.checkin?new Date(d.checkin):null;
+  visCheckoutTime=d.checkout?new Date(d.checkout):null;
+  _visAssinaturaTecnico=d.assinatura||null;
+  renderVisAssinaturaStatus();
+  Object.entries(d.campos||{}).forEach(([fid,v])=>{ const el=document.getElementById(fid); if(el&&v!==undefined&&v!==null) el.value=v; });
+  renderVisChips(); renderVisEquipGrid();
+  if(typeof _visRenderPiscinas==='function') _visRenderPiscinas();
+  const card=document.getElementById('vis-equip-card');
+  if(card) card.style.display=(visEquipSelecionados.length||(_visEquipsCustom||[]).length)?'':'none';
+  // Retoma o cronômetro do ponto certo — zerar o tempo no local seria pior
+  // que não ter cronômetro nenhum (o relatório mostra duração da visita).
+  if(visCheckinTime && !visCheckoutTime){
+    const bar=document.getElementById('vis-checkin-bar');
+    const form=document.getElementById('vis-checkin-form');
+    const info=document.getElementById('vis-checkin-info');
+    if(bar) bar.style.display='flex';
+    if(form) form.style.display='none';
+    if(info) info.textContent='📍 Check-in: '+visCheckinTime.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    const timerEl=document.getElementById('vis-checkin-timer');
+    if(visCheckinInterval) clearInterval(visCheckinInterval);
+    visCheckinInterval=setInterval(()=>{
+      const diff=Math.floor((Date.now()-visCheckinTime)/1000);
+      const h=Math.floor(diff/3600), m=Math.floor((diff%3600)/60), s=diff%60;
+      if(timerEl) timerEl.textContent=(h?h+':':'')+(m<10&&h?'0':'')+m+':'+(s<10?'0':'')+s;
+    },1000);
+  }
+  visTab('nova');
+  toast('🔄 Vistoria em andamento restaurada — pode continuar de onde parou');
+  return true;
+}
+// A tela apagando / app indo pra segundo plano é EXATAMENTE o momento de
+// salvar: é quando o navegador do celular descarta a página.
+document.addEventListener('visibilitychange',()=>{ if(document.hidden){ _salvarRascunhoVis(); _syncRascunhoNuvem(); } });
+window.addEventListener('pagehide',()=>{ _salvarRascunhoVis(); _syncRascunhoNuvem(); });
 
 // Faz upload de uma foto (base64) para o Supabase Storage e retorna a URL pública.
 // Retorna null se falhar (a foto base64 original fica preservada localmente).
@@ -10490,6 +10636,7 @@ function _limparFormVistoria(){
   window._visLocalId = null;
   _visAssinaturaTecnico = null;
   renderVisAssinaturaStatus();
+  _limparRascunhoVis(); // vistoria finalizada/descartada não é mais "em andamento"
   // Limpa campos do form
   ['vis-cli','vis-loc','vis-hora','vis-obs','vis-recom','vis-email-resp'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value='';
