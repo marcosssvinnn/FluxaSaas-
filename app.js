@@ -13279,6 +13279,58 @@ function _visOportunidades(){
     .sort((a,b)=>(b.criticos-a.criticos) || ((b._d||0)-(a._d||0)));
 }
 
+// ── MANUTENÇÃO PREVENTIVA (Fase 29) ─────────────────────────────────────
+// Fecha o último elo da cadeia: Histórico → Próxima manutenção. Um plano de
+// acompanhamento (agendamento recorrente) tem periodicidade conhecida
+// (semanal/quinzenal/mensal). Se a ÚLTIMA vistoria feita para aquele local já
+// passou do intervalo, a manutenção está vencida — e o cliente pode ficar sem
+// atendimento sem ninguém perceber.
+//
+// Base real, não chute: periodicidade vem do próprio plano (agendamentos.
+// periodicidade), última visita vem das vistorias daquele local. Sem plano
+// recorrente não há preventiva a cobrar (uma visita avulsa não promete a
+// próxima).
+const _PERIODO_DIAS={semanal:7, quinzenal:14, mensal:30};
+const LS_MANUT_DISMISS='fluxa_manut_dismiss';
+function _manutDismissLer(){ try{ return JSON.parse(ls(LS_MANUT_DISMISS)||'{}'); }catch(e){ return {}; } }
+// Chave inclui a data-base: ao fazer uma vistoria nova, a base muda, a chave
+// muda e o aviso pode reaparecer no ciclo seguinte. Dispensar não é pra sempre.
+function _manutDismiss(chave){ try{ const m=_manutDismissLer(); m[chave]=Date.now(); lsSet(LS_MANUT_DISMISS, JSON.stringify(m)); }catch(e){ console.warn('[manutDismiss]',e?.message||e); } if(typeof renderPainelFilaHoje==='function') renderPainelFilaHoje(); }
+function _manutencoesPreventivas(){
+  if(eTecnico()) return [];
+  const hoje=new Date(_hojeLocal()+'T12:00:00');
+  const dismiss=_manutDismissLer();
+  const vistorias=lsVisLer()||[];
+  const planos=filtrarPorLoja(todosAg||[]).filter(a=>a.ativo!==false && _PERIODO_DIAS[a.periodicidade]);
+  const out=[];
+  planos.forEach(ag=>{
+    const periodo=_PERIODO_DIAS[ag.periodicidade];
+    // Vistorias deste plano: por local_id quando existe, senão casa cliente+local.
+    const nomeCli=_normNome(ag.cliente||''), nomeLoc=_normNome(ag.local_servico||'');
+    const doPlano=vistorias.filter(v=>{
+      if(ag.local_id && v.local_id) return v.local_id===ag.local_id;
+      return nomeCli && _normNome(v.cliente||'')===nomeCli && (!nomeLoc || _normNome(v.local||'')===nomeLoc);
+    });
+    const datas=doPlano.map(v=>v.data).filter(Boolean).sort();
+    const ultima=datas[datas.length-1] || ag.data_inicio || null;
+    if(!ultima) return; // sem base, não há "próxima" a prometer
+    if(ag.data_fim && ag.data_fim<_hojeLocal()) return; // plano encerrado
+    const base=new Date(ultima+'T12:00:00');
+    const proxima=new Date(base); proxima.setDate(proxima.getDate()+periodo);
+    const diasAte=Math.round((proxima-hoje)/86400000); // <0 vencida, >0 a vencer
+    // Mostra vencida OU vencendo nos próximos 3 dias — antes disso é ruído.
+    if(diasAte>3) return;
+    const chave=`${ag.id}:${ultima}`;
+    if(dismiss[chave]) return;
+    out.push({
+      chave, cliente:ag.cliente||'—', local:ag.local_servico||'',
+      periodicidade:ag.periodicidade, ultima, diasAte,
+      nuncaVistoriado: !datas.length
+    });
+  });
+  return out.sort((a,b)=>a.diasAte-b.diasAte);
+}
+
 // ── DOSSIÊ DE ASSEMBLEIA ────────────────────────────────────────────────
 // Condomínio não decide um gasto grande no balcão: decide em assembleia. E o
 // síndico não consegue defender o valor com um PDF de itens e preço — ele
@@ -16216,6 +16268,21 @@ function _filaHojeItens(){
         });
       });
   }
+  // Manutenção preventiva vencida/vencendo (planos recorrentes).
+  _manutencoesPreventivas().forEach(m=>{
+    const vencida=m.diasAte<0;
+    const per={semanal:'semanal',quinzenal:'quinzenal',mensal:'mensal'}[m.periodicidade]||m.periodicidade;
+    const quando = m.nuncaVistoriado ? `plano ${per} sem 1ª vistoria`
+      : vencida ? `manutenção ${per} vencida há ${-m.diasAte} dia${m.diasAte!==-1?'s':''}`
+      : m.diasAte===0 ? `manutenção ${per} vence hoje` : `manutenção ${per} vence em ${m.diasAte} dia${m.diasAte!==1?'s':''}`;
+    itens.push({
+      peso: vencida||m.nuncaVistoriado?2:3, icone:'🗓️',
+      titulo: m.cliente + (m.local?` · ${m.local}`:''),
+      sub: quando,
+      onclick: `go('visitas')`,
+      dismiss: `event.stopPropagation();_manutDismiss('${m.chave}')`
+    });
+  });
   if(_crmAtivo()){
     const {fuDue}=_crmComputarStats();
     fuDue.forEach(o=>{
