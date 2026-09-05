@@ -13249,6 +13249,36 @@ function _orcarDaVistoriaConfirmado(v, itens){
   }, 60);
 }
 
+// ── VISTORIA → OPORTUNIDADE (Fase 13) ───────────────────────────────────
+// O caminho vistoria→orçamento já existe (orcarDaVistoria). O que faltava: a
+// recomendação MORRE no relatório se ninguém orçar na hora. Uma vistoria com
+// item crítico/atenção que ainda não virou orçamento é uma OPORTUNIDADE aberta
+// — dinheiro apontado pelo técnico esperando alguém agir. Estas funções a
+// tornam visível na fila "Precisa de você hoje" até ser orçada ou dispensada.
+const LS_VIS_OPORT_DISMISS='fluxa_vis_oport_dismiss';
+function _visOportDismissLer(){ try{ return JSON.parse(ls(LS_VIS_OPORT_DISMISS)||'{}'); }catch(e){ return {}; } }
+function _visOportDismiss(id){ try{ const m=_visOportDismissLer(); m[id]=Date.now(); lsSet(LS_VIS_OPORT_DISMISS, JSON.stringify(m)); }catch(e){ console.warn('[visOportDismiss]',e?.message||e); } if(typeof renderPainelFilaHoje==='function') renderPainelFilaHoje(); }
+// Vistoria já virou orçamento? O fluxo grava nota_interna 'Gerado da vistoria <id>'.
+function _visJaOrcada(vid){
+  return (todosOrc||[]).some(o=>String(o.nota_interna||'').includes('vistoria '+vid));
+}
+function _visOportunidades(){
+  // Vendas/gestor agem sobre isto; técnico não orça.
+  if(eTecnico()) return [];
+  const dismiss=_visOportDismissLer();
+  const vistorias=filtrarPorLoja(lsVisLer()||[]);
+  return vistorias
+    .map(v=>({v, itens:_visItensOrcaveis(v)}))
+    .filter(x=>x.itens.length && !dismiss[x.v.id] && !_visJaOrcada(x.v.id))
+    .map(x=>({
+      id:x.v.id, cliente:x.v.cliente||'—', data:x.v.data,
+      criticos:x.itens.filter(e=>e.status==='critico').length,
+      total:x.itens.length,
+      _d: x.v.data ? new Date(String(x.v.data).length<=10?x.v.data+'T12:00:00':x.v.data) : null
+    }))
+    .sort((a,b)=>(b.criticos-a.criticos) || ((b._d||0)-(a._d||0)));
+}
+
 // ── DOSSIÊ DE ASSEMBLEIA ────────────────────────────────────────────────
 // Condomínio não decide um gasto grande no balcão: decide em assembleia. E o
 // síndico não consegue defender o valor com um PDF de itens e preço — ele
@@ -16156,6 +16186,18 @@ function _notifDerivadosHTML(){
 
 function _filaHojeItens(){
   const itens=[];
+  // Oportunidades de vistoria: laudo do técnico esperando virar orçamento.
+  // Crítico pesa mais que atenção; um clique já abre o orçamento pré-preenchido.
+  _visOportunidades().forEach(op=>{
+    itens.push({
+      peso: op.criticos?0:1,
+      icone: op.criticos?'🔧🔴':'🔧',
+      titulo: op.cliente,
+      sub: `vistoria de ${_visDataBR(op.data)} · ${op.total} ${op.total!==1?'itens':'item'} a orçar${op.criticos?` (${op.criticos} crítico${op.criticos!==1?'s':''})`:''}`,
+      onclick: `orcarDaVistoria('${op.id}')`,
+      dismiss: `event.stopPropagation();_visOportDismiss('${op.id}')`
+    });
+  });
   if(_crmAtivo()){
     const {fuDue}=_crmComputarStats();
     fuDue.forEach(o=>{
@@ -16204,6 +16246,7 @@ function renderPainelFilaHoje(){
     mostrar.map(it=>`<div class="fila-hoje-item" onclick="${it.onclick}">
       <span class="fila-hoje-ico">${it.icone}</span>
       <div class="fila-hoje-tx"><div class="fila-hoje-tit">${esc(it.titulo)}</div><div class="fila-hoje-sub">${esc(it.sub)}</div></div>
+      ${it.dismiss?`<button class="fila-hoje-x" title="Dispensar" onclick="${it.dismiss}">✕</button>`:''}
     </div>`).join('')
     + (total>mostrar.length?`<div class="fila-hoje-mais">+ ${total-mostrar.length} outro${total-mostrar.length!==1?'s':''} item${total-mostrar.length!==1?'s':''}</div>`:'');
 }

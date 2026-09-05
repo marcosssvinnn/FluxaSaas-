@@ -1645,6 +1645,8 @@
     .fila-hoje-item+.fila-hoje-item{margin-top:2px}
     .fila-hoje-ico{font-size:16px;flex-shrink:0}
     .fila-hoje-tx{min-width:0;flex:1}
+    .fila-hoje-x{flex-shrink:0;width:26px;height:26px;border:none;background:none;color:var(--gray);font-size:12px;cursor:pointer;border-radius:6px;line-height:1;padding:0}
+    .fila-hoje-x:hover{background:var(--gray-mid);color:var(--tx)}
     .fila-hoje-tit{font-size:13px;font-weight:700;color:var(--c2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .fila-hoje-sub{font-size:11.5px;color:var(--gray);margin-top:1px}
     .fila-hoje-mais{font-size:11.5px;color:var(--gray);text-align:center;padding:6px 0 2px}
