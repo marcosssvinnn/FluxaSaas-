@@ -10639,10 +10639,14 @@ function preencherRelatorioVistoria(vis){
   if(detList){
     detList.innerHTML=equips.filter(e=>e.status!=='na'||(e.fotos||[]).some(Boolean)).map(e=>{
       const fotosArr=(e.fotos||[]).filter(Boolean);
+      // Adaptativo (achado do Marcos, 04/09): 1 foto sozinha num grid fixo de
+      // 2 colunas/210px ficava pequena, desperdiçando metade do espaço.
+      const colsFoto=fotosArr.length===1?1:2;
+      const hFoto=fotosArr.length===1?300:210;
       const fotosHtml=fotosArr.length
-        ?`<div class="pd-vis-equip-fotos">${fotosArr.map((f,i)=>`
+        ?`<div class="pd-vis-equip-fotos" style="grid-template-columns:repeat(${colsFoto},1fr)">${fotosArr.map((f,i)=>`
             <div class="pd-vis-foto-item">
-              <img src="${f}" alt="Foto ${i+1}">
+              <img src="${f}" alt="Foto ${i+1}" style="height:${hFoto}px">
               <div class="pd-vis-foto-lbl">Foto ${i+1}${e.nome?' — '+e.nome:''}</div>
             </div>`).join('')}</div>`
         :'';
@@ -10805,16 +10809,24 @@ function preencherRelatorioOS(os, versao){
       <div>Serviços não executados: <b>${naoExecCount}</b></div>`;
   }
 
-  // Registro fotográfico
+  // Registro fotográfico — colunas/altura adaptam à quantidade (achado do
+  // Marcos, 04/09): grid fixo de 2 col/210px deixava 1-2 fotos pequenas e
+  // 5+ cortando mais do que precisava.
   const fotosWrap=document.getElementById('pd-ros-fotos-wrap');
   const fotosEl=document.getElementById('pd-ros-fotos');
   const fotos=(os.fotos||[]).filter(Boolean);
   if(fotosWrap) fotosWrap.style.display=fotos.length?'block':'none';
-  if(fotosEl) fotosEl.innerHTML=fotos.map((f,i)=>`
+  if(fotosEl){
+    const nFotos=fotos.length;
+    const colsFotos=nFotos===1?1:nFotos<=4?2:3;
+    const hFotos=nFotos===1?320:nFotos<=2?260:190;
+    fotosEl.style.gridTemplateColumns=`repeat(${colsFotos},1fr)`;
+    fotosEl.innerHTML=fotos.map((f,i)=>`
     <div class="pd-vis-foto-item">
-      <img src="${f}" alt="Foto ${i+1}">
+      <img src="${f}" alt="Foto ${i+1}" style="height:${hFotos}px">
       <div class="pd-vis-foto-lbl">Foto ${i+1}</div>
     </div>`).join('');
+  }
 
   const signTec=document.getElementById('pd-ros-sign-tec');
   if(signTec) signTec.innerHTML=`${esc(os.tecnico||'Técnico Responsável')}<br><span style="font-size:10px;font-weight:400;color:#6b7280">${esc(LC.nome||'')}</span>`;
