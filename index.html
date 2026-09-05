@@ -2049,21 +2049,41 @@
 <div class="page" id="page-despesas">
   <div class="wrap">
     <button class="btn-voltar" onclick="voltar()">← Voltar</button>
+    <div id="desp-recorrentes-aviso" style="display:none"></div>
     <div class="card" id="desp-form-card" style="display:none">
       <div class="ct">Nova Despesa <button onclick="fecharFormDesp()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;line-height:1">×</button></div>
+      <!-- Natureza troca a lista de tipos e o que é obrigatório: despesa de
+           campo tem um técnico que gastou; custo da empresa (aluguel, energia)
+           não tem, e sem essa separação o custo fixo simplesmente não tinha
+           onde ser lançado. -->
+      <div class="row f1" style="margin-bottom:4px">
+        <div class="fl"><label>Natureza</label>
+          <select id="desp-natureza" onchange="_despAplicarNatureza()">
+            <option value="campo">Despesa de campo (técnico)</option>
+            <option value="empresa">Custo da empresa</option>
+          </select>
+        </div>
+      </div>
       <div class="row">
-        <div class="fl"><label>Técnico</label><select id="desp-tec"><option value="">Selecione…</option></select></div>
+        <div class="fl" id="desp-tec-wrap"><label>Técnico</label><select id="desp-tec"><option value="">Selecione…</option></select></div>
         <div class="fl"><label>Data</label><input type="date" id="desp-data"></div>
       </div>
       <div class="row">
         <div class="fl"><label>Tipo</label>
-          <select id="desp-tipo">
-            <option value="">Selecione…</option>
-            <option>Combustível</option><option>Pedágio</option>
-            <option>Material</option><option>Alimentação</option><option>Outro</option>
-          </select>
+          <select id="desp-tipo"><option value="">Selecione…</option></select>
         </div>
         <div class="fl"><label>Valor (R$)</label><input type="number" id="desp-valor" placeholder="0,00" step="0.01" min="0" inputmode="decimal"></div>
+      </div>
+      <div class="row">
+        <div class="fl"><label>Competência <span style="font-weight:400;color:var(--gray);text-transform:none;letter-spacing:0">— mês a que pertence</span></label>
+          <input type="month" id="desp-competencia">
+        </div>
+        <div class="fl" id="desp-recorrente-wrap" style="display:none">
+          <label>Repetição</label>
+          <label style="display:flex;align-items:center;gap:8px;font-weight:400;text-transform:none;letter-spacing:0;font-size:13px;cursor:pointer;padding:9px 0">
+            <input type="checkbox" id="desp-recorrente" style="width:auto;margin:0"> Repete todo mês
+          </label>
+        </div>
       </div>
       <div class="row f1">
         <div class="fl"><label>Descrição</label><input type="text" id="desp-desc" placeholder="Ex: Gasolina ida/volta Camboriú"></div>
@@ -2116,7 +2136,7 @@
       <div class="rd-card rd-card-dense rd-card-dark">
         <div class="rd-kpi-lbl">Total geral</div>
         <div class="rd-kpi-num rd-kpi-num-sm" id="desp-d-total">—</div>
-        <div class="rd-kpi-apoio">este mês</div>
+        <div class="rd-kpi-apoio" id="desp-d-fixvar">—</div>
       </div>
     </div>
 

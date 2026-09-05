@@ -8053,6 +8053,9 @@ let todasDesp = [], despFotoB64 = '';
 function abrirFormDesp(){
   document.getElementById('desp-form-card').style.display='block';
   document.getElementById('desp-data').value=_hojeLocal();
+  setV('desp-natureza','campo');
+  setV('desp-competencia', _hojeLocal().slice(0,7));
+  _despAplicarNatureza();
   populaDespTecSelect();
   filtrarOSDesp('');
   document.getElementById('desp-form-card').scrollIntoView({behavior:'smooth'});
@@ -8098,13 +8101,110 @@ function carregarFotoDesp(inp){
 }
 function removerFotoDesp(){ despFotoB64=''; document.getElementById('desp-foto-prev').style.display='none'; document.getElementById('desp-foto-lbl').textContent='Fotografar comprovante'; document.getElementById('desp-btn-rm-foto').style.display='none'; document.getElementById('desp-foto-input').value=''; }
 
+// ══════════════════════════════════════════════════
+//  DESPESAS — natureza, fixa × variável, recorrência
+// ══════════════════════════════════════════════════
+// Custo fixo (aluguel, salário, energia, contador) não tinha onde ser lançado:
+// o formulário só oferecia tipos de campo e exigia um técnico. É justamente
+// esse custo que define se o mês fechou no azul — sem ele, qualquer resultado
+// mostra metade da conta.
+const DESP_TIPOS_CAMPO=['Combustível','Pedágio','Material','Alimentação','Manutenção de veículo','Outro'];
+const DESP_TIPOS_EMPRESA=['Aluguel','Salário / pró-labore','Energia / água','Internet / telefone','Software / sistema','Contador','Imposto / taxa','Marketing','Outro'];
+// Fixo = não varia com o volume de serviço no mês. Classificar por TIPO (e não
+// perguntar) evita mais um campo obrigatório num formulário que já é longo.
+const _DESP_TIPOS_FIXOS=new Set(['Aluguel','Salário / pró-labore','Energia / água','Internet / telefone','Software / sistema','Contador','Imposto / taxa']);
+function _despFixaOuVariavel(tipo){ return _DESP_TIPOS_FIXOS.has(tipo)?'fixa':'variavel'; }
+// Competência é o mês a que a despesa PERTENCE, não o dia em que foi paga:
+// a energia de janeiro paga em fevereiro é resultado de janeiro.
+function _despCompetencia(d){ return d?.competencia || String(d?.data||'').slice(0,7) || ''; }
+
+function _despAplicarNatureza(){
+  const nat=gV('desp-natureza')||'campo';
+  const tipos = nat==='empresa'?DESP_TIPOS_EMPRESA:DESP_TIPOS_CAMPO;
+  const sel=document.getElementById('desp-tipo');
+  if(sel){
+    const atual=sel.value;
+    sel.innerHTML='<option value="">Selecione…</option>'+tipos.map(t=>`<option>${esc(t)}</option>`).join('');
+    if(tipos.includes(atual)) sel.value=atual;
+  }
+  // Técnico só faz sentido em despesa de campo — em custo da empresa ele fica
+  // oculto e vazio, senão viraria um obrigatório sem resposta certa.
+  const tecWrap=document.getElementById('desp-tec-wrap');
+  if(tecWrap) tecWrap.style.display = nat==='empresa'?'none':'';
+  if(nat==='empresa') setV('desp-tec','');
+  const recWrap=document.getElementById('desp-recorrente-wrap');
+  if(recWrap) recWrap.style.display = nat==='empresa'?'':'none';
+  if(nat!=='empresa'){ const c=document.getElementById('desp-recorrente'); if(c) c.checked=false; }
+}
+
+// Recorrente do mês PASSADO que ainda não foi lançada neste mês. Compara por
+// tipo+descrição (não por id) — a despesa deste mês é um registro novo.
+function _despRecorrentesPendentes(){
+  const mesAtual=_hojeLocal().slice(0,7);
+  const d=new Date(parseInt(mesAtual.slice(0,4)), parseInt(mesAtual.slice(5,7))-1, 1);
+  d.setMonth(d.getMonth()-1);
+  const mesAnt=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+  const lista=filtrarPorLoja(todasDesp||[]);
+  const doMes=m=>lista.filter(x=>x.recorrente && _despCompetencia(x)===m);
+  const chave=x=>((x.tipo||'')+'|'+(x.descricao||'')).toLowerCase();
+  const jaNoAtual=new Set(doMes(mesAtual).map(chave));
+  return doMes(mesAnt).filter(x=>!jaNoAtual.has(chave(x)));
+}
+function renderAvisoRecorrentes(){
+  const el=document.getElementById('desp-recorrentes-aviso'); if(!el) return;
+  const p=_despRecorrentesPendentes();
+  if(!p.length){ el.style.display='none'; el.innerHTML=''; return; }
+  const tot=p.reduce((a,x)=>a+(parseFloat(x.valor)||0),0);
+  el.style.display='';
+  el.innerHTML=`<div class="rd-card rd-card-warn" style="margin-bottom:14px">
+    <div style="font-size:13px;font-weight:700;color:var(--warn);margin-bottom:4px">
+      ${p.length} despesa${p.length!==1?'s':''} recorrente${p.length!==1?'s':''} ainda não lançada${p.length!==1?'s':''} neste mês · ${brl(tot)}</div>
+    <div style="font-size:12px;color:var(--gray);margin-bottom:9px">
+      ${p.slice(0,4).map(x=>esc(x.tipo||'')+(x.descricao?' ('+esc(x.descricao)+')':'')).join(' · ')}${p.length>4?` e mais ${p.length-4}`:''}</div>
+    <button class="rd-btn rd-btn-secondary" onclick="repetirRecorrentes()">Lançar as ${p.length} deste mês</button>
+  </div>`;
+}
+async function repetirRecorrentes(){
+  const p=_despRecorrentesPendentes();
+  if(!p.length) return;
+  const mes=_hojeLocal().slice(0,7);
+  let ok=0;
+  for(const x of p){
+    // Sem o id do registro antigo: o banco gera o novo. E sem o comprovante —
+    // a foto é do mês passado, não vale como comprovante deste.
+    const {id:_ig, data_criacao:_ig2, foto_base64:_ig3, ...base}=x;
+    const dados={...base, competencia:mes, data:_hojeLocal(), status:'pendente', foto_base64:null};
+    const tempId='desp_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
+    todasDesp.unshift({...dados, id:tempId, data_criacao:new Date().toISOString()});
+    ok++;
+    if(dbOk&&db){
+      try{
+        const {data:ins,error}=await dbInsert('despesas', dados);
+        if(error){ console.warn('[repetirRecorrentes]', error.message); continue; }
+        if(ins){ todasDesp=todasDesp.filter(y=>y.id!==tempId); todasDesp.unshift(ins); }
+      }catch(e){ console.warn('[repetirRecorrentes]', e?.message||e); }
+    }
+  }
+  lsDespSalvar(todasDesp);
+  renderDespesas(); renderAvisoRecorrentes();
+  toast(`✅ ${ok} despesa${ok!==1?'s':''} lançada${ok!==1?'s':''} neste mês`);
+}
+
 async function salvarDespesa(){
+  const natureza=gV('desp-natureza')||'campo';
   const tec=gV('desp-tec'), tipo=gV('desp-tipo'), valor=parseFloat(gV('desp-valor'))||0;
-  if(!tec||!tipo||!valor){ toast('⚠️ Informe técnico, tipo e valor'); return; }
-  lsSet('fluxa_ultimo_tec',tec);
+  if(!tipo||!valor){ toast('⚠️ Informe tipo e valor'); return; }
+  // Técnico só é obrigatório em despesa de campo — custo da empresa não tem um.
+  if(natureza==='campo' && !tec){ toast('⚠️ Informe o técnico'); return; }
+  if(tec) lsSet('fluxa_ultimo_tec',tec);
   const osInput=gV('desp-os-num');
   let osNum=null; const m=osInput.match(/\d+/); if(m) osNum=parseInt(m[0]);
-  const dados={ tecnico:tec, data:gV('desp-data'), tipo, valor, descricao:gV('desp-desc'), os_numero:osNum||null, foto_base64:despFotoB64||null, status:'pendente', loja_id:lojaAtiva||LOJA_PADRAO_ID };
+  const dataDesp=gV('desp-data')||_hojeLocal();
+  const dados={ tecnico:tec||null, data:dataDesp, tipo, valor, descricao:gV('desp-desc'),
+    os_numero:osNum||null, foto_base64:despFotoB64||null, status:'pendente',
+    loja_id:lojaAtiva||LOJA_PADRAO_ID,
+    natureza, recorrente: natureza==='empresa' && !!document.getElementById('desp-recorrente')?.checked,
+    competencia: gV('desp-competencia')||dataDesp.slice(0,7) };
   const rec={...dados, id:'desp_'+Date.now(), data_criacao:new Date().toISOString()};
   todasDesp.unshift(rec); lsDespSalvar(todasDesp);
   if(dbOk&&db){
@@ -8116,7 +8216,7 @@ async function salvarDespesa(){
       finally{ _despSyncInFlight.delete(rec.id); }
     })();
   }
-  fecharFormDesp(); renderDespesas(); toast('✅ Despesa registrada!');
+  fecharFormDesp(); renderDespesas(); renderAvisoRecorrentes(); toast('✅ Despesa registrada!');
 }
 
 // Reenvia despesas presas só no aparelho (insert em background falhou uma vez e
@@ -8178,6 +8278,7 @@ async function loadDespesas(){
 }
 
 function renderDespesas(){
+  renderAvisoRecorrentes();
   const filtTec=gV('desp-filtro-tec'), filtSt=gV('desp-filtro-st');
   let lista=[...todasDesp];
   lista=filtrarPorLoja(lista);
@@ -8192,6 +8293,11 @@ function renderDespesas(){
   setV_el('desp-d-reimb',brl(reimb.reduce((a,d)=>a+(d.valor||0),0)),'textContent');
   setV_el('desp-d-reimb-q',reimb.length+' item'+(reimb.length!==1?'s':''),'textContent');
   setV_el('desp-d-total',brl(doMes.reduce((a,d)=>a+(d.valor||0),0)),'textContent');
+  // Fixo × variável é a leitura que interessa: o fixo é o que a empresa paga
+  // mesmo num mês sem serviço nenhum.
+  const _fixa=doMes.filter(d=>_despFixaOuVariavel(d.tipo)==='fixa').reduce((a,d)=>a+(parseFloat(d.valor)||0),0);
+  const _var =doMes.filter(d=>_despFixaOuVariavel(d.tipo)!=='fixa').reduce((a,d)=>a+(parseFloat(d.valor)||0),0);
+  setV_el('desp-d-fixvar', _fixa>0?`fixa ${brl(_fixa)} · variável ${brl(_var)}`:'este mês','textContent');
   // Breakdown por categoria (onde vai o dinheiro)
   const catCard=document.getElementById('desp-cat-card'), catBody=document.getElementById('desp-cat-body');
   if(catCard&&catBody){
