@@ -587,7 +587,6 @@
       </div>
       <button class="btn-primary" style="padding:9px 18px;font-size:13px;white-space:nowrap" onclick="go('usuarios')">Gerenciar Usuários →</button>
     </div>
-    <textarea id="cfg-tecnicos" style="display:none"></textarea>
 
     <div class="card">
       <div class="ct">Segurança</div>
@@ -1864,6 +1863,9 @@
         </select>
       </div>
       <div id="osh-body"><div class="load"><div class="spin"></div> Carregando…</div></div>
+      <!-- Barra de ação em lote — fixa no rodapé enquanto há OS selecionada,
+           pra continuar alcançável depois de rolar uma lista longa. -->
+      <div id="os-lote-barra" style="display:none;position:sticky;bottom:0;z-index:20;align-items:center;gap:8px;flex-wrap:wrap;background:var(--white,#fff);border:1px solid var(--gray-mid,#e5e7eb);border-radius:12px;box-shadow:0 -4px 16px rgba(0,0,0,.08);padding:10px 12px;margin-top:10px"></div>
     </div>
   </div>
 </div>

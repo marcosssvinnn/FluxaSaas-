@@ -878,7 +878,7 @@ function atualizarHeaderLoja(){
 function atualizarTecsPorLoja(lojaId, selectId){
   const sel=document.getElementById(selectId); if(!sel) return;
   const loja=getLoja(lojaId);
-  const tecs=(loja?loja.tecs:(CFG.tecnicos||LOJAS.flatMap(l=>l.tecs||[]).filter((v,i,a)=>a.indexOf(v)===i)))||[];
+  const tecs=(loja?loja.tecs:getTecnicos())||[];
   const atual=sel.value;
   const opts=tecs.map(t=>`<option value="${t}"${t===atual?' selected':''}>${t}</option>`).join('');
   // mantém opção vazia se não houver seleção
@@ -1750,7 +1750,6 @@ function preencherFormEmpresa(){
   setV('cfg-cor',LC.cor||CFG.cor); setV('cfg-cor-txt',LC.cor||CFG.cor);
   setV('cfg-cor2',LC.cor2||CFG.cor2); setV('cfg-cor2-txt',LC.cor2||CFG.cor2);
   setV('cfg-servicos', (CFG.svcs||[]).join('\n'));
-  setV('cfg-tecnicos', (CFG.tecnicos||[]).join('\n'));
   setV('cfg-pin', ''); // não exibir hash; usuário digita novo PIN para alterar
   setV('cfg-notif-visita', CFG.notif_visita || CFG_DEF.notif_visita);
   setV('cfg-notif-concluida', CFG.notif_concluida || CFG_DEF.notif_concluida);
@@ -1902,7 +1901,6 @@ async function salvarEmpresa(){
   CFG.cor  = gV('cfg-cor');
   CFG.cor2 = gV('cfg-cor2');
   CFG.svcs = gV('cfg-servicos').split('\n').map(s=>s.trim()).filter(Boolean);
-  CFG.tecnicos = gV('cfg-tecnicos').split('\n').map(s=>s.trim()).filter(Boolean);
   const novoPin = gV('cfg-pin').trim();
   if(novoPin.length===4 && /^\d{4}$/.test(novoPin)){
     hashPIN(novoPin).then(h=>{ CFG.pin=h; lsSet('empresa_cfg',JSON.stringify(CFG)); });
@@ -4811,6 +4809,194 @@ function autoVencerOrc(lista){
   return lista;
 }
 
+// ══════════════════════════════════════════════════
+//  OS EM LOTE
+// ══════════════════════════════════════════════════
+// Com várias OS atrasadas, abrir uma por uma pra atribuir técnico ou
+// remarcar é o que faz a fila não andar. Aqui a ação vale pra seleção
+// inteira. Cada laço pula OS já concluída/cancelada — um clique errado
+// não pode reabrir OS fechada.
+let osSelecionadas = new Set();
+
+function _osToggleSelecao(id){
+  if(osSelecionadas.has(id)) osSelecionadas.delete(id); else osSelecionadas.add(id);
+  _osRenderBarraLote();
+}
+function _osToggleTodos(){
+  const boxes=document.querySelectorAll('[data-os-check]');
+  const todosMarcados = boxes.length>0 && [...boxes].every(b=>osSelecionadas.has(b.dataset.osCheck));
+  boxes.forEach(b=>{
+    const id=b.dataset.osCheck;
+    if(todosMarcados) osSelecionadas.delete(id); else osSelecionadas.add(id);
+    b.checked=!todosMarcados;
+  });
+  _osRenderBarraLote();
+}
+function _osLimparSelecao(){
+  osSelecionadas.clear();
+  document.querySelectorAll('[data-os-check]').forEach(b=>{ b.checked=false; });
+  const t=document.getElementById('os-check-todos'); if(t) t.checked=false;
+  _osRenderBarraLote();
+}
+function _osRenderBarraLote(){
+  const el=document.getElementById('os-lote-barra'); if(!el) return;
+  if(!osSelecionadas.size){ el.style.display='none'; el.innerHTML=''; return; }
+  el.style.display='flex';
+  el.innerHTML=`
+    <span style="font-weight:700;color:var(--c2);font-size:13px">${osSelecionadas.size} selecionada${osSelecionadas.size!==1?'s':''}</span>
+    <button type="button" class="tb g" onclick="_osLoteAtribuirTecnico()">Atribuir técnico</button>
+    <button type="button" class="tb" onclick="_osLoteRemarcar()">Remarcar</button>
+    <button type="button" class="tb" onclick="_osLoteConcluir()">Concluir</button>
+    <button type="button" class="tb d" onclick="_osLoteCancelar()">Cancelar OS</button>
+    <button type="button" class="tb" style="margin-left:auto" onclick="_osLimparSelecao()">Limpar seleção</button>`;
+}
+// Persiste o estado local depois de um lote — sem isto, recarregar a tela
+// mostraria o estado antigo até o próximo sync.
+function _osLoteSalvarLocal(){
+  try{ lsSet('fluxa_os_hist', JSON.stringify(todosOS.slice(0,200))); }
+  catch(e){ console.warn('[osLote local]', e?.message||e); }
+}
+function _osLoteAtivas(){
+  return [...osSelecionadas]
+    .map(id=>todosOS.find(x=>x.id===id))
+    .filter(o=>o && o.status!=='concluido' && o.status!=='cancelado');
+}
+
+function _osLoteAtribuirTecnico(){
+  if(!osSelecionadas.size) return;
+  const tecs=(typeof getTecnicos==='function')?getTecnicos():[];
+  abrirModal({id:'os-lote-modal', corpo:`
+    <h3>Atribuir técnico</h3>
+    <p class="rd-modal-sub">${osSelecionadas.size} OS selecionada${osSelecionadas.size!==1?'s':''}</p>
+    <div class="rd-field"><label class="rd-field-lbl">Técnico</label>
+      <div class="rd-field-box"><select id="os-lote-tec-select" style="width:100%">
+        <option value="">Selecione…</option>${tecs.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('')}
+      </select></div></div>
+    <div class="rd-modal-acts">
+      <button class="rd-modal-btn rd-modal-btn-nao" onclick="fecharModalGenerico('os-lote-modal')">Cancelar</button>
+      <button class="rd-modal-btn rd-modal-btn-sim" onclick="_osLoteAtribuirConfirmar()">Atribuir</button>
+    </div>`});
+}
+async function _osLoteAtribuirConfirmar(){
+  const tec=gV('os-lote-tec-select');
+  if(!tec){ toast('⚠️ Selecione um técnico'); return; }
+  fecharModalGenerico('os-lote-modal');
+  const alvos=_osLoteAtivas();
+  let ok=0, falhou=0;
+  for(const o of alvos){
+    if(dbOk&&db&&!String(o.id).startsWith('local_')){
+      try{
+        const r=await dbUpdate('ordens_servico', {tecnico:tec}, 'id', o.id);
+        // dbUpdate NÃO rejeita em erro de query — só resolve com {error}.
+        // Contar sucesso sem checar isto marcaria como feito o que não foi.
+        if(r?.error){ console.warn('[osLoteAtribuir]', r.error.message); falhou++; continue; }
+      }catch(e){ console.warn('[osLoteAtribuir]', e?.message||e); falhou++; continue; }
+    }
+    o.tecnico=tec; ok++;
+  }
+  _osLoteSalvarLocal();
+  if(typeof logAcao==='function') logAcao('os_lote_atribuir', `${ok} OS atribuídas a ${tec}`);
+  osSelecionadas.clear(); renderOSTabela();
+  toast(falhou?`${ok} atribuída${ok!==1?'s':''} · ${falhou} não sincronizou — verifique a conexão`
+              :`✅ ${ok} OS atribuída${ok!==1?'s':''} a ${tec}`);
+}
+
+function _osLoteRemarcar(){
+  if(!osSelecionadas.size) return;
+  abrirModal({id:'os-lote-modal', corpo:`
+    <h3>Remarcar</h3>
+    <p class="rd-modal-sub">${osSelecionadas.size} OS selecionada${osSelecionadas.size!==1?'s':''} — nova data</p>
+    <div class="rd-field"><label class="rd-field-lbl">Data</label>
+      <div class="rd-field-box"><input type="date" id="os-lote-data-input" value="${_hojeLocal()}" style="width:100%"></div></div>
+    <div class="rd-modal-acts">
+      <button class="rd-modal-btn rd-modal-btn-nao" onclick="fecharModalGenerico('os-lote-modal')">Cancelar</button>
+      <button class="rd-modal-btn rd-modal-btn-sim" onclick="_osLoteRemarcarConfirmar()">Remarcar</button>
+    </div>`});
+}
+async function _osLoteRemarcarConfirmar(){
+  const novaData=gV('os-lote-data-input');
+  if(!novaData){ toast('⚠️ Escolha uma data'); return; }
+  fecharModalGenerico('os-lote-modal');
+  const alvos=_osLoteAtivas();
+  let ok=0, falhou=0;
+  for(const o of alvos){
+    if(dbOk&&db&&!String(o.id).startsWith('local_')){
+      try{
+        const r=await dbUpdate('ordens_servico', {data_servico:novaData, status:'agendado'}, 'id', o.id);
+        if(r?.error){ console.warn('[osLoteRemarcar]', r.error.message); falhou++; continue; }
+      }catch(e){ console.warn('[osLoteRemarcar]', e?.message||e); falhou++; continue; }
+    }
+    o.data_servico=novaData; o.status='agendado'; ok++;
+  }
+  _osLoteSalvarLocal();
+  if(typeof logAcao==='function') logAcao('os_lote_remarcar', `${ok} OS remarcadas para ${novaData}`);
+  osSelecionadas.clear(); renderOSTabela();
+  toast(falhou?`${ok} remarcada${ok!==1?'s':''} · ${falhou} não sincronizou — verifique a conexão`
+              :`✅ ${ok} OS remarcada${ok!==1?'s':''}`);
+}
+
+function _osLoteConcluir(){
+  if(!osSelecionadas.size) return;
+  const n=osSelecionadas.size;
+  confirmar({
+    titulo:'Concluir OS em lote',
+    msg:`${n} ordem${n!==1?'s':''} de serviço será${n!==1?'ão':''} marcada${n!==1?'s':''} como concluída${n!==1?'s':''} — sem check-in/check-out, sem observação, material ou foto. Pra registrar o que foi feito em alguma delas, abra a OS individualmente. Dá baixa automática no estoque quando há orçamento vinculado.`,
+    labelSim:'Concluir as '+n, labelNao:'Cancelar',
+    onSim: async ()=>{
+      const alvos=_osLoteAtivas();
+      let ok=0, falhou=0;
+      for(const o of alvos){
+        if(dbOk&&db&&!String(o.id).startsWith('local_')){
+          try{
+            const r=await dbUpdate('ordens_servico', {status:'concluido'}, 'id', o.id);
+            if(r?.error){ console.warn('[osLoteConcluir]', r.error.message); falhou++; continue; }
+          }catch(e){ console.warn('[osLoteConcluir]', e?.message||e); falhou++; continue; }
+        }
+        // Só marca local DEPOIS de confirmar o servidor — senão a tela diria
+        // "concluída" e o próximo sync traria de volta como pendente.
+        o.status='concluido'; ok++;
+        try{ if(typeof _entregarPelaOS==='function') _entregarPelaOS(o.id); }catch(e){ console.warn('[osLote entrega]', e?.message||e); }
+        if(o.agendamento_id && typeof _gerarProximaOSdoAg==='function'){
+          Promise.resolve(_gerarProximaOSdoAg(o.agendamento_id, o.data_servico)).catch(e=>console.warn('[osLote proxOS]', e?.message||e));
+        }
+      }
+      _osLoteSalvarLocal();
+      if(typeof logAcao==='function') logAcao('os_lote_concluir', `${ok} OS concluídas em lote`);
+      osSelecionadas.clear(); renderOSTabela(); atualizarDash();
+      toast(falhou?`${ok} concluída${ok!==1?'s':''} · ${falhou} não sincronizou — verifique a conexão`
+                  :`✅ ${ok} OS concluída${ok!==1?'s':''}`);
+    }
+  });
+}
+
+function _osLoteCancelar(){
+  if(!osSelecionadas.size) return;
+  const n=osSelecionadas.size;
+  confirmar({
+    titulo:'Cancelar OS em lote', destrutivo:true,
+    msg:`${n} ordem${n!==1?'s':''} de serviço será${n!==1?'ão':''} marcada${n!==1?'s':''} como cancelada${n!==1?'s':''}. Não dá para desfazer em lote.`,
+    labelSim:'Cancelar as '+n, labelNao:'Manter',
+    onSim: async ()=>{
+      const alvos=_osLoteAtivas();
+      let ok=0, falhou=0;
+      for(const o of alvos){
+        if(dbOk&&db&&!String(o.id).startsWith('local_')){
+          try{
+            const r=await dbUpdate('ordens_servico', {status:'cancelado'}, 'id', o.id);
+            if(r?.error){ console.warn('[osLoteCancelar]', r.error.message); falhou++; continue; }
+          }catch(e){ console.warn('[osLoteCancelar]', e?.message||e); falhou++; continue; }
+        }
+        o.status='cancelado'; ok++;
+      }
+      _osLoteSalvarLocal();
+      if(typeof logAcao==='function') logAcao('os_lote_cancelar', `${ok} OS canceladas em lote`);
+      osSelecionadas.clear(); renderOSTabela(); atualizarDash();
+      toast(falhou?`${ok} cancelada${ok!==1?'s':''} · ${falhou} não sincronizou — verifique a conexão`
+                  :`✅ ${ok} OS cancelada${ok!==1?'s':''}`);
+    }
+  });
+}
+
 function renderOSTabela(){
   populaFiltTecOS();
   let lista=todosOS;
@@ -4821,7 +5007,13 @@ function renderOSTabela(){
     (o.cliente||'').toLowerCase().includes(buscaOS)||
     String(o.numero||'').includes(buscaOS.replace('#',''))
   );
-  if(!lista.length){ document.getElementById('osh-body').innerHTML=`<div class="empty-st"><div class="ei">📋</div><p>Nenhuma OS encontrada.</p><button class="btn-primary" style="margin-top:12px" onclick="novaOS();go('os')">＋ Nova OS</button></div>`; return; }
+  if(!lista.length){
+    // Limpa ANTES do return: sem isto a barra continuava dizendo "N
+    // selecionadas" sobre uma lista vazia, prometendo uma ação sobre OS que
+    // a pessoa não está mais vendo.
+    osSelecionadas.clear(); _osRenderBarraLote();
+    document.getElementById('osh-body').innerHTML=`<div class="empty-st"><div class="ei">📋</div><p>Nenhuma OS encontrada.</p><button class="btn-primary" style="margin-top:12px" onclick="novaOS();go('os')">＋ Nova OS</button></div>`; return;
+  }
   // Ordena: pendentes/atrasadas por data crescente primeiro; concluídas/canceladas no final
   const _hoje=_hojeLocal();
   lista=lista.slice().sort((a,b)=>{
@@ -4831,7 +5023,9 @@ function renderOSTabela(){
     const da=a.data_servico||'9999'; const db2=b.data_servico||'9999';
     return da<db2?-1:da>db2?1:0;
   });
-  let h=`<div class="htw"><table class="ht"><thead><tr><th>#</th><th>Cliente</th><th>Local</th><th>Data</th><th>Técnico</th><th>Status</th><th>Ações</th></tr></thead><tbody>`;
+  // Só faz sentido selecionar em lote quem pode agir em lote.
+  const podeLote = !eVendas() && !eTecnico();
+  let h=`<div class="htw"><table class="ht"><thead><tr>${podeLote?'<th style="width:28px"><input type="checkbox" id="os-check-todos" onchange="_osToggleTodos()" title="Selecionar todos" style="cursor:pointer"></th>':''}<th>#</th><th>Cliente</th><th>Local</th><th>Data</th><th>Técnico</th><th>Status</th><th>Ações</th></tr></thead><tbody>`;
   lista.forEach(o=>{
     _nc[o.id]=o;
     const num=String(o.numero||'—').padStart(3,'0');
@@ -4839,7 +5033,10 @@ function renderOSTabela(){
     const atrasado=o.status==='agendado'&&o.data_servico&&o.data_servico<_hoje;
     const stCl=o.status==='concluido'?'os-concluido':o.status==='cancelado'?'os-cancelado':atrasado?'os-atrasado':'os-agendado';
     const stTx=o.status==='concluido'?'✅ Concluído':o.status==='cancelado'?'Cancelado':atrasado?'⚠️ Atrasado':'📅 Agendado';
+    // stopPropagation: a linha inteira não é clicável aqui, mas o clique no
+    // checkbox não pode disparar nenhum handler de célula vizinha.
     h+=`<tr>
+      ${podeLote?`<td><input type="checkbox" data-os-check="${o.id}"${osSelecionadas.has(o.id)?' checked':''} onclick="event.stopPropagation()" onchange="_osToggleSelecao('${o.id}')" style="cursor:pointer"></td>`:''}
       <td><span class="on">#${num}</span></td>
       <td><div class="ocl">${esc(o.cliente||'—')}</div>
         <div style="margin-top:3px">${getLojaBadge(o.loja_id)}</div></td>
@@ -4864,6 +5061,14 @@ function renderOSTabela(){
   h+='</tbody></table></div>';
   if(_osTemMais) h+=`<div style="text-align:center;padding:14px 0"><button id="os-carregar-mais" class="fb" onclick="_carregarMaisOS()">Carregar mais antigas…</button></div>`;
   document.getElementById('osh-body').innerHTML=h;
+  // A seleção some sozinha se a OS saiu da lista (filtro/busca mudou) — manter
+  // um id selecionado que não está mais visível faria a barra prometer uma
+  // ação sobre algo que a pessoa não vê.
+  if(podeLote){
+    const visiveis=new Set(lista.map(o=>o.id));
+    [...osSelecionadas].forEach(id=>{ if(!visiveis.has(id)) osSelecionadas.delete(id); });
+    _osRenderBarraLote();
+  } else { osSelecionadas.clear(); _osRenderBarraLote(); }
   _iniciarScrollHint(document.querySelector('#osh-body .htw'));
 }
 
@@ -8051,7 +8256,13 @@ function verFotoDesp(id){
 // ══════════════════════════════════════════════════
 let todosAg = [], calAno, calMes, checkinAt = null, checkinTimer = null;
 
-function getTecnicos(){ return CFG.tecnicos || LOJAS.flatMap(l=>l.tecs||[]).filter((v,i,a)=>a.indexOf(v)===i); }
+// 🔴 CFG.tecnicos era um campo MORTO (textarea display:none que nenhuma tela
+// mostra ou edita) e, por vir antes do ||, sempre vencia — mas array vazio é
+// TRUTHY em JS, então `[] || LOJAS...` devolve `[]`. Resultado: TODO seletor de
+// técnico do app ficava vazio em qualquer empresa que não tivesse esse campo
+// preenchido à mão, que é o padrão. A fonte real é LOJAS[].tecs, editável na
+// tela de Empresa.
+function getTecnicos(){ return LOJAS.flatMap(l=>l.tecs||[]).filter(v=>v).filter((v,i,a)=>a.indexOf(v)===i); }
 
 function populaTecSelects(){
   const tecs=getTecnicos();
@@ -9963,7 +10174,7 @@ function abrirLocForm(id){
   // técnico select
   const sel=document.getElementById('loc-tec');
   sel.innerHTML='<option value="">Qualquer técnico</option>';
-  const tecList=(typeof CFG!=='undefined'&&CFG.tecnicos)?CFG.tecnicos:[];
+  const tecList=(typeof getTecnicos==='function')?getTecnicos():[];
   tecList.forEach(t=>{ const o=document.createElement('option'); o.value=t; o.textContent=t; sel.appendChild(o); });
   // seletor de unidade — visível quando gestor está em "Todas" e há múltiplas unidades no grupo
   const lojaRow=document.getElementById('loc-loja-row');
