@@ -1276,7 +1276,7 @@
 </div>
 
 <!-- Modal do card CRM -->
-<div class="crm-modal-bg" id="crm-modal-bg" role="dialog" aria-modal="true" onclick="if(event.target===this)fecharCrmCard()">
+<div class="crm-modal-bg" id="crm-modal-bg" role="dialog" aria-modal="true" data-close="fecharCrmCard">
   <div class="crm-modal" id="crm-modal"></div>
 </div>
 
@@ -1437,7 +1437,7 @@
 </div>
 
 <!-- ══ MODAL QR CODE ══ -->
-<div class="qr-modal-bg" id="qr-modal-bg" onclick="if(event.target===this)fecharQR()">
+<div class="qr-modal-bg" id="qr-modal-bg" data-close="fecharQR">
   <div class="qr-modal">
     <h3 id="qr-eq-nome">Equipamento</h3>
     <p id="qr-eq-info">Cliente — Tipo</p>
@@ -2369,7 +2369,7 @@
 </div>
 
 <!-- Modal: lista de compras consolidada -->
-<div class="qr-modal-bg" id="compras-modal" style="display:none" onclick="if(event.target===this)fecharListaCompras()">
+<div class="qr-modal-bg" id="compras-modal" style="display:none" data-close="fecharListaCompras">
   <div class="card" style="max-width:520px;width:92%;max-height:85vh;overflow:auto">
     <div class="ct">🛒 Lista de compras <button onclick="fecharListaCompras()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;float:right;line-height:1">×</button></div>
     <div id="compras-body"></div>
@@ -2378,7 +2378,7 @@
 </div>
 
 <!-- Modal: cadastro/edição de produto -->
-<div class="qr-modal-bg" id="prod-modal" style="display:none" onclick="if(event.target===this)fecharProdutoModal()">
+<div class="qr-modal-bg" id="prod-modal" style="display:none" data-close="fecharProdutoModal">
   <div class="card" style="max-width:560px;width:92%;max-height:88vh;overflow:auto">
     <div class="ct" id="prod-modal-titulo">Novo produto <button onclick="fecharProdutoModal()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;float:right;line-height:1">×</button></div>
     <div id="prod-loja-wrap"></div>
@@ -2443,7 +2443,7 @@
 </div>
 
 <!-- Modal: movimento (entrada/saída/ajuste) -->
-<div class="qr-modal-bg" id="mov-modal" style="display:none" onclick="if(event.target===this)fecharMovModal()">
+<div class="qr-modal-bg" id="mov-modal" style="display:none" data-close="fecharMovModal">
   <div class="card" style="max-width:420px;width:92%">
     <div class="ct" id="mov-modal-titulo">Movimento <button onclick="fecharMovModal()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;float:right;line-height:1">×</button></div>
     <div id="mov-saldo-atual" style="font-size:12px;color:var(--gray);margin-bottom:10px"></div>
@@ -2455,7 +2455,7 @@
 </div>
 
 <!-- Modal: transferência entre unidades -->
-<div class="qr-modal-bg" id="transf-modal" style="display:none" onclick="if(event.target===this)fecharTransfModal()">
+<div class="qr-modal-bg" id="transf-modal" style="display:none" data-close="fecharTransfModal">
   <div class="card" style="max-width:420px;width:92%">
     <div class="ct" id="transf-modal-titulo">Transferir <button onclick="fecharTransfModal()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;float:right;line-height:1">×</button></div>
     <div id="transf-origem" style="font-size:12px;color:var(--gray);margin-bottom:10px"></div>
@@ -2469,7 +2469,7 @@
 </div>
 
 <!-- Modal: importar produtos de planilha -->
-<div class="qr-modal-bg" id="import-prod-modal" style="display:none" onclick="if(event.target===this)fecharImportProdutos()">
+<div class="qr-modal-bg" id="import-prod-modal" style="display:none" data-close="fecharImportProdutos">
   <div class="card" style="max-width:680px;width:95%;max-height:90vh;overflow:auto">
     <div class="ct" style="position:sticky;top:0;z-index:2;background:var(--white);margin-top:-6px;padding-top:6px">
       Importar produtos da planilha
@@ -2512,7 +2512,7 @@
 </div>
 
 <!-- Modal: selecionar produto para o item do orçamento -->
-<div class="qr-modal-bg" id="prodpicker-modal" style="display:none" onclick="if(event.target===this)fecharPickerProduto()">
+<div class="qr-modal-bg" id="prodpicker-modal" style="display:none" data-close="fecharPickerProduto">
   <div class="card" style="max-width:460px;width:92%;max-height:80vh;overflow:auto">
     <div class="ct">Vincular produto <button onclick="fecharPickerProduto()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;float:right;line-height:1">×</button></div>
     <input class="hsrch" type="text" id="prodpicker-busca" placeholder="🔍 Buscar produto…" oninput="renderPickerProduto(this.value)" style="width:100%;margin-bottom:8px">
@@ -2521,7 +2521,7 @@
 </div>
 
 <!-- Modal: histórico do produto -->
-<div class="qr-modal-bg" id="hist-prod-modal" style="display:none" onclick="if(event.target===this)fecharHistProduto()">
+<div class="qr-modal-bg" id="hist-prod-modal" style="display:none" data-close="fecharHistProduto">
   <div class="card" style="max-width:480px;width:92%;max-height:80vh;overflow:auto">
     <div class="ct" id="hist-prod-titulo">Histórico <button onclick="fecharHistProduto()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;float:right;line-height:1">×</button></div>
     <div id="hist-prod-body"></div>
@@ -2529,7 +2529,7 @@
 </div>
 
 <!-- Modal: fornecedores -->
-<div class="qr-modal-bg" id="fornec-modal" style="display:none" onclick="if(event.target===this)fecharFornecModal()">
+<div class="qr-modal-bg" id="fornec-modal" style="display:none" data-close="fecharFornecModal">
   <div class="card" style="max-width:540px;width:92%;max-height:88vh;overflow:auto">
     <div class="ct">👥 Fornecedores <button onclick="fecharFornecModal()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;line-height:1;margin-left:auto;padding:0 4px">×</button></div>
     <div id="fornec-lista"></div>
@@ -2552,7 +2552,7 @@
 </div>
 
 <!-- Modal: lista de ordens de compra -->
-<div class="qr-modal-bg" id="oc-list-modal" style="display:none" onclick="if(event.target===this)fecharOCListModal()">
+<div class="qr-modal-bg" id="oc-list-modal" style="display:none" data-close="fecharOCListModal">
   <div class="card" style="max-width:600px;width:92%;max-height:88vh;overflow:auto">
     <div class="ct">📄 Ordens de Compra <button onclick="fecharOCListModal()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;line-height:1;margin-left:auto;padding:0 4px">×</button></div>
     <div style="display:flex;gap:8px;margin-bottom:10px">
@@ -2564,7 +2564,7 @@
 </div>
 
 <!-- Modal: formulário de OC -->
-<div class="qr-modal-bg" id="oc-form-modal" style="display:none" onclick="if(event.target===this)fecharOCFormModal()">
+<div class="qr-modal-bg" id="oc-form-modal" style="display:none" data-close="fecharOCFormModal">
   <div class="card" style="max-width:580px;width:92%;max-height:90vh;overflow:auto">
     <div class="ct" id="oc-form-titulo">Nova Ordem de Compra <button onclick="fecharOCFormModal()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;line-height:1;margin-left:auto;padding:0 4px">×</button></div>
     <div class="row">
@@ -2587,7 +2587,7 @@
 </div>
 
 <!-- Modal: balanço de inventário -->
-<div class="qr-modal-bg" id="balanco-modal" style="display:none" onclick="if(event.target===this)fecharBalancoModal()">
+<div class="qr-modal-bg" id="balanco-modal" style="display:none" data-close="fecharBalancoModal">
   <div class="card" style="max-width:580px;width:92%;max-height:90vh;overflow:auto">
     <div class="ct">📋 Balanço de Inventário <button onclick="fecharBalancoModal()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;line-height:1;margin-left:auto;padding:0 4px">×</button></div>
     <div style="font-size:12px;color:var(--gray);margin-bottom:12px">Informe a quantidade física contada para cada produto. O sistema vai gerar ajustes automáticos para as diferenças.</div>
@@ -3078,7 +3078,7 @@
 
 <!-- ══ MODAL: REGISTRAR PAGAMENTO ══ -->
 <!-- ══ MODAL: BUSCA CLIENTE ══ -->
-<div class="modal-cli-bg" id="modal-busca-cli" style="display:none" onclick="if(event.target===this)fecharBuscaCli()">
+<div class="modal-cli-bg" id="modal-busca-cli" style="display:none" data-close="fecharBuscaCli">
   <div class="modal-cli-box">
     <div style="display:flex;justify-content:space-between;align-items:center">
       <div style="font-size:15px;font-weight:700;color:var(--c2)">Buscar Cliente</div>
@@ -3089,7 +3089,7 @@
   </div>
 </div>
 
-<div class="modal-bg" id="modal-pg" onclick="if(event.target===this)fecharModal()">
+<div class="modal-bg" id="modal-pg" data-close="fecharModal">
   <div class="modal">
     <h3>💰 Registrar Pagamento</h3>
     <div class="fl" style="margin-bottom:10px"><label>Valor Total do Orçamento</label><input type="text" id="mg-tot" readonly style="background:var(--gray-light)"></div>
@@ -3127,14 +3127,14 @@
 <!-- ══ MODAL: Finalizar serviço (Tarefa 3i.7, 19/08) — passo terminal
      único, substitui Concluir + Check-out + Salvar. Conteúdo montado por
      _finalizarOSRender(), padrão .rd-modal-wide (560px, mesmo da 3c). ══ -->
-<div class="rd-modal-bg" id="finalizar-os-modal-bg" role="dialog" aria-modal="true" onclick="if(event.target===this) fecharFinalizarOS()">
+<div class="rd-modal-bg" id="finalizar-os-modal-bg" role="dialog" aria-modal="true" data-close="fecharFinalizarOS">
   <div class="rd-modal rd-modal-wide">
     <div id="finalizar-os-conteudo"></div>
   </div>
 </div>
 
 <!-- ══ MODAL: Criar OS ao aprovar orçamento ══ -->
-<div class="modal-bg" id="aprov-os-bg" onclick="if(event.target===this)fecharAprovOS()">
+<div class="modal-bg" id="aprov-os-bg" data-close="fecharAprovOS">
   <div class="modal" style="max-width:460px">
     <div style="text-align:center;margin-bottom:18px">
       <div style="font-size:32px;margin-bottom:6px">📋</div>
@@ -3162,7 +3162,7 @@
 
 
 <!-- ══ MODAL: NF-e / NFS-e ══ -->
-<div class="nfe-modal-bg" id="nfe-modal-bg" onclick="if(event.target===this)fecharModalNFe()">
+<div class="nfe-modal-bg" id="nfe-modal-bg" data-close="fecharModalNFe">
   <div class="nfe-modal">
     <h3>📄 Emitir Nota Fiscal</h3>
     <div class="nfe-modal-sub" id="nfe-modal-sub">Orçamento #000 — Cliente</div>
@@ -3298,7 +3298,7 @@ window.onerror = function(msg, src, line, col, err){
      orçamento nem de OS. O MOTIVO é obrigatório porque as saídas não são
      todas iguais — sem ele, "saiu 3 cloros" não diz se a empresa ganhou
      (venda) ou perdeu (quebra). -->
-<div class="rd-modal-bg" id="baixa-modal-bg" onclick="if(event.target===this)fecharBaixaRapida()">
+<div class="rd-modal-bg" id="baixa-modal-bg" data-close="fecharBaixaRapida">
   <div class="rd-modal">
     <h3>Dar baixa de material</h3>
     <div class="rd-field">

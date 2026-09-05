@@ -73,10 +73,17 @@ function eVendas(){ const s=getSessao(); return s?.perfil==='vendas'; }
 // dentro de linha clicável dispensa stopPropagation. Migração incremental —
 // convive com onclick inline ainda não convertido; a nav é a 1ª área migrada.
 document.addEventListener('click', e=>{
-  const el=e.target.closest('[data-act]'); if(!el) return;
-  const fn=window[el.getAttribute('data-act')]; if(typeof fn!=='function') return;
-  const raw=el.getAttribute('data-a');
-  fn(...(raw!=null && raw!=='' ? raw.split('|') : []));
+  const el=e.target.closest('[data-act]');
+  if(el){
+    const fn=window[el.getAttribute('data-act')];
+    if(typeof fn==='function'){ const raw=el.getAttribute('data-a'); fn(...(raw!=null && raw!=='' ? raw.split('|') : [])); }
+  }
+  // Fecha-modal por clique no FUNDO: só quando o alvo é o próprio backdrop
+  // (não um filho). Substitui o onclick="if(event.target===this)fecharX()".
+  if(e.target.matches && e.target.matches('[data-close]')){
+    const cf=window[e.target.getAttribute('data-close')];
+    if(typeof cf==='function') cf();
+  }
 });
 // Intenção nomeada pro que era `novaOS();go('os')` no menu (o resto dos
 // compostos da nav colapsou: go() já fecha a sidebar; fazerLogout() também).
