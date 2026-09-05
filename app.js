@@ -10067,6 +10067,7 @@ function renderEqGrid(){
         ${eq.garantia_vencimento?`<div class="eq-inf"><span>Garantia até</span><strong>${new Date(eq.garantia_vencimento+'T12:00:00').toLocaleDateString('pt-BR')}</strong></div>`:''}
       </div>
       <div class="eq-acts">
+        <button class="tb" title="Prontuário: tudo que já passou por este equipamento" onclick="abrirProntuarioEq('${eq.id}')">📋 Prontuário</button>
         <button class="tb" onclick="verQR('${eq.id}')">🔳 QR Code</button>
         <button class="tb" onclick="abrirFormEq('${eq.id}')">✎ Editar</button>
         <button class="tb" title="Notif. garantia" onclick='copiarNotif(notifGarantia(${JSON.stringify(eq)}))'>⚠️💬</button>
@@ -10074,6 +10075,101 @@ function renderEqGrid(){
       </div>`;
     el.appendChild(card);
   });
+}
+
+// ══════════════════════════════════════════════════
+//  PRONTUÁRIO DO EQUIPAMENTO (Fase 10-11) — timeline
+// ══════════════════════════════════════════════════
+// Junta, num só lugar, tudo que já passou por um equipamento: vistorias, OS e
+// orçamentos. É o "valor acumulativo" que o plano mestre pede — o técnico
+// entende o passado antes de decidir o que fazer agora.
+//
+// LIMITE HONESTO do vínculo atual: OS e orçamento no v2 referenciam o CLIENTE
+// (cliente_id), não o aparelho — não existe FK evento→equipamento ainda. Então:
+//   • vistoria: casada por TIPO do equipamento (a vistoria lista os itens por
+//     nome); mostra o status daquele item naquela visita — precisão de aparelho
+//     onde o cliente tem 1 só daquele tipo.
+//   • OS/orçamento: são do CLIENTE (rotulado como tal na tela). Precisão real de
+//     aparelho aqui é a decisão de schema das Fases 10-11 (ver report).
+function _eqEventos(eq){
+  if(!eq) return [];
+  const cid=eq.cliente_id||null;
+  const nomeCli=_normNome(eq.cliente_nome||'');
+  const tipoNorm=_normNome(eq.tipo||'');
+  const doCliente=(reg)=> (cid && reg.cliente_id===cid) ||
+    (!reg.cliente_id && nomeCli && _normNome(reg.cliente||reg.cliente_nome||'')===nomeCli);
+  const eventos=[];
+
+  // Vistorias — casa o item pelo tipo do equipamento
+  try{
+    (lsVisLer()||[]).filter(doCliente).forEach(v=>{
+      const equips=(typeof v.equipamentos==='string'?JSON.parse(v.equipamentos||'[]'):v.equipamentos)||[];
+      const item=equips.find(e=>_normNome(e.nome||'')===tipoNorm || _normNome(e.nome||'').includes(tipoNorm) || (tipoNorm && tipoNorm.includes(_normNome(e.nome||''))));
+      eventos.push({
+        tipo:'vistoria', data:v.data||v.data_criacao||v.created_at||'',
+        titulo:'Vistoria', ref:v.id,
+        detalhe: item ? `${_VIS_STATUS_LBL[item.status]||item.status||'—'}${item.obs?' — '+item.obs:''}` : 'Este equipamento não estava na lista desta vistoria',
+        casado: !!item, status:item?item.status:null
+      });
+    });
+  }catch(e){ console.warn('[prontuario:vis]', e?.message||e); }
+
+  // OS do cliente
+  (todosOS||[]).filter(doCliente).forEach(o=>{
+    eventos.push({ tipo:'os', data:o.data_servico||o.data_criacao||'', titulo:`OS #${String(o.numero||'').padStart(3,'0')}`,
+      ref:o.id, detalhe:(o.servicos||[]).map(x=>typeof x==='string'?x:x.desc).filter(Boolean).slice(0,2).join(' · ')||'—',
+      status:o.status, cliente:true });
+  });
+
+  // Orçamentos do cliente
+  (todosOrc||[]).filter(doCliente).forEach(o=>{
+    eventos.push({ tipo:'orc', data:o.data_servico||o.data_criacao||'', titulo:`Orçamento #${String(o.numero||'').padStart(3,'0')}`,
+      ref:o.id, detalhe:(o.total>0?brl(o.total):'') , status:o.status, cliente:true });
+  });
+
+  // Instalação e garantia do próprio equipamento entram na linha do tempo
+  if(eq.data_instalacao) eventos.push({tipo:'inst', data:eq.data_instalacao, titulo:'Instalação', detalhe:`${eq.marca||''} ${eq.modelo||''}`.trim(), status:null});
+
+  return eventos
+    .map(e=>({...e, _d: e.data ? new Date(String(e.data).length<=10?e.data+'T12:00:00':e.data) : null}))
+    .filter(e=>e._d && !isNaN(e._d))
+    .sort((a,b)=>b._d-a._d);
+}
+const _VIS_STATUS_LBL={bom:'✅ Bom',atencao:'⚠️ Atenção',critico:'🔴 Crítico',na:'— N/A'};
+const _PRONT_ICONE={vistoria:'🔍',os:'🔧',orc:'📄',inst:'📦'};
+function abrirProntuarioEq(id){
+  const eq=(todosEq||[]).find(x=>x.id===id);
+  if(!eq){ toast('Equipamento não encontrado'); return; }
+  const evs=_eqEventos(eq);
+  const ident=[
+    eq.numero_serie?`Série ${esc(eq.numero_serie)}`:'',
+    eq.potencia?esc(eq.potencia):'',
+    eq.data_instalacao?`instalado em ${new Date(eq.data_instalacao+'T12:00:00').toLocaleDateString('pt-BR')}`:'',
+    eq.garantia_vencimento?`garantia até ${new Date(eq.garantia_vencimento+'T12:00:00').toLocaleDateString('pt-BR')}`:'',
+  ].filter(Boolean).join(' · ');
+  const linhas = evs.length ? evs.map(e=>{
+    const dt=e._d.toLocaleDateString('pt-BR');
+    const escopo = e.cliente ? ' <span style="font-size:10px;color:var(--gray)">(do cliente)</span>' : '';
+    const clk = e.tipo==='os'||e.tipo==='orc';
+    const oncl = clk ? ` style="cursor:pointer" onclick="fecharModalGenerico('pront-eq-bg'); ${e.tipo==='os'?`verDetalhesOS('${e.ref}')`:`verOrcPDF('${e.ref}')`}"` : '';
+    return `<div class="pront-ev"${oncl}>
+      <div class="pront-ev-ico">${_PRONT_ICONE[e.tipo]||'•'}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;color:var(--c2)">${esc(e.titulo)}${escopo}</div>
+        <div style="font-size:11.5px;color:var(--gray);overflow:hidden;text-overflow:ellipsis">${esc(e.detalhe||'')}</div>
+      </div>
+      <div style="font-size:11px;color:var(--gray);white-space:nowrap">${dt}</div>
+    </div>`;
+  }).join('') : '<div style="padding:24px;text-align:center;color:var(--gray);font-size:13px">Nenhum evento registrado para este equipamento ainda.</div>';
+  abrirModal({id:'pront-eq-bg', largura:'wide', corpo:`
+    <div class="rd-modal-title">📋 ${esc(eq.tipo||'Equipamento')} — ${esc(eq.marca||'')} ${esc(eq.modelo||'')}</div>
+    <div style="font-size:12px;color:var(--gray);margin-bottom:4px">👤 ${esc(eq.cliente_nome||'—')}</div>
+    ${ident?`<div style="font-size:11.5px;color:var(--tx3);margin-bottom:12px">${ident}</div>`:''}
+    <div style="font-size:11px;color:var(--gray);background:var(--gray-light);border-radius:8px;padding:8px 10px;margin-bottom:12px">
+      Vistorias são casadas pelo tipo do equipamento; OS e orçamentos são do cliente (o vínculo por aparelho vem depois).
+    </div>
+    <div style="max-height:52vh;overflow:auto">${linhas}</div>
+    <div class="rd-modal-acts"><button class="rd-modal-btn rd-modal-btn-nao" onclick="fecharModalGenerico('pront-eq-bg')">Fechar</button></div>`});
 }
 
 function verificarAlertasGarantia(){
