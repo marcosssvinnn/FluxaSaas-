@@ -99,7 +99,7 @@
             <a href="#termos" onclick="abrirLegal('termos');return false" style="color:var(--c1);text-decoration:none">Termos de Uso</a> e a
             <a href="#privacidade" onclick="abrirLegal('privacidade');return false" style="color:var(--c1);text-decoration:none">Política de Privacidade</a>.
           </div>
-          <button class="login-btn" id="auth-btn" onclick="authSubmit()" style="margin-top:2px">Entrar →</button>
+          <button class="login-btn" id="auth-btn" data-act="authSubmit" style="margin-top:2px">Entrar →</button>
           <div id="auth-esqueci-wrap" style="text-align:center;font-size:13px;margin-top:-4px">
             <a href="#" id="auth-esqueci-link" onclick="authEsqueciSenha();return false" style="color:var(--gray);text-decoration:none">Esqueci minha senha</a>
           </div>
@@ -127,7 +127,7 @@
               onkeydown="if(event.key==='Enter')authNovaSenha()">
           </div>
           <div class="login-err" id="rec-err" style="margin-top:-4px"></div>
-          <button class="login-btn" id="rec-btn" onclick="authNovaSenha()" style="margin-top:2px">Salvar nova senha</button>
+          <button class="login-btn" id="rec-btn" data-act="authNovaSenha" style="margin-top:2px">Salvar nova senha</button>
         </div>
       </div>
 
@@ -161,7 +161,7 @@
           </div>
 
           <div class="login-err" id="login-err" style="margin-top:-4px"></div>
-          <button class="login-btn" onclick="fazerLogin()" style="margin-top:2px">Entrar →</button>
+          <button class="login-btn" data-act="fazerLogin" style="margin-top:2px">Entrar →</button>
         </div>
       </div>
 
@@ -170,7 +170,7 @@
 
       <!-- PASSO 3 — escolha de empresa (gestor principal) -->
       <div class="login-loja-step" id="login-step-loja">
-        <button class="login-pin-back" onclick="voltarParaPin()">← Voltar</button>
+        <button class="login-pin-back" data-act="voltarParaPin">← Voltar</button>
         <div class="login-card-title" style="margin-bottom:4px">Qual empresa?</div>
         <div class="login-card-sub">Escolha a empresa para gerenciar</div>
         <div class="login-loja-grid" id="login-loja-list"></div>
@@ -188,7 +188,7 @@
 <!-- ══ PÁGINAS LEGAIS (Termos / Privacidade) — públicas, sobre tudo ══ -->
 <div id="legal-overlay" style="display:none;position:fixed;inset:0;z-index:9000;background:var(--bg,#f4f5f7);overflow-y:auto">
   <div style="max-width:760px;margin:0 auto;padding:24px 18px 60px">
-    <button onclick="fecharLegal()" style="background:none;border:none;color:var(--c1);font-size:15px;font-weight:600;cursor:pointer;padding:8px 0;margin-bottom:8px">← Voltar</button>
+    <button data-act="fecharLegal" style="background:none;border:none;color:var(--c1);font-size:15px;font-weight:600;cursor:pointer;padding:8px 0;margin-bottom:8px">← Voltar</button>
     <div id="legal-body" style="font-size:14.5px;line-height:1.65;color:var(--c2,#2B3244)"></div>
   </div>
 </div>
@@ -202,14 +202,14 @@
     </div>
   </div>
   <div style="margin-left:auto;flex-shrink:0;display:flex;align-items:center;gap:8px;padding-right:8px">
-    <button class="ba" onclick="loadPlataforma()" title="Atualizar" style="background:transparent;color:#fff;border:1px solid #3a3f52">🔄</button>
-    <button class="ba" onclick="authLogout()" style="background:var(--red);color:#fff;white-space:nowrap">🚪 Sair</button>
+    <button class="ba" data-act="loadPlataforma" title="Atualizar" style="background:transparent;color:#fff;border:1px solid #3a3f52">🔄</button>
+    <button class="ba" data-act="authLogout" style="background:var(--red);color:#fff;white-space:nowrap">🚪 Sair</button>
   </div>
 </header>
 
 <!-- ══ HEADER (app de empresa — não aparece pra admin da plataforma) ══ -->
 <header class="hdr" id="app-hdr">
-  <button class="btn-sbar" id="btn-sbar" onclick="toggleSidebar()" aria-label="Menu lateral" title="Menu">☰</button>
+  <button class="btn-sbar" id="btn-sbar" data-act="toggleSidebar" aria-label="Menu lateral" title="Menu">☰</button>
   <div class="hdr-logo">
     <img id="hdr-logo-img" alt="Logo da empresa" width="32" height="32">
     <div class="hdr-logo-text">
@@ -234,12 +234,12 @@
     <select class="loja-select" id="hdr-loja-select" onchange="trocarLojaAtiva(this.value)" title="Empresa ativa" style="display:none">
       <option value="">Todas as empresas</option>
     </select>
-    <div class="hdr-user" id="hdr-user" onclick="toggleGear()" title="Usuário logado">
+    <div class="hdr-user" id="hdr-user" data-act="toggleGear" title="Usuário logado">
       <div class="hdr-user-avatar" id="hdr-user-avatar">G</div>
       <span class="hdr-user-nome" id="hdr-user-nome">Gestor</span>
     </div>
     <div class="gear-wrap" id="notif-wrap">
-      <button class="btn-sm btn-gear" id="btn-notif" onclick="toggleNotificacoes()" title="Notificações" style="position:relative">
+      <button class="btn-sm btn-gear" id="btn-notif" data-act="toggleNotificacoes" title="Notificações" style="position:relative">
         🔔<span class="notif-badge" id="notif-badge" style="display:none">0</span>
       </button>
       <div class="gear-menu notif-menu" id="notif-menu" style="display:none">
@@ -252,7 +252,7 @@
     </div>
     <button class="btn-sm" id="btn-atualizar" onclick="atualizarDados(this)" title="Atualizar dados" style="background:none;border:none;cursor:pointer;font-size:16px;padding:4px 6px;line-height:1">🔄</button>
     <div class="gear-wrap">
-      <button class="btn-sm btn-gear" id="btn-gear" onclick="toggleGear()" title="Configurações">⚙️</button>
+      <button class="btn-sm btn-gear" id="btn-gear" data-act="toggleGear" title="Configurações">⚙️</button>
       <div class="gear-menu" id="gear-menu" style="display:none">
         <div class="gear-status"><span class="db-dot" id="db-dot2"></span><span id="db-txt2" style="font-size:12px;color:#6b7280">…</span></div>
         <div class="gear-section">Configurações</div>
@@ -268,7 +268,7 @@
 </header>
 
 <!-- ══ SIDEBAR OVERLAY ══ -->
-<div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+<div class="sidebar-overlay" id="sidebar-overlay" data-act="closeSidebar"></div>
 
 <!-- ══ SIDEBAR ══ -->
 <aside class="sidebar s-hidden" id="sidebar" role="navigation" aria-label="Menu principal">
@@ -363,7 +363,7 @@
   </nav>
 
   <div class="snav-footer">
-    <button class="snb snav-foot-item" onclick="toggleGear()">
+    <button class="snb snav-foot-item" data-act="toggleGear">
       <svg class="sicon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M12 2v3M12 19v3M4 12H2M22 12h-2M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"></path></svg>
       <span class="slabel">Configurações</span>
     </button>
@@ -413,8 +413,8 @@
     <div class="painel-acoes">
       <button class="painel-acao-btn" onclick="novoOrc();go('form')"><span class="sicon">＋</span> Novo Orçamento</button>
       <button class="painel-acao-btn" onclick="novaOS();go('os')"><span class="sicon">📋</span> Nova OS</button>
-      <button class="painel-acao-btn" onclick="go('crm')"><span class="sicon">🎯</span> Ver Funil</button>
-      <button class="painel-acao-btn" onclick="go('estoque')"><span class="sicon">📦</span> Ver Estoque</button>
+      <button class="painel-acao-btn" data-act="go" data-a="crm"><span class="sicon">🎯</span> Ver Funil</button>
+      <button class="painel-acao-btn" data-act="go" data-a="estoque"><span class="sicon">📦</span> Ver Estoque</button>
     </div>
 
     <!-- KPIs no padrão .rd-card/.rd-kpi-* (portado do v1, 16/08) — mesmos
@@ -459,7 +459,7 @@
     <div class="dash-chart-card" id="painel-crm-card">
       <div class="dash-chart-hdr">
         <div class="dash-chart-titulo">🎯 Funil de Vendas</div>
-        <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:5px 12px;font-size:12px" onclick="go('crm')">Ver funil completo →</button>
+        <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:5px 12px;font-size:12px" data-act="go" data-a="crm">Ver funil completo →</button>
       </div>
       <div id="painel-crm-body"></div>
     </div>
@@ -517,8 +517,8 @@
       <div class="dash-chart-hdr">
         <div class="dash-chart-titulo">📦 Estoque — comprar / repor</div>
         <div style="display:flex;gap:6px;align-items:center">
-          <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:5px 12px;font-size:12px" onclick="go('estoque')">Abrir estoque →</button>
-          <button class="ba" style="background:transparent;color:var(--gray);padding:5px 8px;font-size:12px;border:1.5px solid var(--gray-mid)" onclick="dispensarAlertaEstoque()" title="Ocultar este aviso por 7 dias">✕ Ignorar 7 dias</button>
+          <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:5px 12px;font-size:12px" data-act="go" data-a="estoque">Abrir estoque →</button>
+          <button class="ba" style="background:transparent;color:var(--gray);padding:5px 8px;font-size:12px;border:1.5px solid var(--gray-mid)" data-act="dispensarAlertaEstoque" title="Ocultar este aviso por 7 dias">✕ Ignorar 7 dias</button>
         </div>
       </div>
       <div id="dash-estoque-body"></div>
@@ -530,7 +530,7 @@
 <div class="page" id="page-empresa">
   <div class="wrap" style="max-width:660px">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding-top:8px">
-      <button onclick="go('form')" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:13px;font-weight:600;font-family:'Inter',sans-serif;display:flex;align-items:center;gap:5px">← Voltar</button>
+      <button data-act="go" data-a="form" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:13px;font-weight:600;font-family:'Inter',sans-serif;display:flex;align-items:center;gap:5px">← Voltar</button>
       <span style="font-size:18px;font-weight:800;color:var(--c2)">⚙️ Configurações da Empresa</span>
     </div>
     <div class="card">
@@ -585,7 +585,7 @@
         <div style="font-size:14px;font-weight:700;color:var(--c2);margin-bottom:3px">👥 Técnicos e Usuários</div>
         <div style="font-size:13px;color:var(--gray)">Gerencie usuários, perfis e PINs de acesso em um só lugar.</div>
       </div>
-      <button class="btn-primary" style="padding:9px 18px;font-size:13px;white-space:nowrap" onclick="go('usuarios')">Gerenciar Usuários →</button>
+      <button class="btn-primary" style="padding:9px 18px;font-size:13px;white-space:nowrap" data-act="go" data-a="usuarios">Gerenciar Usuários →</button>
     </div>
 
     <div class="card">
@@ -619,7 +619,7 @@
       </div>
     </div>
 
-    <button class="btn-primary" onclick="salvarEmpresa()" style="margin-bottom:20px">💾 Salvar Configurações</button>
+    <button class="btn-primary" data-act="salvarEmpresa" style="margin-bottom:20px">💾 Salvar Configurações</button>
 
     <!-- NOTA FISCAL -->
     <div class="card">
@@ -643,7 +643,7 @@
           <input type="text" id="cfg-nfe-cod-svc" placeholder="7.10">
         </div>
       </div>
-      <button class="btn-primary" onclick="salvarEmpresa()" style="margin-bottom:0">💾 Salvar Configurações</button>
+      <button class="btn-primary" data-act="salvarEmpresa" style="margin-bottom:0">💾 Salvar Configurações</button>
     </div>
 
     <!-- ══ EMAIL AUTOMÁTICO ══ -->
@@ -680,9 +680,9 @@
         <div class="fl"><label>Template ID</label><input type="text" id="cfg-ejs-template" placeholder="template_xxxxxxx"></div>
       </div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-        <button class="btn-primary" onclick="salvarEmpresa()" style="padding:9px 18px">💾 Salvar</button>
+        <button class="btn-primary" data-act="salvarEmpresa" style="padding:9px 18px">💾 Salvar</button>
         <input type="email" id="ejs-test-email" placeholder="seu@email.com" style="flex:1;min-width:180px;border:1.5px solid var(--gray-mid);border-radius:8px;padding:9px 12px;font-size:13px;font-family:'Inter',sans-serif">
-        <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:9px 14px;font-size:13px" onclick="testarEmailJS()">📨 Testar Envio</button>
+        <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:9px 14px;font-size:13px" data-act="testarEmailJS">📨 Testar Envio</button>
         <span id="ejs-status" style="font-size:12px;color:var(--gray)"></span>
       </div>
     </div>
@@ -702,15 +702,15 @@
   <div class="wrap" style="max-width:700px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-top:8px;flex-wrap:wrap;gap:10px">
       <div>
-        <button onclick="go('empresa')" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:13px;font-weight:600;font-family:'Inter',sans-serif">← Voltar</button>
+        <button data-act="go" data-a="empresa" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:13px;font-weight:600;font-family:'Inter',sans-serif">← Voltar</button>
         <span style="font-size:18px;font-weight:800;color:var(--c2);margin-left:8px">👥 Usuários do Sistema</span>
       </div>
-      <button class="btn-primary" style="padding:8px 16px;font-size:13px" onclick="abrirFormUsuario()">＋ Novo Usuário</button>
+      <button class="btn-primary" style="padding:8px 16px;font-size:13px" data-act="abrirFormUsuario">＋ Novo Usuário</button>
     </div>
 
     <!-- Form novo usuário -->
     <div class="card" id="usr-form-card" style="display:none">
-      <div class="ct"><span id="usr-form-titulo">Novo Usuário</span> <button onclick="fecharFormUsuario()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;line-height:1">×</button></div>
+      <div class="ct"><span id="usr-form-titulo">Novo Usuário</span> <button data-act="fecharFormUsuario" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;line-height:1">×</button></div>
       <div class="row">
         <div class="fl"><label>Nome</label><input type="text" id="usr-nome" placeholder="Ex: João Silva"></div>
         <div class="fl">
@@ -735,7 +735,7 @@
           <input type="password" id="usr-pin" maxlength="4" inputmode="numeric" placeholder="••••">
         </div>
       </div>
-      <button class="btn-primary" onclick="salvarUsuario()">💾 Salvar Usuário</button>
+      <button class="btn-primary" data-act="salvarUsuario">💾 Salvar Usuário</button>
     </div>
 
     <!-- Lista de usuários -->
@@ -751,7 +751,7 @@
 <!-- ══ PAGE: AUDITORIA ══ -->
 <div class="page" id="page-auditoria">
   <div class="wrap" style="max-width:760px">
-    <button class="btn-voltar" onclick="voltar()">← Voltar</button>
+    <button class="btn-voltar" data-act="voltar">← Voltar</button>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
       <div style="font-size:18px;font-weight:800;color:var(--c2)">🔐 Auditoria de Acessos</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -784,14 +784,14 @@
          (cartão de estado) fica na coluna direita, 3i.5. -->
     <div id="form-back-bar" style="display:none;flex-direction:column;gap:2px;margin-bottom:14px;padding:12px 16px;background:#fff;border:1px solid var(--line,#DFE5EE);border-radius:var(--r-lg,14px)">
       <div style="display:flex;align-items:center;gap:10px">
-        <button onclick="go('history')" title="Voltar ao Histórico" style="background:none;border:none;cursor:pointer;color:var(--tx3,#6B7686);font-size:18px;line-height:1;padding:2px;flex-shrink:0">←</button>
+        <button data-act="go" data-a="history" title="Voltar ao Histórico" style="background:none;border:none;cursor:pointer;color:var(--tx3,#6B7686);font-size:18px;line-height:1;padding:2px;flex-shrink:0">←</button>
         <div style="flex:1;min-width:0">
           <div id="form-topbar-titulo" style="font-size:15px;font-weight:600;color:var(--c2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
           <div id="form-topbar-sub" style="font-size:11px;color:var(--tx3,#6B7686);margin-top:1px"></div>
         </div>
         <span id="form-topbar-badge" style="flex-shrink:0"></span>
         <div style="position:relative;flex-shrink:0">
-          <button type="button" onclick="_orcTopbarToggleMais()" style="padding:7px 12px;border:1.5px solid var(--gray-mid,#e5e7eb);border-radius:8px;background:#fff;font-size:12px;font-weight:600;cursor:pointer;color:var(--c2);font-family:inherit">Mais ▾</button>
+          <button type="button" data-act="_orcTopbarToggleMais" style="padding:7px 12px;border:1.5px solid var(--gray-mid,#e5e7eb);border-radius:8px;background:#fff;font-size:12px;font-weight:600;cursor:pointer;color:var(--c2);font-family:inherit">Mais ▾</button>
           <div id="form-topbar-mais" style="display:none;position:absolute;right:0;top:calc(100% + 4px);background:#fff;border:1px solid var(--line,#DFE5EE);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.14);min-width:170px;z-index:80;overflow:hidden"></div>
         </div>
       </div>
@@ -829,7 +829,7 @@
           <div class="cli-input-wrap">
             <input type="text" id="cli" placeholder="Ex: João Silva" oninput="upd();mostrarSugestoesCli(this.value)" autocomplete="off" name="cli_nofill_orc" data-lpignore="true" data-form-type="other" readonly onfocus="this.removeAttribute('readonly')" onblur="setTimeout(()=>hideSugCli(),200)">
             <input type="hidden" id="cli-id">
-            <button type="button" class="cli-search-btn" onclick="abrirBuscaCli('orc')" title="Buscar cliente na base">🔍</button>
+            <button type="button" class="cli-search-btn" data-act="abrirBuscaCli" data-a="orc" title="Buscar cliente na base">🔍</button>
             <div class="cli-suggestions" id="cli-suggestions" style="display:none"></div>
           </div>
         </div>
@@ -1014,21 +1014,21 @@
 
     <!-- AÇÕES -->
     <div class="acts" style="grid-template-columns:1fr 1fr;margin-bottom:8px">
-      <button class="ba ba-save-only" id="btn-salvar" onclick="salvarApenas()" style="grid-column:1/-1">
+      <button class="ba ba-save-only" id="btn-salvar" data-act="salvarApenas" style="grid-column:1/-1">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
         Salvar Orçamento
       </button>
     </div>
     <div class="acts" style="grid-template-columns:1fr 1fr 1fr">
-      <button class="ba ba-copy" onclick="copiarWA()">
+      <button class="ba ba-copy" data-act="copiarWA">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.123.553 4.116 1.524 5.847L.057 23.547a.5.5 0 00.609.61l5.76-1.457A11.952 11.952 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.785 9.785 0 01-5.022-1.383l-.36-.214-3.733.945.976-3.638-.235-.374A9.784 9.784 0 012.182 12C2.182 6.57 6.57 2.182 12 2.182S21.818 6.57 21.818 12 17.43 21.818 12 21.818z"/></svg>
         Copiar WA
       </button>
-      <button class="ba ba-send" onclick="enviarWA()">
+      <button class="ba ba-send" data-act="enviarWA">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.123.553 4.116 1.524 5.847L.057 23.547a.5.5 0 00.609.61l5.76-1.457A11.952 11.952 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.785 9.785 0 01-5.022-1.383l-.36-.214-3.733.945.976-3.638-.235-.374A9.784 9.784 0 012.182 12C2.182 6.57 6.57 2.182 12 2.182S21.818 6.57 21.818 12 17.43 21.818 12 21.818z"/></svg>
         Enviar WA
       </button>
-      <button class="ba ba-pdf" id="btn-pdf" onclick="gerarPDF()">
+      <button class="ba ba-pdf" id="btn-pdf" data-act="gerarPDF">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l5 5v15a2 2 0 01-2 2H6a2 2 0 01-2-2V4a2 2 0 012-2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         Gerar PDF
       </button>
@@ -1049,7 +1049,7 @@
         <!-- O técnico é quem consome material em campo, mas não tem acesso à tela
              de Estoque. Sem este atalho não existe caminho nenhum pra ele dar
              baixa — é a origem de estoque que só registra entrada. -->
-        <button class="ba" style="background:var(--c1);color:white;padding:8px 12px;font-size:12.5px;font-weight:700" onclick="abrirBaixaRapida()">⚡ Dar baixa</button>
+        <button class="ba" style="background:var(--c1);color:white;padding:8px 12px;font-size:12.5px;font-weight:700" data-act="abrirBaixaRapida">⚡ Dar baixa</button>
       </div>
     </div>
     <div id="tec-os-lista"><div class="load"><div class="spin"></div> Carregando…</div></div>
@@ -1059,7 +1059,7 @@
 <!-- ══ PAGE: ORDEM DE SERVIÇO ══ -->
 <div class="page" id="page-os">
   <div class="wrap">
-    <button class="btn-voltar" onclick="voltar()">← Voltar</button>
+    <button class="btn-voltar" data-act="voltar">← Voltar</button>
     <!-- Topbar + trilha + cartão de estado (Tarefa 3i.6, 19/08) — mesmo
          padrão do orçamento (3i.4/3i.5), populados por _osMontarTopoEstado
          dentro de _abrirOSForm. Só visíveis ao editar uma OS existente
@@ -1082,7 +1082,7 @@
           <div class="cli-input-wrap">
             <input type="text" id="os-cli" placeholder="Nome do cliente" oninput="mostrarSugestoesCliOS(this.value)" autocomplete="off" name="cli_nofill_os" data-lpignore="true" data-form-type="other" readonly onfocus="this.removeAttribute('readonly')" onblur="setTimeout(()=>hideSugCliOS(),200)">
             <input type="hidden" id="os-cli-id">
-            <button type="button" class="cli-search-btn" onclick="abrirBuscaCli('os')" title="Buscar cliente na base">🔍</button>
+            <button type="button" class="cli-search-btn" data-act="abrirBuscaCli" data-a="os" title="Buscar cliente na base">🔍</button>
             <div class="cli-suggestions" id="os-cli-suggestions" style="display:none"></div>
           </div>
         </div>
@@ -1125,12 +1125,12 @@
       <div class="ct">Serviços</div>
       <div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3,#6B7686);margin-bottom:6px">O que foi vendido</div>
       <div class="slist" id="os-slist"></div>
-      <button class="btn-add" onclick="addOSSvc()">＋ Adicionar serviço</button>
+      <button class="btn-add" data-act="addOSSvc">＋ Adicionar serviço</button>
       <div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3,#6B7686);margin:16px 0 6px">Confirmação da execução</div>
       <div class="chk-list" id="os-chklist"></div>
       <div class="chk-add-row">
         <input type="text" class="chk-add-inp" id="chk-add-inp" placeholder="＋ Adicionar item personalizado…" onkeydown="if(event.key==='Enter'){addChkItem();event.preventDefault()}">
-        <button class="btn-add" style="font-size:12px;padding:7px 12px;border-width:1.5px;flex-shrink:0" onclick="addChkItem()">＋</button>
+        <button class="btn-add" style="font-size:12px;padding:7px 12px;border-width:1.5px;flex-shrink:0" data-act="addChkItem">＋</button>
       </div>
     </div>
 
@@ -1140,13 +1140,13 @@
       <div id="checkin-bar" style="display:none" class="checkin-bar">
         <span>✅ Check-in realizado</span>
         <span class="checkin-timer" id="checkin-timer">00:00</span>
-        <button class="ba" style="background:var(--red);color:white;padding:8px 14px;font-size:13px" onclick="abrirFinalizarOS()">Finalizar serviço</button>
+        <button class="ba" style="background:var(--red);color:white;padding:8px 14px;font-size:13px" data-act="abrirFinalizarOS">Finalizar serviço</button>
       </div>
       <div id="checkin-form" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         <select id="os-tec-checkin" style="padding:9px 12px;border:1.5px solid var(--gray-mid);border-radius:8px;font-size:14px;font-family:'Inter',sans-serif;outline:none;flex:1">
           <option value="">Selecione o técnico…</option>
         </select>
-        <button class="ba" style="background:var(--green);color:white;padding:10px 18px;font-size:13px" onclick="fazerCheckin()">📍 Check-in</button>
+        <button class="ba" style="background:var(--green);color:white;padding:10px 18px;font-size:13px" data-act="fazerCheckin">📍 Check-in</button>
       </div>
       <div id="checkin-info" style="font-size:12px;color:var(--gray);margin-top:8px;min-height:16px"></div>
     </div>
@@ -1155,7 +1155,7 @@
       <div class="ct">Itens a levar / validar</div>
       <p style="font-size:12px;color:var(--gray);margin:-4px 0 10px">Confirme o que foi realmente levado. Ao confirmar, dá baixa no estoque. Desmarque o que não levou.</p>
       <div id="os-itens-lista"></div>
-      <button class="btn-primary" id="os-itens-btn" onclick="confirmarItensOS()" style="width:100%;margin-top:8px">✅ Confirmar itens e dar baixa</button>
+      <button class="btn-primary" id="os-itens-btn" data-act="confirmarItensOS" style="width:100%;margin-top:8px">✅ Confirmar itens e dar baixa</button>
       <div id="os-itens-ok" style="display:none;text-align:center;color:var(--green);font-size:13px;font-weight:600;padding:8px">✅ Itens já confirmados e baixados</div>
     </div>
 
@@ -1195,11 +1195,11 @@
     </div>
 
     <div class="acts" style="grid-template-columns:1fr 1fr">
-      <button class="ba ba-pdf" id="btn-os-pdf" onclick="gerarOSPDF('os')">
+      <button class="ba ba-pdf" id="btn-os-pdf" data-act="gerarOSPDF" data-a="os">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l5 5v15a2 2 0 01-2 2H6a2 2 0 01-2-2V4a2 2 0 012-2z"/><polyline points="14 2 14 8 20 8"/></svg>
         Salvar OS
       </button>
-      <button class="ba ba-save" id="btn-os-both" onclick="gerarOSPDF('both')" style="display:none">
+      <button class="ba ba-save" id="btn-os-both" data-act="gerarOSPDF" data-a="both" style="display:none">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l5 5v15a2 2 0 01-2 2H6a2 2 0 01-2-2V4a2 2 0 012-2z"/><polyline points="14 2 14 8 20 8"/></svg>
         OS + Orçamento
       </button>
@@ -1218,8 +1218,8 @@
           <button class="orc-mes-btn" onclick="orcNavMes(-1)" title="Mês anterior">◀</button>
           <span class="orc-mes-lbl" id="orc-mes-label">—</span>
           <button class="orc-mes-btn" onclick="orcNavMes(1)" title="Próximo mês">▶</button>
-          <button class="orc-todos-btn" id="btn-orc-todos" onclick="orcVerTodos()">Ver todos</button>
-          <button class="btn-add" style="font-size:12px;padding:5px 10px;border-width:1.5px" onclick="loadHist()" title="Atualizar">↺</button>
+          <button class="orc-todos-btn" id="btn-orc-todos" data-act="orcVerTodos">Ver todos</button>
+          <button class="btn-add" style="font-size:12px;padding:5px 10px;border-width:1.5px" data-act="loadHist" title="Atualizar">↺</button>
         </div>
       </div>
       <!-- ── Mini KPIs do período selecionado ── -->
@@ -1282,16 +1282,16 @@
 
 <div class="page" id="page-equipamentos">
   <div class="wrap">
-    <button class="btn-voltar" onclick="voltar()">← Voltar</button>
+    <button class="btn-voltar" data-act="voltar">← Voltar</button>
     <!-- Formulário novo equipamento (oculto por padrão) -->
     <div class="card" id="eq-form-card" style="display:none">
-      <div class="ct">Novo Equipamento <button onclick="fecharFormEq()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;line-height:1">×</button></div>
+      <div class="ct">Novo Equipamento <button data-act="fecharFormEq" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;line-height:1">×</button></div>
       <div class="row">
         <div class="fl"><label>Cliente</label>
           <div class="cli-input-wrap">
             <input type="text" id="eq-cli-nome" placeholder="Nome do cliente" oninput="mostrarSugestoesCliEq(this.value)" autocomplete="off" name="cli_nofill_eq" data-lpignore="true" data-form-type="other" readonly onfocus="this.removeAttribute('readonly')" onblur="setTimeout(()=>hideSugCliEq(),200)">
             <input type="hidden" id="eq-cli-id">
-            <button type="button" class="cli-search-btn" onclick="abrirBuscaCli('eq')" title="Buscar cliente na base">🔍</button>
+            <button type="button" class="cli-search-btn" data-act="abrirBuscaCli" data-a="eq" title="Buscar cliente na base">🔍</button>
             <div class="cli-suggestions" id="eq-cli-suggestions" style="display:none"></div>
           </div>
         </div>
@@ -1314,7 +1314,7 @@
             <select id="eq-piscina" onchange="_eqPiscinaSelect(this.value)" disabled style="flex:1">
               <option value="">Selecione o cliente primeiro</option>
             </select>
-            <button type="button" id="eq-piscina-editar-btn" class="tb" style="display:none;padding:9px 10px;flex-shrink:0" onclick="_eqPiscinaEditar()" title="Editar detalhes desta piscina (capa, exposição, banhistas...)">✏️</button>
+            <button type="button" id="eq-piscina-editar-btn" class="tb" style="display:none;padding:9px 10px;flex-shrink:0" data-act="_eqPiscinaEditar" title="Editar detalhes desta piscina (capa, exposição, banhistas...)">✏️</button>
           </div>
           <div id="eq-piscina-novo" style="display:none;margin-top:8px;padding:10px;border:1px solid var(--line,#e5e7eb);border-radius:8px">
             <div class="row f3" style="margin-bottom:8px">
@@ -1356,7 +1356,7 @@
               <label style="display:flex;align-items:center;gap:5px;font-weight:400;text-transform:none;letter-spacing:0"><input type="checkbox" id="eq-piscina-aquecida" style="width:auto"> Piscina aquecida</label>
               <label style="display:flex;align-items:center;gap:5px;font-weight:400;text-transform:none;letter-spacing:0"><input type="checkbox" id="eq-piscina-estabilizante" checked style="width:auto"> Tem estabilizante</label>
             </div>
-            <button type="button" class="tb" onclick="_eqPiscinaCriar()">✅ Salvar piscina</button>
+            <button type="button" class="tb" data-act="_eqPiscinaCriar">✅ Salvar piscina</button>
           </div>
         </div>
       </div>
@@ -1384,9 +1384,9 @@
           <div class="foto-label" id="eq-foto-lbl">Tirar foto ou selecionar imagem</div>
           <img id="eq-foto-prev" class="foto-preview" alt="foto">
         </div>
-        <button id="eq-btn-rm-foto" style="display:none;margin-top:6px;font-size:12px;color:var(--red);background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif" onclick="removerFotoEq()">✕ Remover foto</button>
+        <button id="eq-btn-rm-foto" style="display:none;margin-top:6px;font-size:12px;color:var(--red);background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif" data-act="removerFotoEq">✕ Remover foto</button>
       </div>
-      <button class="btn-primary" onclick="salvarEquipamento()">💾 Salvar Equipamento</button>
+      <button class="btn-primary" data-act="salvarEquipamento">💾 Salvar Equipamento</button>
     </div>
 
     <!-- Header da listagem -->
@@ -1404,7 +1404,7 @@
           <option>Gerador de Cloro</option><option>LED Subaquático</option>
           <option>Spa / Hidro</option><option>Sauna</option><option>Automação</option><option>Outro</option>
         </select>
-        <button class="btn-primary" style="padding:8px 16px;font-size:13px;white-space:nowrap" onclick="abrirFormEq()">＋ Equipamento</button>
+        <button class="btn-primary" style="padding:8px 16px;font-size:13px;white-space:nowrap" data-act="abrirFormEq">＋ Equipamento</button>
       </div>
     </div>
 
@@ -1443,8 +1443,8 @@
     <p id="qr-eq-info">Cliente — Tipo</p>
     <img id="qr-img" src="" alt="QR Code">
     <div class="qr-acts">
-      <button class="btn-sec" style="flex:none;padding:9px 16px" onclick="fecharQR()">Fechar</button>
-      <button class="btn-pri" style="flex:none;padding:9px 16px" onclick="imprimirQR()">🖨️ Imprimir</button>
+      <button class="btn-sec" style="flex:none;padding:9px 16px" data-act="fecharQR">Fechar</button>
+      <button class="btn-pri" style="flex:none;padding:9px 16px" data-act="imprimirQR">🖨️ Imprimir</button>
     </div>
   </div>
 </div>
@@ -1497,7 +1497,7 @@
       <!-- Contato -->
       <div class="portal-section">
         <div class="portal-section-title">💬 Fale Conosco</div>
-        <button class="portal-wa-btn" onclick="abrirWAPortal()">
+        <button class="portal-wa-btn" data-act="abrirWAPortal">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z"/></svg>
           Falar com a Equipe
         </button>
@@ -1922,7 +1922,7 @@
 <div class="page" id="page-os-history">
   <div class="wrap">
     <div class="card">
-      <div class="ct">Histórico de OS <button class="btn-add" style="font-size:12px;padding:5px 11px;border-width:1.5px" onclick="loadOSHist()">↺</button></div>
+      <div class="ct">Histórico de OS <button class="btn-add" style="font-size:12px;padding:5px 11px;border-width:1.5px" data-act="loadOSHist">↺</button></div>
       <div class="hf">
         <button class="fb on" data-oss="todos" onclick="filtOS(this)">Todos</button>
         <button class="fb" data-oss="agendado" onclick="filtOS(this)">📅 Agendado</button>
@@ -1946,7 +1946,7 @@
 <div class="page" id="page-clientes">
   <div class="wrap" style="max-width:700px">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding-top:8px">
-      <button class="btn-voltar" onclick="voltar()" style="margin-bottom:0">← Voltar</button>
+      <button class="btn-voltar" data-act="voltar" style="margin-bottom:0">← Voltar</button>
       <span style="font-size:18px;font-weight:800;color:var(--c2)">👥 Clientes</span>
     </div>
     <div class="desp-dash" id="cli-dash">
@@ -1995,7 +1995,7 @@
           </div>
         </div>
         <div style="display:flex;gap:10px">
-          <button class="btn-primary" style="flex:1" onclick="salvarNovoCliente()">💾 Salvar Cliente</button>
+          <button class="btn-primary" style="flex:1" data-act="salvarNovoCliente">💾 Salvar Cliente</button>
           <button onclick="document.getElementById('cli-form-wrap').style.display='none'" style="flex:1;padding:12px;border:2px solid var(--gray-mid);border-radius:10px;background:var(--white);font-size:14px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif">Cancelar</button>
         </div>
       </div>
@@ -2003,8 +2003,8 @@
     <div class="card">
       <div class="ct">Cadastro
         <div style="display:flex;gap:8px">
-          <button class="btn-add" style="font-size:12px;padding:5px 11px;border-width:1.5px" onclick="mostrarFormCliente()">＋ Novo Cliente</button>
-          <button class="btn-add" style="font-size:12px;padding:5px 11px;border-width:1.5px;border-color:var(--blue);color:var(--blue)" onclick="importarClientesDeOrcamentos()" title="Importa clientes de todos os orçamentos existentes">📥 Importar dos orçamentos</button>
+          <button class="btn-add" style="font-size:12px;padding:5px 11px;border-width:1.5px" data-act="mostrarFormCliente">＋ Novo Cliente</button>
+          <button class="btn-add" style="font-size:12px;padding:5px 11px;border-width:1.5px;border-color:var(--blue);color:var(--blue)" data-act="importarClientesDeOrcamentos" title="Importa clientes de todos os orçamentos existentes">📥 Importar dos orçamentos</button>
         </div>
       </div>
       <input class="hsrch" type="text" id="cli-busca" placeholder="🔍 Buscar por nome, telefone ou CNPJ…" oninput="renderClientes()" style="width:100%;margin-bottom:10px">
@@ -2016,7 +2016,7 @@
 <!-- ══ PAGE: PRODUTIVIDADE ══ -->
 <div class="page" id="page-produtividade">
   <div class="wrap">
-    <button class="btn-voltar" onclick="voltar()">← Voltar</button>
+    <button class="btn-voltar" data-act="voltar">← Voltar</button>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
       <div style="font-size:18px;font-weight:800;color:var(--c2)">📈 Produtividade</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -2135,10 +2135,10 @@
 <!-- ══ PAGE: DESPESAS ══ -->
 <div class="page" id="page-despesas">
   <div class="wrap">
-    <button class="btn-voltar" onclick="voltar()">← Voltar</button>
+    <button class="btn-voltar" data-act="voltar">← Voltar</button>
     <div id="desp-recorrentes-aviso" style="display:none"></div>
     <div class="card" id="desp-form-card" style="display:none">
-      <div class="ct">Nova Despesa <button onclick="fecharFormDesp()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;line-height:1">×</button></div>
+      <div class="ct">Nova Despesa <button data-act="fecharFormDesp" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;line-height:1">×</button></div>
       <!-- Natureza troca a lista de tipos e o que é obrigatório: despesa de
            campo tem um técnico que gastou; custo da empresa (aluguel, energia)
            não tem, e sem essa separação o custo fixo simplesmente não tinha
@@ -2189,9 +2189,9 @@
           <div class="foto-label" id="desp-foto-lbl">Fotografar comprovante</div>
           <img id="desp-foto-prev" class="foto-preview" alt="comprovante">
         </div>
-        <button id="desp-btn-rm-foto" style="display:none;margin-top:6px;font-size:12px;color:var(--red);background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif" onclick="removerFotoDesp()">✕ Remover</button>
+        <button id="desp-btn-rm-foto" style="display:none;margin-top:6px;font-size:12px;color:var(--red);background:none;border:none;cursor:pointer;font-family:'Inter',sans-serif" data-act="removerFotoDesp">✕ Remover</button>
       </div>
-      <button class="btn-primary" onclick="salvarDespesa()">💾 Registrar Despesa</button>
+      <button class="btn-primary" data-act="salvarDespesa">💾 Registrar Despesa</button>
     </div>
 
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
@@ -2205,7 +2205,7 @@
           <option value="pendente">⏳ Pendente</option>
           <option value="reembolsado">✅ Reembolsado</option>
         </select>
-        <button class="btn-primary" style="padding:8px 16px;font-size:13px" onclick="abrirFormDesp()">＋ Despesa</button>
+        <button class="btn-primary" style="padding:8px 16px;font-size:13px" data-act="abrirFormDesp">＋ Despesa</button>
       </div>
     </div>
 
@@ -2309,17 +2309,17 @@
 <!-- ══ PAGE: ESTOQUE ══ -->
 <div class="page" id="page-estoque">
   <div class="wrap">
-    <button class="btn-voltar" onclick="voltar()">← Voltar</button>
+    <button class="btn-voltar" data-act="voltar">← Voltar</button>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px">
       <div style="font-size:18px;font-weight:800;color:var(--c2)">📦 Gestão de Estoque</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:9px 14px;font-size:13px" onclick="abrirBalancoModal()">📋 Balanço</button>
-        <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:9px 14px;font-size:13px" onclick="abrirFornecModal()">👥 Fornecedores</button>
-        <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:9px 14px;font-size:13px" onclick="abrirOCListModal()">📄 Ordens de Compra</button>
-        <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:9px 14px;font-size:13px" onclick="abrirListaCompras()">🛒 Lista de compras</button>
-        <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:9px 14px;font-size:13px" onclick="abrirImportProdutos()">📥 Importar planilha</button>
-        <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:9px 14px;font-size:13px" onclick="abrirBaixaRapida()">⚡ Dar baixa</button>
-        <button class="btn-primary" onclick="abrirProdutoModal()" style="padding:9px 16px">＋ Novo produto</button>
+        <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:9px 14px;font-size:13px" data-act="abrirBalancoModal">📋 Balanço</button>
+        <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:9px 14px;font-size:13px" data-act="abrirFornecModal">👥 Fornecedores</button>
+        <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:9px 14px;font-size:13px" data-act="abrirOCListModal">📄 Ordens de Compra</button>
+        <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:9px 14px;font-size:13px" data-act="abrirListaCompras">🛒 Lista de compras</button>
+        <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:9px 14px;font-size:13px" data-act="abrirImportProdutos">📥 Importar planilha</button>
+        <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:9px 14px;font-size:13px" data-act="abrirBaixaRapida">⚡ Dar baixa</button>
+        <button class="btn-primary" data-act="abrirProdutoModal" style="padding:9px 16px">＋ Novo produto</button>
       </div>
     </div>
     <!-- KPIs -->
@@ -2371,16 +2371,16 @@
 <!-- Modal: lista de compras consolidada -->
 <div class="qr-modal-bg" id="compras-modal" style="display:none" data-close="fecharListaCompras">
   <div class="card" style="max-width:520px;width:92%;max-height:85vh;overflow:auto">
-    <div class="ct">🛒 Lista de compras <button onclick="fecharListaCompras()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;float:right;line-height:1">×</button></div>
+    <div class="ct">🛒 Lista de compras <button data-act="fecharListaCompras" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;float:right;line-height:1">×</button></div>
     <div id="compras-body"></div>
-    <button class="btn-primary" onclick="copiarListaCompras()" style="width:100%;margin-top:10px">📋 Copiar lista</button>
+    <button class="btn-primary" data-act="copiarListaCompras" style="width:100%;margin-top:10px">📋 Copiar lista</button>
   </div>
 </div>
 
 <!-- Modal: cadastro/edição de produto -->
 <div class="qr-modal-bg" id="prod-modal" style="display:none" data-close="fecharProdutoModal">
   <div class="card" style="max-width:560px;width:92%;max-height:88vh;overflow:auto">
-    <div class="ct" id="prod-modal-titulo">Novo produto <button onclick="fecharProdutoModal()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;float:right;line-height:1">×</button></div>
+    <div class="ct" id="prod-modal-titulo">Novo produto <button data-act="fecharProdutoModal" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;float:right;line-height:1">×</button></div>
     <div id="prod-loja-wrap"></div>
     <div class="row">
       <div class="fl"><label>Categoria</label>
@@ -2435,8 +2435,8 @@
       <div class="row f1" style="margin-top:8px"><div class="fl"><label>Código de barras (EAN / GTIN)</label><input type="text" id="prod-gtin" placeholder="SEM GTIN"></div></div>
     </details>
     <div style="display:flex;gap:8px;margin-top:4px">
-      <button onclick="fecharProdutoModal()" style="flex:1;padding:11px;border:1.5px solid var(--gray-mid);border-radius:10px;background:none;color:var(--gray);font-size:13px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Cancelar</button>
-      <button class="btn-primary" onclick="salvarProduto()" style="flex:2">💾 Salvar produto</button>
+      <button data-act="fecharProdutoModal" style="flex:1;padding:11px;border:1.5px solid var(--gray-mid);border-radius:10px;background:none;color:var(--gray);font-size:13px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Cancelar</button>
+      <button class="btn-primary" data-act="salvarProduto" style="flex:2">💾 Salvar produto</button>
     </div>
     <button id="prod-desativar-btn" onclick="desativarProduto(_prodEditId)" style="display:none;width:100%;margin-top:8px;background:none;border:none;color:var(--red);font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;padding:6px">🚫 Desativar produto</button>
   </div>
@@ -2445,26 +2445,26 @@
 <!-- Modal: movimento (entrada/saída/ajuste) -->
 <div class="qr-modal-bg" id="mov-modal" style="display:none" data-close="fecharMovModal">
   <div class="card" style="max-width:420px;width:92%">
-    <div class="ct" id="mov-modal-titulo">Movimento <button onclick="fecharMovModal()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;float:right;line-height:1">×</button></div>
+    <div class="ct" id="mov-modal-titulo">Movimento <button data-act="fecharMovModal" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;float:right;line-height:1">×</button></div>
     <div id="mov-saldo-atual" style="font-size:12px;color:var(--gray);margin-bottom:10px"></div>
     <div class="row f1"><div class="fl"><label id="mov-qtd-label">Quantidade</label><input type="text" inputmode="decimal" id="mov-qtd" placeholder="0"></div></div>
     <div class="row f1" id="mov-custo-wrap"><div class="fl"><label>Custo por unidade (R$)</label><input type="text" inputmode="decimal" id="mov-custo" placeholder="0,00"></div></div>
     <div class="row f1"><div class="fl"><label>Motivo</label><input type="text" id="mov-motivo" placeholder="opcional — ex: compra, perda, acerto de inventário"></div></div>
-    <button class="btn-primary" onclick="confirmarMovimento()" style="width:100%">Confirmar</button>
+    <button class="btn-primary" data-act="confirmarMovimento" style="width:100%">Confirmar</button>
   </div>
 </div>
 
 <!-- Modal: transferência entre unidades -->
 <div class="qr-modal-bg" id="transf-modal" style="display:none" data-close="fecharTransfModal">
   <div class="card" style="max-width:420px;width:92%">
-    <div class="ct" id="transf-modal-titulo">Transferir <button onclick="fecharTransfModal()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;float:right;line-height:1">×</button></div>
+    <div class="ct" id="transf-modal-titulo">Transferir <button data-act="fecharTransfModal" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;float:right;line-height:1">×</button></div>
     <div id="transf-origem" style="font-size:12px;color:var(--gray);margin-bottom:10px"></div>
     <div class="row">
       <div class="fl"><label>Quantidade</label><input type="text" inputmode="decimal" id="transf-qtd" placeholder="0"></div>
       <div class="fl"><label>Para a unidade</label><select id="transf-destino"></select></div>
     </div>
     <div class="row f1"><div class="fl"><label>Motivo / observação</label><input type="text" id="transf-motivo" placeholder="opcional"></div></div>
-    <button class="btn-primary" onclick="confirmarTransferencia()" style="width:100%">🔄 Confirmar transferência</button>
+    <button class="btn-primary" data-act="confirmarTransferencia" style="width:100%">🔄 Confirmar transferência</button>
   </div>
 </div>
 
@@ -2473,7 +2473,7 @@
   <div class="card" style="max-width:680px;width:95%;max-height:90vh;overflow:auto">
     <div class="ct" style="position:sticky;top:0;z-index:2;background:var(--white);margin-top:-6px;padding-top:6px">
       Importar produtos da planilha
-      <button onclick="fecharImportProdutos()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;float:right;line-height:1">×</button>
+      <button data-act="fecharImportProdutos" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;float:right;line-height:1">×</button>
     </div>
 
     <!-- Passo 1: upload -->
@@ -2496,8 +2496,8 @@
         <table id="imp-preview-table" style="width:100%;border-collapse:collapse;font-size:12px"></table>
       </div>
       <div style="margin-top:16px;display:flex;gap:10px;align-items:center">
-        <button class="btn-primary" id="imp-btn-confirmar" onclick="_impConfirmar()" style="flex:1;padding:11px">📥 Importar produtos</button>
-        <button onclick="fecharImportProdutos()" style="padding:11px 16px;border:1.5px solid var(--gray-mid);border-radius:10px;background:none;cursor:pointer;font-family:inherit;font-size:13px">Cancelar</button>
+        <button class="btn-primary" id="imp-btn-confirmar" data-act="_impConfirmar" style="flex:1;padding:11px">📥 Importar produtos</button>
+        <button data-act="fecharImportProdutos" style="padding:11px 16px;border:1.5px solid var(--gray-mid);border-radius:10px;background:none;cursor:pointer;font-family:inherit;font-size:13px">Cancelar</button>
       </div>
     </div>
 
@@ -2506,7 +2506,7 @@
       <div id="imp-result-icon" style="font-size:48px;margin-bottom:12px"></div>
       <div id="imp-result-text" style="font-size:15px;font-weight:600;color:var(--c2);margin-bottom:8px"></div>
       <div id="imp-result-sub" style="font-size:13px;color:var(--gray);margin-bottom:20px"></div>
-      <button class="btn-primary" onclick="fecharImportProdutos()" style="padding:10px 24px">✓ Fechar</button>
+      <button class="btn-primary" data-act="fecharImportProdutos" style="padding:10px 24px">✓ Fechar</button>
     </div>
   </div>
 </div>
@@ -2514,7 +2514,7 @@
 <!-- Modal: selecionar produto para o item do orçamento -->
 <div class="qr-modal-bg" id="prodpicker-modal" style="display:none" data-close="fecharPickerProduto">
   <div class="card" style="max-width:460px;width:92%;max-height:80vh;overflow:auto">
-    <div class="ct">Vincular produto <button onclick="fecharPickerProduto()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;float:right;line-height:1">×</button></div>
+    <div class="ct">Vincular produto <button data-act="fecharPickerProduto" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;float:right;line-height:1">×</button></div>
     <input class="hsrch" type="text" id="prodpicker-busca" placeholder="🔍 Buscar produto…" oninput="renderPickerProduto(this.value)" style="width:100%;margin-bottom:8px">
     <div id="prodpicker-body"></div>
   </div>
@@ -2523,7 +2523,7 @@
 <!-- Modal: histórico do produto -->
 <div class="qr-modal-bg" id="hist-prod-modal" style="display:none" data-close="fecharHistProduto">
   <div class="card" style="max-width:480px;width:92%;max-height:80vh;overflow:auto">
-    <div class="ct" id="hist-prod-titulo">Histórico <button onclick="fecharHistProduto()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;float:right;line-height:1">×</button></div>
+    <div class="ct" id="hist-prod-titulo">Histórico <button data-act="fecharHistProduto" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;float:right;line-height:1">×</button></div>
     <div id="hist-prod-body"></div>
   </div>
 </div>
@@ -2531,7 +2531,7 @@
 <!-- Modal: fornecedores -->
 <div class="qr-modal-bg" id="fornec-modal" style="display:none" data-close="fecharFornecModal">
   <div class="card" style="max-width:540px;width:92%;max-height:88vh;overflow:auto">
-    <div class="ct">👥 Fornecedores <button onclick="fecharFornecModal()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;line-height:1;margin-left:auto;padding:0 4px">×</button></div>
+    <div class="ct">👥 Fornecedores <button data-act="fecharFornecModal" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;line-height:1;margin-left:auto;padding:0 4px">×</button></div>
     <div id="fornec-lista"></div>
     <div style="border-top:1.5px solid var(--gray-light);margin-top:12px;padding-top:12px">
       <div style="font-size:12px;font-weight:700;color:var(--c1);margin-bottom:8px" id="fornec-form-titulo">＋ Novo fornecedor</div>
@@ -2544,8 +2544,8 @@
       <div class="row f1"><div class="fl"><label>Observações</label><input type="text" id="fobs" placeholder="Prazo de pagamento, condições..."></div></div>
       <input type="hidden" id="fornec-edit-id">
       <div style="display:flex;gap:8px;margin-top:4px">
-        <button class="btn-primary" onclick="salvarFornecedor()" style="flex:1">💾 Salvar fornecedor</button>
-        <button id="fornec-cancelar-btn" onclick="cancelarFornecedorForm()" style="display:none;padding:10px 14px;border:1.5px solid var(--gray-mid);border-radius:8px;background:none;cursor:pointer;font-size:13px;color:var(--gray)">Cancelar</button>
+        <button class="btn-primary" data-act="salvarFornecedor" style="flex:1">💾 Salvar fornecedor</button>
+        <button id="fornec-cancelar-btn" data-act="cancelarFornecedorForm" style="display:none;padding:10px 14px;border:1.5px solid var(--gray-mid);border-radius:8px;background:none;cursor:pointer;font-size:13px;color:var(--gray)">Cancelar</button>
       </div>
     </div>
   </div>
@@ -2554,10 +2554,10 @@
 <!-- Modal: lista de ordens de compra -->
 <div class="qr-modal-bg" id="oc-list-modal" style="display:none" data-close="fecharOCListModal">
   <div class="card" style="max-width:600px;width:92%;max-height:88vh;overflow:auto">
-    <div class="ct">📄 Ordens de Compra <button onclick="fecharOCListModal()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;line-height:1;margin-left:auto;padding:0 4px">×</button></div>
+    <div class="ct">📄 Ordens de Compra <button data-act="fecharOCListModal" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;line-height:1;margin-left:auto;padding:0 4px">×</button></div>
     <div style="display:flex;gap:8px;margin-bottom:10px">
-      <button class="btn-primary" onclick="criarOCManual()" style="font-size:12px;padding:7px 12px">＋ Nova OC</button>
-      <button class="ba" onclick="criarOCDaListaCompras()" style="font-size:12px;padding:7px 12px;background:var(--gray-light);color:var(--c2)">🛒 Gerar da lista</button>
+      <button class="btn-primary" data-act="criarOCManual" style="font-size:12px;padding:7px 12px">＋ Nova OC</button>
+      <button class="ba" data-act="criarOCDaListaCompras" style="font-size:12px;padding:7px 12px;background:var(--gray-light);color:var(--c2)">🛒 Gerar da lista</button>
     </div>
     <div id="oc-list-body"></div>
   </div>
@@ -2566,7 +2566,7 @@
 <!-- Modal: formulário de OC -->
 <div class="qr-modal-bg" id="oc-form-modal" style="display:none" data-close="fecharOCFormModal">
   <div class="card" style="max-width:580px;width:92%;max-height:90vh;overflow:auto">
-    <div class="ct" id="oc-form-titulo">Nova Ordem de Compra <button onclick="fecharOCFormModal()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;line-height:1;margin-left:auto;padding:0 4px">×</button></div>
+    <div class="ct" id="oc-form-titulo">Nova Ordem de Compra <button data-act="fecharOCFormModal" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;line-height:1;margin-left:auto;padding:0 4px">×</button></div>
     <div class="row">
       <div class="fl"><label class="req">Fornecedor</label><select id="oc-fornecedor"></select></div>
       <div class="fl"><label>Data prevista</label><input type="date" id="oc-data"></div>
@@ -2579,8 +2579,8 @@
     </div>
     <div id="oc-total-row" style="text-align:right;font-size:14px;font-weight:700;color:var(--c2);padding-top:10px;border-top:1.5px solid var(--gray-light);margin-top:8px"></div>
     <div style="display:flex;gap:8px;margin-top:10px">
-      <button class="btn-primary" onclick="salvarOC('rascunho')" style="flex:1;font-size:13px">💾 Salvar rascunho</button>
-      <button class="ba" onclick="enviarOCWhatsApp()" style="flex:1;font-size:13px;background:var(--green);color:white;border-color:var(--green)">📲 Enviar WhatsApp</button>
+      <button class="btn-primary" data-act="salvarOC" data-a="rascunho" style="flex:1;font-size:13px">💾 Salvar rascunho</button>
+      <button class="ba" data-act="enviarOCWhatsApp" style="flex:1;font-size:13px;background:var(--green);color:white;border-color:var(--green)">📲 Enviar WhatsApp</button>
     </div>
     <input type="hidden" id="oc-edit-id">
   </div>
@@ -2589,14 +2589,14 @@
 <!-- Modal: balanço de inventário -->
 <div class="qr-modal-bg" id="balanco-modal" style="display:none" data-close="fecharBalancoModal">
   <div class="card" style="max-width:580px;width:92%;max-height:90vh;overflow:auto">
-    <div class="ct">📋 Balanço de Inventário <button onclick="fecharBalancoModal()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;line-height:1;margin-left:auto;padding:0 4px">×</button></div>
+    <div class="ct">📋 Balanço de Inventário <button data-act="fecharBalancoModal" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;line-height:1;margin-left:auto;padding:0 4px">×</button></div>
     <div style="font-size:12px;color:var(--gray);margin-bottom:12px">Informe a quantidade física contada para cada produto. O sistema vai gerar ajustes automáticos para as diferenças.</div>
     <input class="hsrch" type="text" id="balanco-busca" placeholder="🔍 Filtrar produto…" oninput="renderBalancoLista()" style="margin-bottom:10px;width:100%">
     <div id="balanco-body"></div>
     <div id="balanco-resumo" style="padding:10px 0;border-top:1.5px solid var(--gray-light);margin-top:8px;font-size:13px;color:var(--c2)"></div>
     <div style="display:flex;gap:8px;margin-top:8px">
-      <button class="btn-primary" onclick="confirmarBalanco()" id="balanco-confirmar-btn" style="flex:1">✅ Confirmar ajustes</button>
-      <button onclick="fecharBalancoModal()" style="padding:10px 14px;border:1.5px solid var(--gray-mid);border-radius:8px;background:none;cursor:pointer;font-size:13px;color:var(--gray)">Cancelar</button>
+      <button class="btn-primary" data-act="confirmarBalanco" id="balanco-confirmar-btn" style="flex:1">✅ Confirmar ajustes</button>
+      <button data-act="fecharBalancoModal" style="padding:10px 14px;border:1.5px solid var(--gray-mid);border-radius:8px;background:none;cursor:pointer;font-size:13px;color:var(--gray)">Cancelar</button>
     </div>
   </div>
 </div>
@@ -2604,7 +2604,7 @@
 <!-- ══ PAGE: VENDA RÁPIDA (balcão) — tela cheia, sem sidebar/header, ver go() ══ -->
 <div class="page" id="page-venda-balcao">
   <div class="vb-topbar">
-    <button type="button" class="vb-sair" onclick="fecharVendaBalcao()">
+    <button type="button" class="vb-sair" data-act="fecharVendaBalcao">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l-6 6 6 6"></path></svg>
       Sair do balcão
     </button>
@@ -2632,7 +2632,7 @@
           <span class="vb-livre-titulo">Item que não está no catálogo</span>
           <span class="vb-livre-sub">Digite descrição e valor à mão — entra na venda sem baixa de estoque.</span>
         </div>
-        <button type="button" class="vb-livre-btn" onclick="_vendaAbrirItemLivre()">Item livre</button>
+        <button type="button" class="vb-livre-btn" data-act="_vendaAbrirItemLivre">Item livre</button>
       </div>
     </div>
 
@@ -2642,7 +2642,7 @@
           <span class="vb-carrinho-titulo">Venda atual</span>
           <span class="vb-carrinho-cont" id="venda-cont">carrinho vazio</span>
         </div>
-        <span class="vb-limpar" onclick="_vbAbrir()">Limpar</span>
+        <span class="vb-limpar" data-act="_vbAbrir">Limpar</span>
       </div>
 
       <div id="venda-carrinho" class="vb-carrinho-lista"></div>
@@ -2651,11 +2651,11 @@
         <div class="vb-rodape-linha">
           <div class="cli-input-wrap" style="flex:1">
             <input type="text" id="venda-cli" placeholder="Cliente (opcional)" autocomplete="off" oninput="_vendaClienteEditado()">
-            <button type="button" class="cli-search-btn" onclick="abrirBuscaCli('venda')" title="Buscar cliente na base">🔍</button>
+            <button type="button" class="cli-search-btn" data-act="abrirBuscaCli" data-a="venda" title="Buscar cliente na base">🔍</button>
           </div>
-          <span class="vb-desconto-link" onclick="_vendaAbrirDesconto()">Desconto</span>
+          <span class="vb-desconto-link" data-act="_vendaAbrirDesconto">Desconto</span>
         </div>
-        <button type="button" class="tb" id="venda-sem-cliente-btn" onclick="_vendaSemCliente()" style="font-size:11px;padding:5px 10px;align-self:flex-start">Balcão — sem cliente identificado</button>
+        <button type="button" class="tb" id="venda-sem-cliente-btn" data-act="_vendaSemCliente" style="font-size:11px;padding:5px 10px;align-self:flex-start">Balcão — sem cliente identificado</button>
 
         <div class="vb-totais">
           <div class="vb-totais-linha"><span>Subtotal</span><span id="venda-subtotal">R$ 0,00</span></div>
@@ -2668,27 +2668,27 @@
         </div>
 
         <div class="vb-pgto-grid">
-          <button type="button" class="vb-pgto-btn" data-f="Pix" onclick="_vendaSetFormaPgto('Pix')">
+          <button type="button" class="vb-pgto-btn" data-f="Pix" data-act="_vendaSetFormaPgto" data-a="Pix">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 9-9 9-9-9z"></path></svg>
             Pix
           </button>
-          <button type="button" class="vb-pgto-btn" data-f="Cartão" onclick="_vendaSetFormaPgto('Cartão')">
+          <button type="button" class="vb-pgto-btn" data-f="Cartão" data-act="_vendaSetFormaPgto" data-a="Cartão">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18v10H3zM3 11h18"></path></svg>
             Cartão
           </button>
-          <button type="button" class="vb-pgto-btn" data-f="Dinheiro" onclick="_vendaSetFormaPgto('Dinheiro')">
+          <button type="button" class="vb-pgto-btn" data-f="Dinheiro" data-act="_vendaSetFormaPgto" data-a="Dinheiro">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18v12H3zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6"></path></svg>
             Dinheiro
           </button>
-          <button type="button" class="vb-pgto-btn" data-f="A prazo" onclick="_vendaSetFormaPgto('A prazo')">
+          <button type="button" class="vb-pgto-btn" data-f="A prazo" data-act="_vendaSetFormaPgto" data-a="A prazo">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v15H4zM8 3v4M16 3v4M8 13h8"></path></svg>
             A prazo
           </button>
         </div>
 
         <div class="vb-acts">
-          <button type="button" class="vb-btn-salvar" onclick="vendaSalvarRascunho()">Salvar</button>
-          <button type="button" class="vb-btn-finalizar" id="venda-btn" onclick="confirmarVendaBalcao()">Finalizar venda</button>
+          <button type="button" class="vb-btn-salvar" data-act="vendaSalvarRascunho">Salvar</button>
+          <button type="button" class="vb-btn-finalizar" id="venda-btn" data-act="confirmarVendaBalcao">Finalizar venda</button>
         </div>
       </div>
     </div>
@@ -2703,13 +2703,13 @@
     <!-- Header + tabs -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
       <div style="display:flex;align-items:center;gap:10px">
-        <button id="vis-back-os" onclick="go('minhas-os')" style="display:none;background:var(--c1-light);color:var(--c1);border:1.5px solid var(--c1);border-radius:50px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif">← 📋 Minhas OS</button>
+        <button id="vis-back-os" data-act="go" data-a="minhas-os" style="display:none;background:var(--c1-light);color:var(--c1);border:1.5px solid var(--c1);border-radius:50px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif">← 📋 Minhas OS</button>
         <div style="font-size:18px;font-weight:800;color:var(--c2)">🔍 Vistorias de Manutenção</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="fb on" id="vis-tab-nova" onclick="visTab('nova');window._visLocalId=null;visEditId=null;_visDraftId=null;_visAssinaturaTecnico=null;renderVisAssinaturaStatus();_resetCheckinVis();document.getElementById('vis-plano-banner').style.display='none'">📋 Nova Vistoria</button>
-        <button class="fb" id="vis-tab-hist" onclick="visTab('hist')">📜 Histórico</button>
-        <button class="fb" id="vis-tab-locais" onclick="visTab('locais')">📍 Meus Locais</button>
+        <button class="fb" id="vis-tab-hist" data-act="visTab" data-a="hist">📜 Histórico</button>
+        <button class="fb" id="vis-tab-locais" data-act="visTab" data-a="locais">📍 Meus Locais</button>
       </div>
     </div>
 
@@ -2718,7 +2718,7 @@
 
       <!-- Banner: contexto do plano (aparece quando aberto via "Fazer Vistoria") -->
       <div id="vis-plano-banner" style="display:none;align-items:center;gap:10px;padding:10px 14px;background:var(--c2);border-radius:12px;margin-bottom:12px;color:white">
-        <button onclick="visTab('locais')" style="background:rgba(255,255,255,.15);border:none;cursor:pointer;color:white;font-size:12px;font-weight:700;padding:5px 10px;border-radius:50px;font-family:'Inter',sans-serif;flex-shrink:0">← Planos</button>
+        <button data-act="visTab" data-a="locais" style="background:rgba(255,255,255,.15);border:none;cursor:pointer;color:white;font-size:12px;font-weight:700;padding:5px 10px;border-radius:50px;font-family:'Inter',sans-serif;flex-shrink:0">← Planos</button>
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:700" id="vis-plano-nome"></div>
           <div style="font-size:11px;opacity:.75" id="vis-plano-sub"></div>
@@ -2734,14 +2734,14 @@
           <div class="vpc-sub" id="vis-precarga-sub">Carregar equipamentos da última visita?</div>
         </div>
         <div style="display:flex;gap:8px;flex-shrink:0">
-          <button class="ba" style="background:var(--c1);color:white;padding:7px 14px;font-size:12px" onclick="confirmarPreCarga()">✅ Carregar</button>
-          <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:7px 14px;font-size:12px" onclick="dispensarPreCarga()">Não</button>
+          <button class="ba" style="background:var(--c1);color:white;padding:7px 14px;font-size:12px" data-act="confirmarPreCarga">✅ Carregar</button>
+          <button class="ba" style="background:var(--gray-light);color:var(--c2);padding:7px 14px;font-size:12px" data-act="dispensarPreCarga">Não</button>
         </div>
       </div>
 
       <!-- Dados gerais -->
       <div class="card" id="vis-dados-card">
-        <div class="ct" style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between" onclick="toggleVisDados()">
+        <div class="ct" style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between" data-act="toggleVisDados">
           <span>Dados da Visita</span>
           <span id="vis-dados-toggle" style="font-size:12px;font-weight:400;color:var(--gray)">▲ recolher</span>
         </div>
@@ -2751,7 +2751,7 @@
             <div class="cli-input-wrap">
               <input type="text" id="vis-cli" placeholder="Nome do cliente" oninput="mostrarSugestoesCliVis(this.value)" autocomplete="off" name="cli_nofill_vis" data-lpignore="true" data-form-type="other" readonly onfocus="this.removeAttribute('readonly')" onblur="setTimeout(()=>hideSugCliVis(),200)">
               <input type="hidden" id="vis-cli-id">
-              <button type="button" class="cli-search-btn" onclick="abrirBuscaCli('vis')" title="Buscar cliente">🔍</button>
+              <button type="button" class="cli-search-btn" data-act="abrirBuscaCli" data-a="vis" title="Buscar cliente">🔍</button>
               <div class="cli-suggestions" id="vis-cli-suggestions" style="display:none"></div>
             </div>
           </div>
@@ -2797,11 +2797,11 @@
         <div id="vis-checkin-bar" style="display:none" class="checkin-bar">
           <span>✅ Check-in realizado</span>
           <span class="checkin-timer" id="vis-checkin-timer">00:00</span>
-          <button class="ba" style="background:var(--red);color:white;padding:8px 14px;font-size:13px" onclick="visCheckout()">✔ Check-out</button>
+          <button class="ba" style="background:var(--red);color:white;padding:8px 14px;font-size:13px" data-act="visCheckout">✔ Check-out</button>
         </div>
         <div id="vis-checkin-form" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
           <div style="font-size:13px;color:var(--gray);flex:1">Registre sua chegada ao local para iniciar o relatório.</div>
-          <button class="ba" style="background:var(--green);color:white;padding:10px 18px;font-size:13px" onclick="visCheckin()">📍 Check-in</button>
+          <button class="ba" style="background:var(--green);color:white;padding:10px 18px;font-size:13px" data-act="visCheckin">📍 Check-in</button>
         </div>
         <div id="vis-checkin-info" style="font-size:12px;color:var(--gray);margin-top:8px;min-height:16px"></div>
       </div>
@@ -2816,13 +2816,13 @@
              gás, quadro elétrico, trocador — o técnico está NO local e não
              pode esperar alguém cadastrar o tipo pra registrar o que viu. -->
         <div id="vis-adhoc-wrap" style="margin-top:10px">
-          <button type="button" class="fb" id="vis-adhoc-abrir" onclick="visAdhocAbrir()">＋ Outro equipamento</button>
+          <button type="button" class="fb" id="vis-adhoc-abrir" data-act="visAdhocAbrir">＋ Outro equipamento</button>
           <div id="vis-adhoc-form" style="display:none;gap:8px;margin-top:6px">
             <input id="vis-adhoc-nome" type="text" maxlength="60" placeholder="Nome do equipamento"
               style="flex:1;min-width:0;padding:9px 11px;border:1.5px solid var(--gray-mid);border-radius:8px;font-size:13px;font-family:inherit;outline:none"
               onkeydown="if(event.key==='Enter'){event.preventDefault();visAdhocConfirmar();}if(event.key==='Escape'){visAdhocFechar();}">
-            <button type="button" class="ba" style="background:var(--c1);color:#fff;padding:9px 14px;font-size:13px" onclick="visAdhocConfirmar()">Adicionar</button>
-            <button type="button" class="fb" onclick="visAdhocFechar()">Cancelar</button>
+            <button type="button" class="ba" style="background:var(--c1);color:#fff;padding:9px 14px;font-size:13px" data-act="visAdhocConfirmar">Adicionar</button>
+            <button type="button" class="fb" data-act="visAdhocFechar">Cancelar</button>
           </div>
         </div>
       </div>
@@ -2871,7 +2871,7 @@
       <!-- Ações — vira barra fixa no rodapé abaixo de 680px (17/08),
            mesmo botão/função de sempre, só reposicionado. -->
       <div class="acts" id="vis-acts-bottom" style="grid-template-columns:1fr">
-        <button class="btn-primary" style="font-size:15px;padding:14px" onclick="finalizarVistoria()">
+        <button class="btn-primary" style="font-size:15px;padding:14px" data-act="finalizarVistoria">
           ✅ Finalizar Vistoria
         </button>
       </div>
@@ -2880,7 +2880,7 @@
            excluir do histórico — ou deixar o rascunho ressuscitar sozinho na
            próxima abertura do app. -->
       <div style="text-align:center;margin-top:10px">
-        <button type="button" id="vis-descartar-btn" style="display:none;background:none;border:none;color:var(--gray);font-size:12.5px;font-family:inherit;text-decoration:underline;cursor:pointer;padding:8px" onclick="descartarVistoria()">Descartar esta vistoria</button>
+        <button type="button" id="vis-descartar-btn" style="display:none;background:none;border:none;color:var(--gray);font-size:12.5px;font-family:inherit;text-decoration:underline;cursor:pointer;padding:8px" data-act="descartarVistoria">Descartar esta vistoria</button>
       </div>
 
     </div><!-- /vis-view-nova -->
@@ -2907,9 +2907,9 @@
 
       <!-- Filtro por status -->
       <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-        <button class="fb on" id="vis-fst-todos" onclick="filtVisStatus('')">Todos</button>
-        <button class="fb" id="vis-fst-critico" onclick="filtVisStatus('critico')">🔴 Com Crítico</button>
-        <button class="fb" id="vis-fst-atencao" onclick="filtVisStatus('atencao')">⚠️ Com Atenção</button>
+        <button class="fb on" id="vis-fst-todos" data-act="filtVisStatus" data-a="">Todos</button>
+        <button class="fb" id="vis-fst-critico" data-act="filtVisStatus" data-a="critico">🔴 Com Crítico</button>
+        <button class="fb" id="vis-fst-atencao" data-act="filtVisStatus" data-a="atencao">⚠️ Com Atenção</button>
       </div>
 
       <!-- Painel de alertas críticos -->
@@ -2936,13 +2936,13 @@
             <div style="font-size:17px;font-weight:800;color:var(--c2)">📍 Planos de Acompanhamento</div>
             <div style="font-size:12px;color:var(--gray);margin-top:2px">Clientes com visita recorrente mensal</div>
           </div>
-          <button class="btn-primary" id="loc-btn-novo" onclick="abrirLocForm()" style="white-space:nowrap">＋ Novo plano</button>
+          <button class="btn-primary" id="loc-btn-novo" data-act="abrirLocForm" style="white-space:nowrap">＋ Novo plano</button>
         </div>
         <div class="loc-mes-bar">
           <div class="loc-mes-nav">
-            <button onclick="locVisMesAnterior()" title="Mês anterior">◀</button>
+            <button data-act="locVisMesAnterior" title="Mês anterior">◀</button>
             <span class="loc-mes-label" id="loc-mes-label">—</span>
-            <button onclick="locVisMesProximo()" title="Próximo mês">▶</button>
+            <button data-act="locVisMesProximo" title="Próximo mês">▶</button>
           </div>
           <div class="loc-stats-row" id="loc-stats-row"></div>
         </div>
@@ -2958,14 +2958,14 @@
         <div class="fl" style="margin-bottom:4px">
           <label style="display:flex;align-items:center;justify-content:space-between">
             <span>🔧 Equipamentos do local <span style="font-weight:400;color:var(--gray)">(modelo, potência…)</span></span>
-            <button type="button" class="btn-sm" onclick="adicionarLocEquip()" style="font-size:11px;padding:4px 10px">＋ Adicionar</button>
+            <button type="button" class="btn-sm" data-act="adicionarLocEquip" style="font-size:11px;padding:4px 10px">＋ Adicionar</button>
           </label>
           <div id="loc-equip-list" style="margin-top:8px"></div>
         </div>
         <input type="hidden" id="loc-edit-id">
         <div style="display:flex;gap:8px;margin-top:8px">
-          <button class="btn-primary" onclick="salvarLocal()">💾 Salvar plano</button>
-          <button class="btn-sm" onclick="fecharLocForm()" style="color:var(--c2)">Cancelar</button>
+          <button class="btn-primary" data-act="salvarLocal">💾 Salvar plano</button>
+          <button class="btn-sm" data-act="fecharLocForm" style="color:var(--c2)">Cancelar</button>
         </div>
       </div>
 
@@ -2989,7 +2989,7 @@
 
     <!-- Formulário novo contrato (oculto por padrão) -->
     <div class="card" id="ag-form-card" style="display:none">
-      <div class="ct">Novo Agendamento Recorrente <button onclick="fecharFormAg()" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;line-height:1">×</button></div>
+      <div class="ct">Novo Agendamento Recorrente <button data-act="fecharFormAg" aria-label="Fechar" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:18px;font-weight:700;line-height:1">×</button></div>
       <div class="row">
         <div class="fl"><label>Cliente</label><input type="text" id="ag-cli" placeholder="Nome do cliente" list="ag-cli-list" oninput="filtrarCliAg(this.value)"><datalist id="ag-cli-list"></datalist></div>
         <div class="fl"><label>Local / Endereço</label><input type="text" id="ag-loc" placeholder="Endereço"></div>
@@ -3014,16 +3014,16 @@
         <div class="fl"><label>Data Fim <span style="font-weight:400;color:var(--gray);text-transform:none">(deixe vazio = indeterminado)</span></label><input type="date" id="ag-fim"></div>
         <div class="fl"><label>Observações fixas</label><input type="text" id="ag-obs" placeholder="Ex: Chave no portão, ligar antes"></div>
       </div>
-      <button class="btn-primary" onclick="salvarAgendamento()">💾 Salvar Agendamento</button>
+      <button class="btn-primary" data-act="salvarAgendamento">💾 Salvar Agendamento</button>
     </div>
 
     <!-- Header -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
       <div style="font-size:18px;font-weight:800;color:var(--c2)">📅 Agendamentos</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="fb on" id="ag-tab-cal" onclick="agTab('cal')">📆 Calendário</button>
-        <button class="fb" id="ag-tab-lista" onclick="agTab('lista')">📋 Contratos</button>
-        <button class="btn-primary" style="padding:8px 16px;font-size:13px" onclick="abrirFormAg()">＋ Novo</button>
+        <button class="fb on" id="ag-tab-cal" data-act="agTab" data-a="cal">📆 Calendário</button>
+        <button class="fb" id="ag-tab-lista" data-act="agTab" data-a="lista">📋 Contratos</button>
+        <button class="btn-primary" style="padding:8px 16px;font-size:13px" data-act="abrirFormAg">＋ Novo</button>
       </div>
     </div>
 
@@ -3082,7 +3082,7 @@
   <div class="modal-cli-box">
     <div style="display:flex;justify-content:space-between;align-items:center">
       <div style="font-size:15px;font-weight:700;color:var(--c2)">Buscar Cliente</div>
-      <button onclick="fecharBuscaCli()" aria-label="Fechar" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--gray);line-height:1">×</button>
+      <button data-act="fecharBuscaCli" aria-label="Fechar" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--gray);line-height:1">×</button>
     </div>
     <input class="modal-cli-inp" id="modal-cli-inp" type="text" placeholder="Nome, telefone ou CNPJ..." oninput="filtrarListaCli(this.value)" autocomplete="off">
     <div class="modal-cli-lista" id="modal-cli-lista"></div>
@@ -3095,8 +3095,8 @@
     <div class="fl" style="margin-bottom:10px"><label>Valor Total do Orçamento</label><input type="text" id="mg-tot" readonly style="background:var(--gray-light)"></div>
     <div class="fl"><label>Valor Recebido (R$)</label><input type="number" id="mg-val" placeholder="0,00" step="0.01" min="0"></div>
     <div class="modal-acts">
-      <button class="btn-sec" onclick="fecharModal()">Cancelar</button>
-      <button class="btn-pri" onclick="salvarPagamento()">Salvar</button>
+      <button class="btn-sec" data-act="fecharModal">Cancelar</button>
+      <button class="btn-pri" data-act="salvarPagamento">Salvar</button>
     </div>
   </div>
 </div>
@@ -3154,8 +3154,8 @@
       </div>
     </div>
     <div style="display:flex;gap:8px">
-      <button class="btn-sec" onclick="fecharAprovOS()" style="flex:1">Não por agora</button>
-      <button id="aprov-os-btn" class="btn-primary" onclick="criarOSdeAprovacao()" style="flex:2">📋 Criar OS agendada</button>
+      <button class="btn-sec" data-act="fecharAprovOS" style="flex:1">Não por agora</button>
+      <button id="aprov-os-btn" class="btn-primary" data-act="criarOSdeAprovacao" style="flex:2">📋 Criar OS agendada</button>
     </div>
   </div>
 </div>
@@ -3169,8 +3169,8 @@
 
     <!-- Tipo -->
     <div class="nfe-tipo-tabs">
-      <button class="nfe-tab on" id="nfe-tab-nfse" onclick="selecionarTipoNF('nfse')">NFS-e<br><span style="font-size:10px;font-weight:400">Serviços (prestação)</span></button>
-      <button class="nfe-tab" id="nfe-tab-nfe" onclick="selecionarTipoNF('nfe')">NF-e<br><span style="font-size:10px;font-weight:400">Produtos/mercadorias</span></button>
+      <button class="nfe-tab on" id="nfe-tab-nfse" data-act="selecionarTipoNF" data-a="nfse">NFS-e<br><span style="font-size:10px;font-weight:400">Serviços (prestação)</span></button>
+      <button class="nfe-tab" id="nfe-tab-nfe" data-act="selecionarTipoNF" data-a="nfe">NF-e<br><span style="font-size:10px;font-weight:400">Produtos/mercadorias</span></button>
     </div>
 
     <!-- Dados do orçamento (readonly) -->
@@ -3241,8 +3241,8 @@
     </div>
 
     <div class="nfe-acts">
-      <button class="btn-sec" onclick="fecharModalNFe()">Cancelar</button>
-      <button class="btn-primary" id="nfe-btn-emitir" onclick="emitirNota()">⚡ Emitir Nota Fiscal</button>
+      <button class="btn-sec" data-act="fecharModalNFe">Cancelar</button>
+      <button class="btn-primary" id="nfe-btn-emitir" data-act="emitirNota">⚡ Emitir Nota Fiscal</button>
     </div>
   </div>
 </div>
@@ -3254,7 +3254,7 @@
   <span class="pwa-install-icon" aria-hidden="true">📲</span>
   <div class="pwa-install-txt" id="pwa-install-body"></div>
   <button class="pwa-install-btn" id="pwa-install-btn" style="display:none">Instalar</button>
-  <button class="pwa-install-close" onclick="fluxaDispensarInstalar()" aria-label="Fechar">✕</button>
+  <button class="pwa-install-close" data-act="fluxaDispensarInstalar" aria-label="Fechar">✕</button>
 </div>
 
 <!-- ══ Bloqueio biométrico (Sprint 2) — só aparece se o aparelho já tem credencial registrada ══ -->
@@ -3263,8 +3263,8 @@
     <div class="biometric-lock-icon" aria-hidden="true">🔒</div>
     <div class="biometric-lock-titulo">Fluxa bloqueado</div>
     <div class="biometric-lock-sub" id="biometric-lock-status">Toque abaixo pra desbloquear.</div>
-    <button class="btn-primary" style="width:100%;margin-top:18px" onclick="fluxaDesbloquearBiometria()">🔓 Desbloquear</button>
-    <button class="biometric-lock-outro" onclick="fluxaUsarOutroLogin()">Entrar de outro jeito</button>
+    <button class="btn-primary" style="width:100%;margin-top:18px" data-act="fluxaDesbloquearBiometria">🔓 Desbloquear</button>
+    <button class="biometric-lock-outro" data-act="fluxaUsarOutroLogin">Entrar de outro jeito</button>
   </div>
 </div>
 
@@ -3327,8 +3327,8 @@ window.onerror = function(msg, src, line, col, err){
       <div id="baixa-resumo" style="font-size:12px;color:var(--gray);margin-bottom:10px;line-height:1.5"></div>
     </div>
     <div class="rd-modal-acts">
-      <button class="rd-modal-btn rd-modal-btn-nao" onclick="fecharBaixaRapida()">Cancelar</button>
-      <button class="rd-modal-btn rd-modal-btn-sim" id="baixa-btn" onclick="confirmarBaixaRapida()">Confirmar baixa</button>
+      <button class="rd-modal-btn rd-modal-btn-nao" data-act="fecharBaixaRapida">Cancelar</button>
+      <button class="rd-modal-btn rd-modal-btn-sim" id="baixa-btn" data-act="confirmarBaixaRapida">Confirmar baixa</button>
     </div>
   </div>
 </div>
