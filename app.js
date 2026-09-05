@@ -6845,6 +6845,68 @@ async function confirmarAssinatura(orcId){
   await aprovarOrcPortal(orcId, sigB64);
 }
 
+// ── Assinatura do técnico na vistoria ──────────────────────────────────
+// Reusa o canvas genérico acima (initSigCanvas/limparAssinatura) sem tocar
+// nele: o modal usa os MESMOS ids de canvas/placeholder, então só a
+// confirmação precisa ser própria (a original é acoplada a aprovarOrcPortal).
+let _visAssinaturaTecnico = null; // {base64,data,meta,nome}
+function abrirModalAssinaturaVis(){
+  document.getElementById('modal-assinatura')?.remove();
+  const s=getSessao();
+  const nomeTec=(document.getElementById('vis-tec')?.value||'')||(s?.nome||'técnico');
+  const m=document.createElement('div');
+  m.id='modal-assinatura'; m.className='cli-hist-overlay'; m.style.zIndex='1200';
+  m.innerHTML=`<div class="cli-hist-box" style="max-height:none">
+    <div class="cli-hist-hdr">
+      <div class="cli-hist-titulo">✍️ Assinatura do Técnico</div>
+      <button class="cli-hist-close" onclick="document.getElementById('modal-assinatura').remove()">×</button>
+    </div>
+    <div style="padding:16px 20px 24px">
+      <p style="font-size:13px;color:var(--gray);margin-bottom:12px">Assine para confirmar que ${esc(nomeTec)} realizou esta vistoria no local.</p>
+      <div class="sig-wrap">
+        <canvas id="sig-canvas" class="sig-canvas"></canvas>
+        <div class="sig-placeholder" id="sig-placeholder">✍️ Assine aqui com o dedo ou mouse</div>
+      </div>
+      <div class="sig-btns">
+        <button class="sig-btn" onclick="limparAssinatura()">↺ Limpar</button>
+        <button class="sig-btn ok" onclick="confirmarAssinaturaVis()">✅ Confirmar</button>
+      </div>
+    </div>
+  </div>`;
+  m.addEventListener('click',e=>{ if(e.target===m) m.remove(); });
+  document.body.appendChild(m);
+  setTimeout(initSigCanvas, 80);
+}
+function confirmarAssinaturaVis(){
+  if(!_sigHasMark){ toast('⚠️ Por favor, assine antes de confirmar'); return; }
+  const canvas=document.getElementById('sig-canvas'); if(!canvas) return;
+  const sigB64=canvas.toDataURL('image/png');
+  document.getElementById('modal-assinatura')?.remove();
+  const s=getSessao();
+  _visAssinaturaTecnico={
+    base64: sigB64,
+    data: new Date().toISOString(),
+    meta: (navigator.userAgent||'').slice(0,180),
+    nome: (document.getElementById('vis-tec')?.value||'')||(s?.nome||'')
+  };
+  renderVisAssinaturaStatus();
+  toast('✅ Assinatura registrada');
+}
+function renderVisAssinaturaStatus(){
+  const el=document.getElementById('vis-assinatura-status'); if(!el) return;
+  if(_visAssinaturaTecnico){
+    let horaTxt='';
+    try{ horaTxt=new Date(_visAssinaturaTecnico.data).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }catch(e){}
+    el.innerHTML=`<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <img src="${_visAssinaturaTecnico.base64}" alt="Assinatura" style="height:44px;border:1px solid var(--gray-mid);border-radius:8px;background:#fff;padding:2px">
+      <div style="flex:1;min-width:140px;font-size:12px;color:var(--green);font-weight:700">✍️ Assinado por ${esc(_visAssinaturaTecnico.nome||'')}${horaTxt?(' às '+horaTxt):''}</div>
+      <button type="button" class="tb" onclick="abrirModalAssinaturaVis()" style="font-size:12px">Refazer</button>
+    </div>`;
+  } else {
+    el.innerHTML=`<button type="button" class="btn-primary" style="padding:10px 18px;font-size:13px" onclick="abrirModalAssinaturaVis()">✍️ Assinar</button>`;
+  }
+}
+
 // Hash SHA-256 do conteúdo essencial do orçamento — "impressão digital" do
 // documento assinado. Recalcular depois e comparar prova se algo foi alterado.
 async function _hashDocumentoOrc(o){
@@ -9546,6 +9608,9 @@ function iniciarVistoriaPlena(locId){
   visEditId=null;
   _visDraftId=null;
   window._visLocalId=locId;
+  // Sem isto o card de assinatura nasce vazio (o HTML é preenchido só por JS)
+  // e o técnico fica sem botão nenhum pra cumprir a exigência de finalizar.
+  _visAssinaturaTecnico=null; renderVisAssinaturaStatus();
 
   // Navega para a aba Nova Vistoria
   visTab('nova');
@@ -10292,6 +10357,10 @@ async function _montarRecVistoria(){
     hora_checkin: visCheckinTime?visCheckinTime.toTimeString().slice(0,5):hora,
     hora_checkout: visCheckoutTime?visCheckoutTime.toTimeString().slice(0,5):null,
     obs_geral: document.getElementById('vis-obs')?.value||'',
+    recomendacoes: (document.getElementById('vis-recom')?.value||'').trim()||null,
+    assinatura_tecnico_base64: _visAssinaturaTecnico?.base64||null,
+    assinatura_tecnico_data: _visAssinaturaTecnico?.data||null,
+    assinatura_tecnico_meta: _visAssinaturaTecnico?.meta||null,
     email_responsavel: (document.getElementById('vis-email-resp')?.value||'').trim()||null,
     equipamentos: _montarEquipamentosVistoria(),
     created_at: new Date().toISOString()
@@ -10419,8 +10488,10 @@ function _limparFormVistoria(){
   if(visCheckinInterval){ clearInterval(visCheckinInterval); visCheckinInterval = null; }
   _resetCheckinVis();
   window._visLocalId = null;
+  _visAssinaturaTecnico = null;
+  renderVisAssinaturaStatus();
   // Limpa campos do form
-  ['vis-cli','vis-loc','vis-hora','vis-obs','vis-email-resp'].forEach(id=>{
+  ['vis-cli','vis-loc','vis-hora','vis-obs','vis-recom','vis-email-resp'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value='';
   });
   const hoje = new Date();
@@ -10432,12 +10503,58 @@ function _limparFormVistoria(){
   renderVisEquipGrid();
 }
 
+// Item marcado 🔴 crítico sem nenhuma foto: a foto é a prova visual que
+// sustenta o orçamento de conserto depois. Sem ela, quem aprova decide só
+// pelo texto do técnico.
+function _visCriticosSemFoto(){
+  return Object.keys(visEquipDados||{}).filter(id=>{
+    const d=visEquipDados[id]||{};
+    return d.status==='critico' && !((d.fotos||[]).some(Boolean));
+  }).map(id=>_visNomeEquip(id));
+}
+function _visNomeEquip(id){
+  const custom=(_visEquipsCustom||[]).find(e=>e.id===id);
+  if(custom) return custom.nome||id;
+  const def=(typeof VIS_EQUIPAMENTOS_DEFAULT!=='undefined'?VIS_EQUIPAMENTOS_DEFAULT:[]).find(e=>e.id===id);
+  return def?def.nome:id;
+}
+
 // ── Finalizar vistoria: salva, limpa o form e navega para o histórico ──
 async function finalizarVistoria(){
+  // Assinatura é BLOQUEIO: confirma que o técnico esteve no local. Mesma
+  // regra da entrega de reparo — não é um "seria bom ter".
+  if(!_visAssinaturaTecnico){
+    toast('⚠️ Assine antes de finalizar a vistoria');
+    const card=document.getElementById('vis-assinatura-status');
+    if(card) card.scrollIntoView({behavior:'smooth', block:'center'});
+    return;
+  }
+  // Foto em item crítico é AVISO, nunca bloqueio — quem decide é quem está
+  // no local (mesmo princípio do limite de desconto e do item sem estoque).
+  const semFoto=_visCriticosSemFoto();
+  if(semFoto.length){
+    const lista=semFoto.slice(0,4).join(', ')+(semFoto.length>4?` e mais ${semFoto.length-4}`:'');
+    confirmar({
+      titulo:'Item crítico sem foto',
+      msg:`${semFoto.length===1?'Este item foi marcado':'Estes itens foram marcados'} como crítico sem nenhuma foto: ${lista}. A foto é o que sustenta o orçamento de conserto depois.`,
+      labelNao:'Voltar e adicionar foto', labelSim:'Finalizar mesmo assim',
+      onSim:()=>_finalizarVistoriaProsseguir()
+    });
+    return;
+  }
+  _finalizarVistoriaProsseguir();
+}
+async function _finalizarVistoriaProsseguir(){
+  // veioDoPlano é lido ANTES: salvarVistoria() zera window._visLocalId por
+  // dentro e já agenda visTab('locais') nesse caso. Agendar 'hist' por cima
+  // fazia dois setTimeout de navegação concorrentes — a tela ia pro
+  // Histórico e 300ms depois pulava pra Meus Locais, redesenhando duas
+  // listas grandes em sequência.
+  const veioDoPlano = !!window._visLocalId;
   const ok = await salvarVistoria();
   if(ok){
     _limparFormVistoria(); // previne re-submit acidental ao voltar para "Nova Vistoria"
-    setTimeout(()=>visTab('hist'), 300);
+    if(!veioDoPlano) setTimeout(()=>visTab('hist'), 300);
   }
 }
 
@@ -10908,6 +11025,14 @@ function preencherRelatorioVistoria(vis){
     }).join('');
   }
 
+  // Recomendações — vem ANTES das observações: é a parte acionável.
+  const recWrap=document.getElementById('pd-vis-recom-wrap');
+  const recBar=document.getElementById('pd-vis-recom-bar');
+  const recTxt=document.getElementById('pd-vis-recom-txt');
+  if(recWrap){ recWrap.style.display=vis.recomendacoes?'block':'none'; }
+  if(recBar)  recBar.style.background=cor;
+  if(recTxt)  recTxt.textContent=vis.recomendacoes||'';
+
   // General obs
   const obsWrap=document.getElementById('pd-vis-obs-wrap');
   const obsBar=document.getElementById('pd-vis-obs-bar');
@@ -10922,6 +11047,15 @@ function preencherRelatorioVistoria(vis){
     const nomeTec = vis.tecnico||'Técnico Responsável';
     const empresaTec = LC.nome||'';
     signTec.innerHTML=`${esc(nomeTec)}<br><span style="font-size:10px;font-weight:400;color:#6b7280">${esc(empresaTec)}</span>`;
+  }
+  // Assinatura digital, quando existe. Registro antigo (antes da assinatura
+  // ser obrigatória) mantém a linha em branco pra assinar no papel — sem
+  // regressão pro histórico.
+  const sigLine=document.getElementById('pd-vis-sig-tec-line');
+  if(sigLine){
+    sigLine.innerHTML = vis.assinatura_tecnico_base64
+      ? `<img src="${vis.assinatura_tecnico_base64}" alt="Assinatura" style="max-height:46px;max-width:100%;display:block;margin:0 auto 2px">`
+      : '';
   }
 
   // Footer
@@ -11111,6 +11245,7 @@ function novaVistoria(cliNome, cliLocal, tecNome){
   visEditId=null;
   _visDraftId=null;
   setV('vis-cli-id','');
+  _visAssinaturaTecnico=null; renderVisAssinaturaStatus();
   if(visCheckinInterval){ clearInterval(visCheckinInterval); visCheckinInterval=null; }
   go('visitas');
   visTab('nova');
@@ -11177,7 +11312,15 @@ function editarVistoria(id){
   set('vis-mes-ref',vis.mes_ref||_ed.slice(0,7));
   set('vis-hora',vis.hora||vis.hora_checkin||'');
   set('vis-obs',vis.obs_geral);
+  set('vis-recom',vis.recomendacoes);
   set('vis-email-resp',vis.email_responsavel);
+  // Registro anterior à assinatura obrigatória volta SEM assinatura — e vai
+  // exigir assinar de novo pra finalizar, mesma regra de qualquer vistoria.
+  _visAssinaturaTecnico = vis.assinatura_tecnico_base64
+    ? {base64:vis.assinatura_tecnico_base64, data:vis.assinatura_tecnico_data||new Date().toISOString(),
+       meta:vis.assinatura_tecnico_meta||'', nome:vis.tecnico||''}
+    : null;
+  renderVisAssinaturaStatus();
   const tecSel=document.getElementById('vis-tec');
   if(tecSel&&vis.tecnico){ for(const o of tecSel.options){ if(o.text===vis.tecnico||o.value===vis.tecnico){ o.selected=true; break; } } }
   // Equipamentos: separa padrão de custom e PRESERVA status/obs/fotos

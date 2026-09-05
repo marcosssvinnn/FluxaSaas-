@@ -1721,6 +1721,17 @@
     <!-- DETAILED EQUIPMENT SECTIONS -->
     <div class="pd-sl">Vistoria Detalhada</div>
     <div class="pd-vis-equip-list" id="pd-vis-equip-list"></div>
+    <!-- RECOMENDAÇÕES — em destaque: é o que vira proposta de serviço -->
+    <div id="pd-vis-recom-wrap" style="display:none">
+      <div class="pd-sl">Recomendações</div>
+      <div class="pd-obs-card">
+        <div class="pd-obs-bar" id="pd-vis-recom-bar"></div>
+        <div class="pd-obs-inner">
+          <div class="pd-obs-lbl">O que precisa ser feito</div>
+          <div class="pd-obs-txt" id="pd-vis-recom-txt"></div>
+        </div>
+      </div>
+    </div>
     <!-- GENERAL OBS -->
     <div id="pd-vis-obs-wrap" style="display:none">
       <div class="pd-sl">Observações Gerais</div>
@@ -1739,7 +1750,7 @@
         <div class="pd-sig-name">Assinatura do Responsável / Síndico</div>
       </div>
       <div class="pd-sig-blk">
-        <div class="pd-sig-line"></div>
+        <div class="pd-sig-line" id="pd-vis-sig-tec-line"></div>
         <div class="pd-sig-name" id="pd-vis-sign-tec">Técnico Responsável</div>
       </div>
     </div>
@@ -2566,7 +2577,7 @@
         <div style="font-size:18px;font-weight:800;color:var(--c2)">🔍 Vistorias de Manutenção</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="fb on" id="vis-tab-nova" onclick="visTab('nova');window._visLocalId=null;visEditId=null;_visDraftId=null;_resetCheckinVis();document.getElementById('vis-plano-banner').style.display='none'">📋 Nova Vistoria</button>
+        <button class="fb on" id="vis-tab-nova" onclick="visTab('nova');window._visLocalId=null;visEditId=null;_visDraftId=null;_visAssinaturaTecnico=null;renderVisAssinaturaStatus();_resetCheckinVis();document.getElementById('vis-plano-banner').style.display='none'">📋 Nova Vistoria</button>
         <button class="fb" id="vis-tab-hist" onclick="visTab('hist')">📜 Histórico</button>
         <button class="fb" id="vis-tab-locais" onclick="visTab('locais')">📍 Meus Locais</button>
       </div>
@@ -2687,12 +2698,31 @@
         <div class="vis-equip-grid" id="vis-equip-grid"></div>
       </div>
 
+      <!-- Recomendações — separado de "Observações" de propósito: é o que vira
+           proposta de serviço depois, não descrição do que foi encontrado. -->
+      <div class="card">
+        <div class="ct">Recomendações</div>
+        <div class="row f1">
+          <div class="fl">
+            <label>O que precisa ser feito <span style="font-weight:400;color:var(--gray);text-transform:none;letter-spacing:0">— vira a base do orçamento</span></label>
+            <textarea id="vis-recom" rows="3" placeholder="Trocar selo mecânico da motobomba principal; revisar vedação do filtro…"></textarea>
+          </div>
+        </div>
+      </div>
+
       <!-- Observações gerais -->
       <div class="card">
         <div class="ct">📝 Observações Gerais</div>
         <div class="row f1">
-          <div class="fl"><textarea id="vis-obs" rows="4" placeholder="Condições gerais do local, recomendações, pendências observadas nos equipamentos…"></textarea></div>
+          <div class="fl"><textarea id="vis-obs" rows="4" placeholder="Condições gerais do local, pendências observadas, combinados com o responsável…"></textarea></div>
         </div>
+      </div>
+
+      <!-- Assinatura do técnico — confirma que esteve no local. Obrigatória
+           pra finalizar, mesma regra da entrega de reparo. -->
+      <div class="card">
+        <div class="ct">Assinatura do Técnico</div>
+        <div id="vis-assinatura-status"></div>
       </div>
 
       <!-- Ações — vira barra fixa no rodapé abaixo de 680px (17/08),
