@@ -14978,7 +14978,7 @@ function confirmarTransferencia(){
 let _histProdId=null, _histProdPag=0, _histProdFiltro='todos';
 const _HIST_POR_PAG=25;
 function abrirHistProduto(produtoId){
-  _histProdId=produtoId; _histProdPag=0; _histProdFiltro='todos';
+  _histProdId=produtoId; _histProdPag=0; _histProdFiltro='todos'; _acuraciaData=null;
   _renderHistProduto();
   document.getElementById('hist-prod-modal').style.display='flex';
 }
@@ -14992,7 +14992,7 @@ function _renderHistProduto(){
   if(_histProdFiltro!=='todos') todos=todos.filter(m=>m.tipo===_histProdFiltro);
   const body=document.getElementById('hist-prod-body');
   if(!todos.length){
-    body.innerHTML='<div style="padding:20px;text-align:center;color:var(--gray);font-size:13px">Nenhum movimento ainda.</div>';
+    body.innerHTML=_acuraciaHTML(produtoId)+'<div style="padding:20px;text-align:center;color:var(--gray);font-size:13px">Nenhum movimento ainda.</div>';
     return;
   }
   const inicio=_histProdPag*_HIST_POR_PAG;
@@ -15001,7 +15001,7 @@ function _renderHistProduto(){
   const filtros=[['todos','Todos'],['entrada','＋ Ent.'],['saida','− Saída'],['ajuste','⚖ Ajuste'],['reserva','🔒']];
   const filtrosHTML=filtros.map(([k,l])=>`<button onclick="_histProdFiltro='${k}';_histProdPag=0;_renderHistProduto()" style="font-size:11px;padding:3px 8px;border-radius:50px;border:1px solid ${_histProdFiltro===k?'var(--c1)':'var(--gray-light)'};background:${_histProdFiltro===k?'var(--c1)':'transparent'};color:${_histProdFiltro===k?'white':'var(--gray)'};cursor:pointer">${l}</button>`).join('');
   const navHTML=temAntes||temDepois?`<div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;font-size:12px;color:var(--gray)"><span>${inicio+1}–${Math.min(inicio+_HIST_POR_PAG,todos.length)} de ${todos.length}</span><div style="display:flex;gap:6px">${temAntes?`<button onclick="_histProdPag--;_renderHistProduto()" style="padding:2px 8px;border:1px solid var(--gray-light);border-radius:4px;cursor:pointer;background:none">←</button>`:''} ${temDepois?`<button onclick="_histProdPag++;_renderHistProduto()" style="padding:2px 8px;border:1px solid var(--gray-light);border-radius:4px;cursor:pointer;background:none">→</button>`:''}</div></div>`:'';
-  body.innerHTML=renderHistoricoPreco(produtoId)+`<div style="display:flex;gap:6px;flex-wrap:wrap;padding-bottom:8px;border-bottom:1px solid var(--gray-light);margin-bottom:4px;margin-top:8px">${filtrosHTML}</div>`
+  body.innerHTML=_acuraciaHTML(produtoId)+renderHistoricoPreco(produtoId)+`<div style="display:flex;gap:6px;flex-wrap:wrap;padding-bottom:8px;border-bottom:1px solid var(--gray-light);margin-bottom:4px;margin-top:8px">${filtrosHTML}</div>`
     +pagina.map(m=>{
       const d=new Date(m.data).toLocaleDateString('pt-BR')+' '+new Date(m.data).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
       const q=parseFloat(m.quantidade)||0;
@@ -15015,6 +15015,94 @@ function _renderHistProduto(){
     }).join('')+navHTML;
 }
 function fecharHistProduto(){ document.getElementById('hist-prod-modal').style.display='none'; }
+
+// ══ ACURÁCIA DE INVENTÁRIO ════════════════════════
+// O saldo é a soma dos movimentos, nunca um contador — então dá pra responder
+// "quanto tinha no dia X" sem guardar nada novo: basta parar de somar em X.
+// É o que o contador pede no fechamento e o que resolve a discussão de "isso
+// já tinha acabado quando eu vendi?".
+//
+// Usa o MESMO recorte de loja de fisicaProduto() (filtrarPorLoja), pra que o
+// último ponto da série bata exatamente com o número que a pessoa vê no card
+// do produto. Uma série que não fecha com a tela é pior que série nenhuma.
+function _movsProdutoOrdenados(produtoId){
+  return filtrarPorLoja(todosMovEstoque||[])
+    .filter(m=>m.produto_id===produtoId && _TIPOS_FISICOS.includes(m.tipo) && m.data)
+    .map(m=>({dia:String(m.data).slice(0,10), q:parseFloat(m.quantidade)||0}))
+    .sort((a,b)=>a.dia<b.dia?-1:a.dia>b.dia?1:0);
+}
+// Saldo físico ao FIM do dia informado (inclui os movimentos do próprio dia —
+// é assim que se lê "o que tinha no estoque no dia 31").
+function _saldoProdutoNaData(produtoId, dia){
+  return _movsProdutoOrdenados(produtoId)
+    .filter(m=>m.dia<=dia)
+    .reduce((a,m)=>a+m.q, 0);
+}
+// Série diária do primeiro movimento até hoje, e os períodos em que o saldo
+// ficou zerado ou negativo. Ruptura é contada a partir do PRIMEIRO movimento
+// do produto, não do cadastro: produto cadastrado e nunca comprado não estava
+// "em falta", estava por chegar.
+function _rupturaProduto(produtoId, diasJanela){
+  const movs=_movsProdutoOrdenados(produtoId);
+  if(!movs.length) return null;
+  const hoje=_hojeLocal();
+  const limite=new Date(hoje+'T12:00:00'); limite.setDate(limite.getDate()-(diasJanela||90));
+  const iniJanela=limite.toISOString().slice(0,10);
+  const inicio = movs[0].dia > iniJanela ? movs[0].dia : iniJanela;
+  if(inicio>hoje) return null;
+  const p=produtoById(produtoId);
+  const minimo=parseFloat(p?.estoque_minimo)||0;
+  // saldo acumulado até a véspera do início da janela
+  let saldo=movs.filter(m=>m.dia<inicio).reduce((a,m)=>a+m.q,0);
+  const porDia={};
+  movs.filter(m=>m.dia>=inicio).forEach(m=>{ porDia[m.dia]=(porDia[m.dia]||0)+m.q; });
+  const periodos=[]; let atual=null;
+  let diasZerado=0, diasAbaixoMin=0, total=0;
+  const d=new Date(inicio+'T12:00:00'), fim=new Date(hoje+'T12:00:00');
+  while(d<=fim){
+    const dia=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    saldo+=porDia[dia]||0;
+    total++;
+    if(saldo<=0){
+      diasZerado++;
+      if(!atual) atual={de:dia, ate:dia};
+      else atual.ate=dia;
+    } else if(atual){ periodos.push(atual); atual=null; }
+    if(minimo>0 && saldo<=minimo) diasAbaixoMin++;
+    d.setDate(d.getDate()+1);
+  }
+  if(atual){ atual.aberto=true; periodos.push(atual); }
+  return {inicio, fim:hoje, total, diasZerado, diasAbaixoMin, minimo,
+    pctZerado: total?diasZerado/total*100:0,
+    periodos: periodos.slice(-6).reverse(), nPeriodos: periodos.length};
+}
+function _diaBR(d){ try{ return new Date(d+'T12:00:00').toLocaleDateString('pt-BR'); }catch(e){ return d; } }
+function _acuraciaHTML(produtoId){
+  const p=produtoById(produtoId); if(!p) return '';
+  const r=_rupturaProduto(produtoId, 90);
+  const hoje=_hojeLocal();
+  const dataSel=_acuraciaData||hoje;
+  const saldoNa=_saldoProdutoNaData(produtoId, dataSel);
+  const un=esc(p.unidade||'un');
+  let rupturaTx;
+  if(!r) rupturaTx='<div style="font-size:11.5px;color:var(--gray)">Sem movimento registrado — nada a medir ainda.</div>';
+  else if(!r.diasZerado) rupturaTx=`<div style="font-size:11.5px;color:var(--green)">Nunca zerou nos últimos ${r.total} dia${r.total!==1?'s':''}.${r.minimo>0?` ${r.diasAbaixoMin} dia${r.diasAbaixoMin!==1?'s':''} no mínimo ou abaixo.`:''}</div>`;
+  else rupturaTx=`
+    <div style="font-size:11.5px;color:var(--warn);font-weight:600">Zerado em ${r.diasZerado} de ${r.total} dias (${r.pctZerado.toFixed(0)}%)${r.minimo>0?` · ${r.diasAbaixoMin} dia${r.diasAbaixoMin!==1?'s':''} no mínimo ou abaixo`:''}</div>
+    <div style="font-size:11px;color:var(--gray);margin-top:3px">${r.periodos.map(x=>
+      `${_diaBR(x.de)}${x.de!==x.ate?' → '+_diaBR(x.ate):''}${x.aberto?' (segue hoje)':''}`).join(' · ')}${r.nPeriodos>6?` · +${r.nPeriodos-6} antes`:''}</div>`;
+  return `<div class="rd-card rd-card-dense" style="margin-bottom:10px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+      <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--gray)">Saldo em</span>
+      <input type="date" value="${dataSel}" max="${hoje}" onchange="_acuraciaSetData(this.value)"
+        style="padding:4px 7px;border:1.5px solid var(--gray-mid);border-radius:6px;font-size:12px;font-family:inherit">
+      <span style="font-size:15px;font-weight:800;color:${saldoNa<=0?'var(--warn)':'var(--c2)'}">${fmtQtd(saldoNa)} ${un}</span>
+    </div>
+    ${rupturaTx}
+  </div>`;
+}
+let _acuraciaData=null;
+function _acuraciaSetData(v){ _acuraciaData=v||null; _renderHistProduto(); }
 
 // ══════════════════════════════════════════════════
 //  FORNECEDORES
