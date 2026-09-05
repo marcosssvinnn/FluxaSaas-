@@ -68,6 +68,61 @@ function eVendas(){ const s=getSessao(); return s?.perfil==='vendas'; }
 function eTecnico(){ const s=getSessao(); return s?.perfil==='tecnico'; }
 function getLojaFiltro(){ const s=getSessao(); return s?.loja_id||null; }
 
+// ══════════════════════════════════════════════════
+//  AUTORIZAÇÃO GRANULAR (Fase 2.2) — matriz de capacidades
+// ══════════════════════════════════════════════════
+// can() é guardrail de UI/UX, NÃO segurança. A barreira REAL de dados é a RLS
+// no Supabase (cada empresa só enxerga o próprio empresa_id, testado ao vivo na
+// auditoria da Fase 1). Igual aos guards de go(): impedem cliques inválidos e
+// escondem botões, não protegem o banco. Nunca troque uma checagem de servidor
+// por um can().
+//
+// FONTE ÚNICA da verdade. Antes, quem-vê-o-quê estava em 3 lugares (go(),
+// aplicarPermissoesPerfil e as regras de nav) e JÁ divergia: vendas/técnico
+// eram expulsos de venda-balcao ao recarregar a página, mesmo podendo navegar
+// para lá pelo menu. Consolidar aqui corrige isso.
+//
+// Adicionar um perfil novo (ex.: "supervisor de campo") = uma linha nova neste
+// objeto, sem espalhar if pelo app inteiro.
+//
+// Convenção dos nomes: 'PAGE.<id>' = pode abrir a página <id>; os demais são
+// ações de domínio (OS.EXECUTE, ORCAMENTO.APPROVE, ...) para o código novo
+// consultar em vez de checar perfil na mão. gestor/master = '*' (podem tudo
+// hoje; quando existir um gestor restrito, vira um perfil próprio).
+const PERMISSOES = {
+  gestor: ['*'],
+  vendas: [
+    'PAGE.form','PAGE.history','PAGE.crm','PAGE.clientes','PAGE.agendamentos',
+    'PAGE.os','PAGE.venda-balcao',
+    'ORCAMENTO.CREATE','ORCAMENTO.EDIT','ORCAMENTO.APPROVE',
+    'OS.CREATE','OS.EDIT','CRM.EDIT','ESTOQUE.VIEW',
+  ],
+  tecnico: [
+    'PAGE.minhas-os','PAGE.visitas','PAGE.os','PAGE.venda-balcao',
+    'OS.EXECUTE','OS.FINISH',
+    'VISTORIA.CREATE','VISTORIA.EDIT','VISTORIA.FINISH','ESTOQUE.VIEW',
+  ],
+};
+function _permsDoPerfil(perfil){
+  if(perfil==='master') return PERMISSOES.gestor; // master herda gestor
+  return PERMISSOES[perfil] || [];
+}
+// Tem a capacidade? gestor/master ('*') têm tudo. Perfil desconhecido = nada.
+function can(perm, sess){
+  const s = sess || getSessao();
+  if(!s || !s.perfil) return false;
+  const perms = _permsDoPerfil(s.perfil);
+  return perms.includes('*') || perms.includes(perm);
+}
+// Pode ABRIR a página? gestor/master sempre; demais pela matriz.
+// (Sessão sem perfil reconhecido cai no tratamento legado de go(), não aqui.)
+function podeVerPagina(pid, sess){
+  const s = sess || getSessao();
+  if(!s) return false;
+  if(s.perfil==='gestor' || s.perfil==='master') return true;
+  return can('PAGE.'+pid, s);
+}
+
 // Oculta/exibe nav conforme perfil
 function aplicarPermissoesPerfil(){
   const gestor  = eGestor();
@@ -190,10 +245,11 @@ function aplicarPermissoesPerfil(){
   // ── Redirecionamentos ──
   const pAtiva=document.querySelector('.page.on');
   const pid=pAtiva?pAtiva.id.replace('page-',''):'';
-  const pagesVendasOk=['form','history','crm','clientes','agendamentos','os'];
-  const pagesTecnicoOk=['minhas-os','visitas','os']; // 'os' para abrir/preencher a OS atribuída
-  if(tecnico && !pagesTecnicoOk.includes(pid)) go('minhas-os');
-  if(vendas  && !pagesVendasOk.includes(pid))  go('form');
+  // Mesma matriz PERMISSOES do go() — antes esta lista OMITIA venda-balcao e
+  // expulsava vendas/técnico de lá ao recarregar, divergindo do go(). (R-audit)
+  const _sessAP=getSessao();
+  if(tecnico && !podeVerPagina(pid, _sessAP)) go('minhas-os');
+  if(vendas  && !podeVerPagina(pid, _sessAP)) go('form');
 
   // ── Banner de instalar como app (PWA) — só faz sentido com sessão ativa ──
   if(typeof _fluxaAvaliarBannerInstalar==='function'){
@@ -1994,13 +2050,13 @@ function closeSidebar(){
 
 function go(p){
   // ── Controle de acesso por perfil ──
+  const _sess    = getSessao();
   const _vendas  = eVendas();
   const _tecnico = eTecnico();
   const _gestor  = eGestor();
-  const pagesVendas  = ['form','history','crm','clientes','agendamentos','os','venda-balcao'];
-  const pagesTecnico = ['minhas-os','visitas','os','venda-balcao']; // 'os' para abrir/preencher a OS atribuída; 'venda-balcao' pro técnico vender produto avulso na casa do cliente
-  if(_vendas  && !pagesVendas.includes(p))  { toast('Você não tem acesso a essa área.'); return; }
-  if(_tecnico && !pagesTecnico.includes(p)) { toast('Você não tem acesso a essa área.'); return; }
+  // Páginas permitidas por perfil vêm da matriz PERMISSOES (fonte única).
+  if((_vendas || _tecnico) && !podeVerPagina(p, _sess)){ toast('Você não tem acesso a essa área.'); return; }
+  // Sessão sem perfil reconhecido (estado legado): só barra as áreas de gestor.
   if(!_gestor && !_vendas && !_tecnico &&
      ['form','history','empresa','usuarios','produtividade'].includes(p)){
     toast('⚠️ Acesso restrito ao Gestor'); return;

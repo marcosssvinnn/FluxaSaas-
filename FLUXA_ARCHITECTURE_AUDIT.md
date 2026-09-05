@@ -215,6 +215,11 @@ prontuário) e o *motor de eventos→oportunidades*. É exatamente o P1/P2 do pl
 
 ### 🔴 Corrigir já (bugs reais, dado em risco ou feature quebrada)
 
+> **✅ R-2, R-3, R-4 corrigidos** em `49f699f` (sw v61). Todas as chaves de
+> dado passam por `_lsKey` agora. **✅ R-5 (autorização granular) entregue** —
+> ver Fase 2.2 abaixo.
+
+
 **R-2 — Rascunho de vistoria nunca restaura em produção.** *(regressão da
 sessão anterior)*
 `_salvarRascunhoVis` grava em `localStorage` **direto** (chave global
