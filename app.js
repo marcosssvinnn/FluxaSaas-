@@ -10696,6 +10696,7 @@ function renderVisHistorico(){
         <div style="display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end">
           ${v.email_responsavel?`<button class="tb" title="Reenviar e-mail" onclick="event.stopPropagation();reenviarEmailVistoria('${v.id}')" style="font-size:11px;background:var(--blue-bg);color:var(--blue);border-color:var(--blue-bg)">📧</button>`:''}
           <button class="tb" title="Enviar resumo via WhatsApp" onclick="event.stopPropagation();enviarWAResumoVistoria('${v.id}')" style="font-size:11px;background:var(--wa-light,#dcfce7);color:var(--wa);border-color:var(--wa-light,#dcfce7)">💬</button>
+          ${(!eTecnico() && (cnt.critico||cnt.atencao))?`<button class="tb" title="Gerar orçamento com os itens críticos e de atenção desta vistoria" onclick="event.stopPropagation();orcarDaVistoria('${v.id}')" style="font-size:11px;background:var(--c1);color:white;border-color:var(--c1);font-weight:700">💰 Orçar ${cnt.critico+cnt.atencao}</button>`:''}
           <button class="tb" title="Editar / refazer vistoria" onclick="event.stopPropagation();editarVistoria('${v.id}')" style="font-size:11px;background:var(--blue-bg);color:var(--blue);border-color:var(--blue-bg)">✏️</button>
           <button class="tb" title="Ver relatório" onclick="event.stopPropagation();abrirVisRelatorio('${v.id}')" style="font-size:11px;background:var(--blue-bg);color:var(--blue);border-color:var(--blue-bg)">👁 Ver</button>
           <button class="tb" title="Baixar PDF" onclick="event.stopPropagation();baixarPDFVistoria('${v.id}',this)" style="font-size:11px;background:var(--c1-light);color:var(--c1);border-color:var(--c1-light)">📥 PDF</button>
@@ -11289,6 +11290,67 @@ function toggleVisDados(){
 
 // Reabre uma vistoria já feita para EDITAR / REFAZER — mantém status, obs e fotos.
 // Grava no MESMO registro (visEditId), então não duplica.
+// ── Vistoria → Orçamento ────────────────────────────────────────────────
+// Fecha o ciclo do negócio: a vistoria aponta o problema, o orçamento
+// cobra o conserto. Sem isto, o técnico anota o defeito e alguém redigita
+// tudo depois — e boa parte simplesmente não vira proposta nenhuma.
+function _visItensOrcaveis(v){
+  const eq = typeof v.equipamentos==='string' ? JSON.parse(v.equipamentos||'[]') : (v.equipamentos||[]);
+  return eq.filter(e=>e.status==='critico'||e.status==='atencao');
+}
+function _visDataBR(d){
+  if(!d) return '—';
+  try{ return new Date(d+'T12:00:00').toLocaleDateString('pt-BR'); }catch(e){ return d; }
+}
+function orcarDaVistoria(id){
+  const v=lsVisLer().find(x=>String(x.id)===String(id));
+  if(!v){ toast('Vistoria não encontrada'); return; }
+  const itens=_visItensOrcaveis(v);
+  if(!itens.length){ toast('Nenhum item crítico ou de atenção nesta vistoria'); return; }
+  const criticos=itens.filter(e=>e.status==='critico').length;
+  confirmar({
+    titulo:'Gerar orçamento da vistoria?',
+    msg:`Vou criar um orçamento para ${v.cliente||'este cliente'} com ${itens.length} item(ns) apontado(s) na vistoria de ${_visDataBR(v.data)}${criticos?` — ${criticos} crítico(s)`:''}. Você revisa os preços antes de salvar.`,
+    labelSim:'Gerar orçamento',
+    onSim:()=>_orcarDaVistoriaConfirmado(v, itens)
+  });
+}
+function _orcarDaVistoriaConfirmado(v, itens){
+  novoOrc();
+  window._skipDraftForm=true; // rascunho antigo não pode sobrescrever isto
+  setTimeout(()=>{
+    setV('cli', v.cliente||'');
+    setV('cli-id', v.cliente_id||'');
+    setV('loc', v.local||'');
+    // Quem já tem vistoria é cliente da casa, não lead novo.
+    if(typeof setOrigemCli==='function') setOrigemCli('Já é cliente');
+    // Crítico primeiro: é a ordem em que o síndico precisa ler.
+    const ordenados=[...itens].sort((a,b)=>(a.status==='critico'?0:1)-(b.status==='critico'?0:1));
+    svcs=[];
+    ordenados.forEach(e=>{
+      const marca=[e.marca,e.modelo].filter(Boolean).join(' ');
+      const prob=(e.obs||'').trim();
+      // A descrição carrega o laudo do técnico — é o argumento de venda,
+      // e ninguém vai reescrever isso melhor do que quem viu o problema.
+      const cabeca=[
+        e.status==='critico'?'[URGENTE]':'[Preventivo]',
+        (e.ambiente||'').trim()?((e.ambiente||'').trim()+' —'):'',
+        e.nome||e.id,
+        marca?`(${marca})`:''
+      ].filter(Boolean).join(' ').replace(/\s+/g,' ').trim();
+      const d = cabeca + (prob?`: ${prob}`:'');
+      addSvc(d, '', 1); // preço em branco de propósito — quem precifica revisa
+    });
+    const escopoEl=document.getElementById('escopo');
+    if(escopoEl) escopoEl.value=`Serviços apontados na vistoria de ${_visDataBR(v.data)}${v.tecnico?` (técnico: ${v.tecnico})`:''}.`
+      +(v.recomendacoes?`\n\nRecomendações do técnico: ${v.recomendacoes}`:'');
+    setV('nota-interna', `Gerado da vistoria ${v.id}`);
+    renderSvcs(); upd();
+    toast(`📋 ${itens.length} item(ns) importado(s) — revise os preços`);
+    if(typeof logAcao==='function') logAcao('orcamento_da_vistoria', `${v.cliente||''} — ${itens.length} itens`);
+  }, 60);
+}
+
 function editarVistoria(id){
   const vis=lsVisLer().find(x=>x.id===id);
   if(!vis){ toast('⚠️ Vistoria não encontrada'); return; }
