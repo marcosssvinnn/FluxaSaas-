@@ -11608,8 +11608,10 @@ function _salvarRascunhoVis(){
     _VIS_DRAFT_CAMPOS.forEach(fid=>{ const el=document.getElementById(fid); if(el) d.campos[fid]=el.value; });
     // setItem DIRETO, não lsSet: o lsSet tem catch próprio e engoliria o
     // QuotaExceededError — o fallback sem-fotos abaixo nunca rodaria, e a
-    // perda seria silenciosa.
-    try{ localStorage.setItem(LS_VIS_DRAFT, JSON.stringify(d)); }
+    // perda seria silenciosa. Mas a CHAVE tem que ser a escopada por empresa
+    // (_lsKey), senão grava numa chave que _restaurarRascunhoVis (que lê via
+    // ls()) nunca lê — o rascunho não restaurava em produção (R-2).
+    try{ localStorage.setItem(_lsKey(LS_VIS_DRAFT), JSON.stringify(d)); }
     catch(eq){
       // Cota estourada (fotos pesam). Salvar sem as fotos ainda não enviadas
       // é melhor que perder o rascunho inteiro — mas o técnico precisa saber.
@@ -11618,7 +11620,7 @@ function _salvarRascunhoVis(){
       Object.values(semFotos.dados||{}).forEach(x=>{
         if(x&&x.fotos) x.fotos=x.fotos.map(f=>{ if(f&&String(f).startsWith('http')) return f; if(f) tinhaFotoPendente=true; return null; });
       });
-      try{ localStorage.setItem(LS_VIS_DRAFT, JSON.stringify(semFotos)); }catch(e2){ console.warn('[rascunhoVis:quota]', e2?.message||e2); }
+      try{ localStorage.setItem(_lsKey(LS_VIS_DRAFT), JSON.stringify(semFotos)); }catch(e2){ console.warn('[rascunhoVis:quota]', e2?.message||e2); }
       if(tinhaFotoPendente && Date.now()-_ultimoAvisoRascunhoCheio > 60000){
         _ultimoAvisoRascunhoCheio=Date.now();
         toast('⚠️ Muitas fotos no rascunho local — as que ainda não subiram podem se perder se o app fechar. Mantenha a internet ligada até finalizar.');
@@ -11675,7 +11677,7 @@ async function _restaurarRascunhoNuvem(){
     if(Date.now()-(nuvem.t||0) > _VIS_DRAFT_MAX_MS) return false;
     let local=null; try{ local=JSON.parse(ls(LS_VIS_DRAFT)||'null'); }catch(e){ console.warn('[rascunhoNuvem:parse]',e?.message||e); }
     if(local && (local.t||0) >= (nuvem.t||0)) return false; // local já é igual ou mais novo
-    localStorage.setItem(LS_VIS_DRAFT, JSON.stringify(nuvem));
+    localStorage.setItem(_lsKey(LS_VIS_DRAFT), JSON.stringify(nuvem));
     _visDraftRestaurado=false;
     return _restaurarRascunhoVis();
   }catch(e){ console.warn('[rascunhoNuvem:rest]', e?.message||e); return false; }
@@ -14137,7 +14139,7 @@ async function confirmarVendaBalcao(){
     }catch(e){ console.warn('[confirmarVendaBalcao]', e?.message||e); toast('Venda registrada aqui, mas não sincronizou ainda', {tipo:'warn'}); }
   }
   if(btn){ btn.disabled=false; btn.textContent='Finalizar venda'; }
-  localStorage.removeItem(LS_VB_RASCUNHO);
+  lsDel(LS_VB_RASCUNHO); // R-3: escopado por empresa, igual ao lsSet que grava
   toast(`Venda de ${brl(total)} registrada${clienteNome&&!_vendaAnonimo?' — '+clienteNome:''}`, {tipo:'ok'});
   if(typeof renderEstoque==='function' && document.getElementById('page-estoque')?.classList.contains('on')) renderEstoque();
   _vbAbrir(); // limpa o carrinho e mantém na tela — o próximo cliente já está esperando
@@ -14192,7 +14194,7 @@ function _vbRestaurarRascunho(){
       document.querySelectorAll('.vb-pgto-btn').forEach(b=>b.classList.toggle('on', b.dataset.f===_vendaFormaPgto));
       _vendaRenderCarrinho(); _vbRenderGrade();
     },
-    onNao:()=>{ localStorage.removeItem(LS_VB_RASCUNHO); }
+    onNao:()=>{ lsDel(LS_VB_RASCUNHO); }
   });
 }
 
@@ -15789,8 +15791,10 @@ function analiseClientes(){
 }
 
 const LS_CAD_FB='fluxa_cadencia_feedback';
-function _cadFbLer(){ try{ return JSON.parse(localStorage.getItem(LS_CAD_FB)||'{}'); }catch(e){ return {}; } }
-function _cadFbSalvar(m){ try{ localStorage.setItem(LS_CAD_FB, JSON.stringify(m)); }catch(e){ console.warn('[cadFb]', e?.message||e); } }
+// R-4: ls/lsSet (escopado por empresa), não localStorage direto — senão o
+// "dispensei essa oportunidade" vaza entre empresas no mesmo aparelho.
+function _cadFbLer(){ try{ return JSON.parse(ls(LS_CAD_FB)||'{}'); }catch(e){ return {}; } }
+function _cadFbSalvar(m){ try{ lsSet(LS_CAD_FB, JSON.stringify(m)); }catch(e){ console.warn('[cadFb]', e?.message||e); } }
 // 14 dias, não os poucos dias de um follow-up de orçamento — ciclo de
 // recompra é de semanas/meses, cobrar de novo tão cedo seria chatice.
 function _cadFbOculto(cid){
