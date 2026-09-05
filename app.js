@@ -5850,6 +5850,7 @@ function renderClientes(){
     </div>`;
   }).join('');
   renderAvisoDuplicatas();
+  renderAvisoIdentidade();
 }
 
 function novoOrcParaCliente(id){
@@ -6116,6 +6117,151 @@ function renderAvisoDuplicatas(){
       ${grupos.length} cliente${grupos.length!==1?'s':''} com cópia repetida no cadastro. Nenhuma das cópias a remover tem orçamento, OS, vistoria, equipamento ou plano vinculado — o histórico fica intacto na ficha que sobra.</div>
     <button class="rd-btn rd-btn-secondary" onclick="abrirRevisaoDuplicatas()">Revisar e limpar</button>
   </div>`;
+}
+
+// ══ IDENTIDADE DO CLIENTE ═════════════════════════
+// Orçamento, OS e vistoria guardam DUAS coisas: `cliente` (o nome digitado) e
+// `cliente_id` (o vínculo com a ficha). O nome sempre existe; o vínculo só
+// existe se quem preencheu escolheu uma sugestão em vez de digitar direto.
+//
+// O estrago não é cosmético. analiseClientes() agrupa por
+// `cliente_id ? 'id:'+id : 'nome:'+nome` — então o MESMO cliente, ora com
+// vínculo ora sem, vira dois grupos: o histórico de compra se parte no meio,
+// "recompra" vira "primeira compra" e o ritmo de consumo sai errado. A ficha do
+// cliente também não mostra o que está solto.
+//
+// Só liga o que é seguro ligar: nome normalizado IDÊNTICO a exatamente UMA
+// ficha cadastrada. Parecido não conta — vincular ao cliente errado é pior que
+// deixar solto, porque some da lista e ninguém mais revisa.
+const _IDENT_FONTES=[
+  {chave:'orc', label:'orçamento', tabela:'orcamentos'},
+  {chave:'os',  label:'OS',        tabela:'ordens_servico'},
+  {chave:'vis', label:'vistoria',  tabela:'vistorias'},
+];
+function _identOrfaos(){
+  const cli=lsCliLer()||[];
+  // Nome que aparece em 2+ fichas é ambíguo: não dá pra saber a qual vincular.
+  const porNome={};
+  cli.forEach(c=>{ const k=_normNome(c.nome); if(k) (porNome[k]=porNome[k]||[]).push(c); });
+  const registros=[
+    ...filtrarPorLoja(todosOrc||[]).map(o=>({...o, _fonte:'orc'})),
+    ...filtrarPorLoja(todosOS||[]).map(o=>({...o, _fonte:'os'})),
+    ...((typeof lsVisLer==='function'?lsVisLer():[])||[]).map(v=>({...v, _fonte:'vis', cliente:v.cliente})),
+  ];
+  const grupos={};
+  registros.forEach(r=>{
+    if(r.cliente_id) return;
+    const nome=(r.cliente||'').trim(); if(!nome) return;
+    const k=_normNome(nome);
+    const fichas=porNome[k]||[];
+    if(fichas.length!==1) return; // 0 = ficha não existe; 2+ = ambíguo
+    if(!grupos[k]) grupos[k]={chave:k, nome, clienteId:fichas[0].id, registros:[], valor:0};
+    const g=grupos[k];
+    g.registros.push({id:r.id, fonte:r._fonte});
+    if(r._fonte==='orc' && r.status==='aprovado') g.valor+=parseFloat(r.total)||0;
+  });
+  return Object.values(grupos).sort((a,b)=>b.registros.length-a.registros.length);
+}
+function _identResumo(g){
+  return _IDENT_FONTES.map(f=>{
+    const n=g.registros.filter(r=>r.fonte===f.chave).length;
+    return n?`${n} ${f.label}${n!==1?(f.chave==='os'?'':'s'):''}`:null;
+  }).filter(Boolean).join(' · ');
+}
+function renderAvisoIdentidade(){
+  const el=document.getElementById('cli-ident-aviso'); if(!el) return;
+  const grupos=_identOrfaos();
+  if(!grupos.length){ el.style.display='none'; el.innerHTML=''; return; }
+  const total=grupos.reduce((a,g)=>a+g.registros.length,0);
+  el.style.display='';
+  el.innerHTML=`<div class="rd-card rd-card-warn" style="margin-bottom:14px">
+    <div style="font-size:13px;font-weight:700;color:var(--warn);margin-bottom:4px">
+      ${total} registro${total!==1?'s':''} sem vínculo de cliente</div>
+    <div style="font-size:12px;color:var(--gray);margin-bottom:9px">
+      ${grupos.length} nome${grupos.length!==1?'s':''} digitado${grupos.length!==1?'s':''} à mão que bate${grupos.length!==1?'m':''} exatamente com uma ficha já cadastrada. Sem o vínculo, o histórico do cliente fica partido: a mesma pessoa aparece como dois clientes diferentes nas análises.</div>
+    <button class="rd-btn rd-btn-secondary" onclick="abrirRevisaoIdentidade()">Revisar e vincular</button>
+  </div>`;
+}
+let _identGruposAtual=[];
+async function abrirRevisaoIdentidade(){
+  toast('Atualizando antes de montar a lista…');
+  await carregarClientesRemoto();
+  if(typeof loadHist==='function') await loadHist();
+  if(typeof loadOSHist==='function') await loadOSHist();
+  _identGruposAtual=_identOrfaos();
+  renderAvisoIdentidade();
+  if(!_identGruposAtual.length){ toast('Nada solto pra vincular'); return; }
+  const total=_identGruposAtual.reduce((a,g)=>a+g.registros.length,0);
+  const linhas=_identGruposAtual.map((g,i)=>`
+    <label style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--line);cursor:pointer">
+      <input type="checkbox" data-ident="${i}" checked style="margin-top:3px;cursor:pointer">
+      <span style="flex:1;min-width:0">
+        <span style="display:block;font-size:13px;font-weight:700;color:var(--c2)">${esc(g.nome)}</span>
+        <span style="display:block;font-size:11.5px;color:var(--tx3)">${esc(_identResumo(g))}${g.valor>0?' · '+brl(g.valor)+' aprovado':''}</span>
+      </span>
+    </label>`).join('');
+  abrirModal({id:'ident-modal-bg', largura:'wide', corpo:`
+    <h3>Vincular registros à ficha do cliente</h3>
+    <p class="rd-modal-sub">${total} registro${total!==1?'s':''} em ${_identGruposAtual.length} nome${_identGruposAtual.length!==1?'s':''}. Cada um bate exatamente com UMA ficha cadastrada — nomes parecidos e nomes repetidos no cadastro ficam de fora, porque vincular ao cliente errado é pior que deixar solto. Nada é apagado: só se preenche o vínculo que faltava.</p>
+    ${linhas}
+    <div class="rd-modal-acts">
+      <button class="rd-modal-btn rd-modal-btn-nao" onclick="fecharModalGenerico('ident-modal-bg')">Cancelar</button>
+      <button class="rd-modal-btn rd-modal-btn-sim" onclick="confirmarVinculoIdentidade()">Vincular</button>
+    </div>`});
+}
+async function confirmarVinculoIdentidade(){
+  const marcados=[...document.querySelectorAll('#ident-modal-bg input[data-ident]')]
+    .filter(c=>c.checked).map(c=>_identGruposAtual[parseInt(c.dataset.ident)]).filter(Boolean);
+  if(!marcados.length){ toast('Nenhum nome marcado'); return; }
+  const total=marcados.reduce((a,g)=>a+g.registros.length,0);
+  atualizarModal(`
+    <h3>Vinculando…</h3>
+    <div id="ident-progresso-txt" style="font-size:13px;color:var(--tx3);margin-bottom:8px">0 de ${total}</div>
+    <div style="height:8px;background:var(--line);border-radius:50px;overflow:hidden">
+      <div id="ident-progresso-barra" style="height:100%;width:0%;background:var(--c1);transition:width .2s"></div>
+    </div>
+    <div style="font-size:11.5px;color:var(--tx3);margin-top:8px">Não feche esta aba até terminar.</div>`, 'ident-modal-bg');
+
+  const tarefas=marcados.flatMap(g=>g.registros.map(r=>({...r, clienteId:g.clienteId})));
+  let ok=0, falhas=0;
+  const LOTE=15;
+  for(let i=0;i<tarefas.length;i+=LOTE){
+    await Promise.all(tarefas.slice(i,i+LOTE).map(async t=>{
+      const f=_IDENT_FONTES.find(x=>x.chave===t.fonte); if(!f){ falhas++; return; }
+      // dbUpdate resolve com {error} em vez de rejeitar — checar explicitamente,
+      // senão uma falha do banco contaria como sucesso e o aviso sumiria da
+      // tela sem o vínculo ter sido gravado.
+      try{
+        const r=await dbUpdate(f.tabela, {cliente_id:t.clienteId}, 'id', t.id);
+        if(r&&r.error){ falhas++; console.warn('[ident]', f.tabela, r.error.message); return; }
+        _identAplicarLocal(t.fonte, t.id, t.clienteId);
+        ok++;
+      }catch(e){ falhas++; console.warn('[ident]', e?.message||e); }
+    }));
+    const feitos=Math.min(i+LOTE, tarefas.length);
+    setV_el('ident-progresso-txt', feitos+' de '+tarefas.length, 'textContent');
+    const barra=document.getElementById('ident-progresso-barra');
+    if(barra) barra.style.width=Math.round(feitos/tarefas.length*100)+'%';
+  }
+  fecharModalGenerico('ident-modal-bg');
+  _identGruposAtual=[];
+  renderAvisoIdentidade();
+  if(document.getElementById('page-clientes')?.classList.contains('on')) renderClientes();
+  toast(falhas ? `${ok} vinculado${ok!==1?'s':''}, ${falhas} falhou (tente de novo)` : `✅ ${ok} registro${ok!==1?'s':''} vinculado${ok!==1?'s':''}`);
+}
+// Espelha no cache local o que acabou de ser gravado no banco. Sem isto o
+// aviso continuaria mostrando os mesmos registros até o próximo load remoto.
+function _identAplicarLocal(fonte, id, clienteId){
+  if(fonte==='orc'){
+    const o=(todosOrc||[]).find(x=>x.id===id); if(o) o.cliente_id=clienteId;
+    if(typeof lsOrcSalvar==='function') lsOrcSalvar(todosOrc);
+  } else if(fonte==='os'){
+    const o=(todosOS||[]).find(x=>x.id===id); if(o) o.cliente_id=clienteId;
+    try{ lsSet('fluxa_os_hist', JSON.stringify((todosOS||[]).slice(0,600))); }catch(e){ console.warn('[ident:os]', e?.message||e); }
+  } else if(fonte==='vis'){
+    const lista=(typeof lsVisLer==='function'?lsVisLer():[])||[];
+    const v=lista.find(x=>x.id===id); if(v){ v.cliente_id=clienteId; if(typeof lsVisSalvar==='function') lsVisSalvar(lista); }
+  }
 }
 
 let _dupGruposAtual=[];
