@@ -2034,7 +2034,7 @@ function go(p){
   if(p==='venda-balcao') _vbAbrir();
   if(p==='portal') { /* página gerenciada por checkPortalHash */ }
   if(p==='painel'){
-    initOrcMes(); loadHist(); loadOSHist();
+    initOrcMes(); loadHist(); loadOSHist(); _recebGarantirCarregado();
     document.getElementById('painel-nome').textContent=getSessao()?.nome||'';
     document.getElementById('painel-mes-label').textContent='Como está '+_renderOrcMesLabelStr();
     setTimeout(renderGraficoDash,200);
@@ -2047,7 +2047,7 @@ function go(p){
       Promise.resolve(loadPiscinas()).then(()=>{ renderPainelCadencia(); renderPainelFilaHoje(); }).catch(e=>console.warn('[painel-cadencia]', e?.message||e));
     }
   }
-  if(p==='history'){ initOrcMes(); loadHist(); }
+  if(p==='history'){ initOrcMes(); loadHist(); _recebGarantirCarregado(); }
   if(p==='crm'){ if(!_crmAtivo()){ toast('Funil desativado para esta empresa.'); go('painel'); return; } loadOSHist(); renderCRM(); }
   if(p==='form'){
     // Restaura rascunho APENAS quando se navega direto para a tela (nav/menu).
@@ -2074,7 +2074,7 @@ function go(p){
   if(p==='agendamentos'){ loadAgendamentos(); populaTecSelects(); initCal(); renderCal(); }
   if(p==='despesas') loadDespesas();
   if(p==='estoque') loadEstoque();
-  if(p==='produtividade'){ loadProdutividade(); setTimeout(renderRelatorioFinanceiro,300); }
+  if(p==='produtividade'){ loadProdutividade(); Promise.resolve(loadRecebimentos()).then(renderContasReceber).catch(e=>console.warn('[go receb]',e?.message||e)); setTimeout(renderRelatorioFinanceiro,300); }
   if(p==='analises') loadAnalises();
   if(p==='plataforma') loadPlataforma();
   if(p==='usuarios') loadUsuarios();
@@ -2217,7 +2217,14 @@ function _perguntarCriarOS(orc){
   sel.innerHTML='<option value="">Selecione…</option>'+tecs.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');
   document.getElementById('aprov-os-bg').classList.add('on');
 }
-function fecharAprovOS(){ document.getElementById('aprov-os-bg').classList.remove('on'); }
+function fecharAprovOS(){
+  document.getElementById('aprov-os-bg').classList.remove('on');
+  // Aprovar é o único momento em que alguém sabe COMO o cliente vai pagar —
+  // perguntar depois vira "decidir depois" pra sempre. Só pra gestor (dado
+  // financeiro) e só se ainda não houver parcela.
+  const orcId=document.getElementById('aprov-os-orc-id')?.value;
+  if(orcId && !eVendas() && !_recebDoOrc(orcId).length) setTimeout(()=>abrirModalReceb(orcId), 350);
+}
 
 // Núcleo de criação de OS a partir de um orçamento — extraído de
 // criarOSdeAprovacao() (Tarefa 3i.2, 19/08) pra ser reaproveitado pela ação
@@ -3501,7 +3508,9 @@ function atualizarDash(){
   const tot=orcFiltrado.length, soma=orcFiltrado.reduce((a,o)=>a+(o.total||0),0);
   const aprov=orcFiltrado.filter(o=>o.status==='aprovado');
   const somaA=aprov.reduce((a,o)=>a+(o.total||0),0);
-  const aRec=aprov.reduce((a,o)=>a+(o.total||0)-(o.valor_recebido||0),0);
+  // Mesma fonte que a tela de A Receber (parcela quando existe, valor_recebido
+  // como fallback) — dois números diferentes pro mesmo dinheiro é pior que um.
+  const aRec=aprov.reduce((a,o)=>a+_orcSaldoAReceber(o),0);
   const tick=tot>0?soma/tot:0;
   // Sub-label mostra o período
   const periodoSub=orcMesRef?_renderOrcMesLabelStr():'Todos os períodos';
@@ -4167,7 +4176,11 @@ function renderTabela(){
         <button class="tb" title="Duplicar" onclick="duplicarOrc('${o.id}')">⧉</button>
         ${(()=>{ const osVinc=(todosOS||[]).find(x=>x.orcamento_id===o.id); if(osVinc){ const stOS=osVinc.status||'agendado'; const stLabel={agendado:'agendada',em_andamento:'em andamento',concluido:'concluída'}[stOS]||stOS; return `<button class="tb" title="OS #${String(osVinc.numero||'').padStart(3,'0')} — ${stLabel}" onclick="verDetalhesOS('${osVinc.id}')" style="background:#16a34a;color:white;border-color:#16a34a;font-weight:700">✅ OS#${String(osVinc.numero||'').padStart(3,'0')}</button>`; } if(o.status==='aprovado') return `<button class="tb" title="Gerar Ordem de Serviço" onclick="gerarOS_deOrc('${o.id}')" style="background:#C45E0A;color:white;border-color:#C45E0A;font-weight:700">📋 Gerar OS</button>`; return `<button class="tb" title="Gerar OS" onclick="gerarOS_deOrc('${o.id}')">📋</button>`; })()}
         ${orcTemEntregaPendente(o)?`<button class="tb g" title="Marcar como entregue (baixa do estoque)" onclick="entregarOrcamento(getNC('${o.id}'),'manual')">📦 Entregar</button>`:''}
-        ${ocultarFinanceiro?'':'<button class="tb g" title="Registrar pagamento" onclick="abrirModalPg(\''+o.id+'\','+ttl+')">💰</button>'}
+        ${ocultarFinanceiro?'':(_recebDoOrc(o.id).length
+            ? `<button class="tb g" title="Cobrança lançada em parcelas — acompanhe em A Receber" onclick="go('produtividade')">💰</button>`
+            : (o.status==='aprovado'
+               ? `<button class="tb g" title="Lançar cobrança (parcelas e vencimento)" onclick="abrirModalReceb('${o.id}')">💰</button>`
+               : '<button class="tb g" title="Registrar pagamento" onclick="abrirModalPg(\''+o.id+'\','+ttl+')">💰</button>'))}
         ${o.status==='aprovado'?`<button class="tb" title="Corrigir mês de aprovação no faturamento" onclick="corrigirDataAprovacao('${o.id}')" style="font-size:10px;font-weight:700;color:#b45309;border-color:#fbbf24;background:#fef9c3">MÊS</button>`:''}
         ${!ocultarFinanceiro&&o.status==='aprovado'?`<button class="tb" title="Emitir Nota Fiscal" onclick="abrirModalNFe('${o.id}')" style="background:#7c3aed;color:white;border-radius:6px;padding:4px 7px;font-size:11px;font-weight:700;border:none;cursor:pointer">NF</button>`:''}
         <button class="tb" title="Enviar no WhatsApp" style="background:var(--wa);color:white;border-color:var(--wa)" onclick="enviarNotifWA(notifOrcamento(getNC('${o.id}')), '${o.tel_cliente||''}')">💬 WA</button>
@@ -4477,7 +4490,7 @@ function _orcMontarCartaoOS(o){
     return;
   }
   const osVinc=(todosOS||[]).find(x=>x.orcamento_id===o.id);
-  const recebidoTotal=o.total>0 && (o.valor_recebido||0)>=o.total;
+  const recebidoTotal=(parseFloat(o.total)||0)>0 && o.status==='aprovado' && _orcSaldoAReceber(o)<=0.005;
   const nos=[
     {label:'Enviado', data:_dataBR(o.data_criacao)},
     {label:'Aprovado', data:_dataBR(o.data_aprovacao)},
@@ -7294,22 +7307,187 @@ async function loadProdutividade(){
 
 // ── CONTAS A RECEBER ──
 // Consolida os orçamentos aprovados com saldo em aberto (total − recebido).
+// ══════════════════════════════════════════════════
+//  A RECEBER — por parcela
+// ══════════════════════════════════════════════════
+// Um número só ("valor_recebido") responde "quanto falta", mas não responde
+// "quando vence" nem "está atrasado há quanto tempo" — que é o que faz alguém
+// correr atrás da cobrança. Cada parcela é uma linha própria.
+//
+// ⚠️ SÓ PRA FRENTE: orçamento sem NENHUMA parcela lançada continua usando
+// valor_recebido exatamente como antes (o fallback em _orcSaldoAReceber).
+// Nada existente muda de comportamento; migrar os antigos exigiria inventar
+// vencimento pra dívida que nunca teve um.
+let todosReceb = [];
+const LS_RECEB = 'fluxa_recebimentos';
+function lsRecebLer(){ try{ return JSON.parse(ls(LS_RECEB)||'[]'); }catch(e){ return []; } }
+function lsRecebSalvar(l){ try{ lsSet(LS_RECEB, JSON.stringify(l)); }catch(e){ console.warn('[lsReceb]', e?.message||e); } }
+
+// Carrega uma vez por sessão quando alguma tela financeira precisa do número.
+// Sem isso o dashboard cairia no modelo antigo e mostraria um total diferente
+// do da tela de A Receber — dois números pro mesmo dinheiro.
+let _recebCarregado=false;
+function _recebGarantirCarregado(){
+  if(_recebCarregado || eVendas() || eTecnico()) return;
+  _recebCarregado=true;
+  Promise.resolve(loadRecebimentos()).then(()=>{ atualizarDash(); }).catch(e=>{ _recebCarregado=false; console.warn('[receb load]', e?.message||e); });
+}
+async function loadRecebimentos(){
+  todosReceb = lsRecebLer();
+  if(!(dbOk&&db&&EMPRESA_ID)) return todosReceb;
+  try{
+    const {data,error}=await db.from('recebimentos').select('*').eq('empresa_id',EMPRESA_ID);
+    if(error) throw error;
+    const remotoIds=new Set((data||[]).map(r=>r.id));
+    // Preserva parcela criada offline que ainda não subiu (mesmo padrão das
+    // outras tabelas) e reenvia.
+    const soLocal=todosReceb.filter(r=>!remotoIds.has(r.id) && String(r.id).startsWith('rec_'));
+    todosReceb=[...(data||[]), ...soLocal];
+    lsRecebSalvar(todosReceb);
+    soLocal.forEach(r=>{ dbInsert('recebimentos', r).catch(e=>console.warn('[receb reenvio]', e?.message||e)); });
+  }catch(e){ console.warn('[loadRecebimentos]', e?.message||e); }
+  return todosReceb;
+}
+
+function _recebDoOrc(orcId){ return (todosReceb||[]).filter(r=>String(r.orcamento_id)===String(orcId)); }
+
+// Saldo a receber DE UM ORÇAMENTO. Nunca soma as duas fontes pro mesmo
+// orçamento: se há parcela lançada, ela é a verdade (valor_recebido para de
+// ser atualizado a partir daí); se não há nenhuma, cai no modelo antigo.
+function _orcSaldoAReceber(o){
+  if(!o || o.status!=='aprovado') return 0;
+  const parcelas=_recebDoOrc(o.id);
+  if(parcelas.length) return parcelas.filter(r=>!r.data_pagamento).reduce((a,r)=>a+(parseFloat(r.valor)||0),0);
+  return Math.max(0,(parseFloat(o.total)||0)-(parseFloat(o.valor_recebido)||0));
+}
+// Aprovado que ainda não teve NENHUMA cobrança formalizada. É o buraco que o
+// modelo antigo escondia: sem parcela e sem recebimento, o dinheiro some do
+// radar sem nunca aparecer como atrasado.
+function _orcAprovadosSemReceb(){
+  return filtrarPorLoja(todosOrc)
+    .filter(o=>o.status==='aprovado' && !_recebDoOrc(o.id).length && _orcSaldoAReceber(o)>0.005);
+}
+
+function _recebDiasAtraso(r){
+  if(r.data_pagamento || !r.vencimento) return 0;
+  const hoje=new Date(_hojeLocal()+'T12:00:00');
+  const venc=new Date(r.vencimento+'T12:00:00');
+  return Math.floor((hoje-venc)/86400000);
+}
+function _recebFaixaAging(r){
+  const d=_recebDiasAtraso(r);
+  if(d<=0) return 'avencer';
+  if(d<=15) return 'd1';
+  if(d<=30) return 'd16';
+  return 'd30';
+}
+const _RECEB_FAIXAS=[
+  {id:'avencer', lbl:'A vencer',  cor:'var(--ok)'},
+  {id:'d1',      lbl:'1 a 15d',   cor:'var(--warn)'},
+  {id:'d16',     lbl:'16 a 30d',  cor:'var(--warn)'},
+  {id:'d30',     lbl:'+30d',      cor:'var(--bad)'}
+];
+
+// Cria as parcelas de um orçamento aprovado. Idempotente por orçamento —
+// nunca duplica se chamado de novo (ex.: aprovar → reverter → aprovar).
+async function _recebCriarParcelas(orcId, {n=1, primeiroVenc, intervaloDias=30, forma='', origem='aprovacao'}={}){
+  const o=todosOrc.find(x=>x.id===orcId); if(!o) return 0;
+  if(_recebDoOrc(orcId).length) return 0;
+  const total=parseFloat(o.total)||0;
+  if(total<=0) return 0;
+  const qtd=Math.max(1,parseInt(n)||1);
+  // Centavos por parcela sem perder o resto: a diferença de arredondamento vai
+  // toda pra ÚLTIMA parcela, senão a soma das parcelas não bate com o total.
+  const base=Math.floor((total/qtd)*100)/100;
+  const base0=new Date((primeiroVenc||_hojeLocal())+'T12:00:00');
+  const novas=[];
+  for(let i=0;i<qtd;i++){
+    const venc=new Date(base0); venc.setDate(venc.getDate()+i*intervaloDias);
+    const valor = i===qtd-1 ? +(total-base*(qtd-1)).toFixed(2) : base;
+    novas.push({
+      id:'rec_'+Date.now()+'_'+i, orcamento_id:orcId, loja_id:o.loja_id||lojaAtiva||LOJA_PADRAO_ID,
+      parcela_n:i+1, parcelas_total:qtd,
+      vencimento: venc.toISOString().slice(0,10),
+      valor, data_pagamento:null, forma:forma||null, obs:null, origem
+    });
+  }
+  todosReceb=[...todosReceb, ...novas]; lsRecebSalvar(todosReceb);
+  if(dbOk&&db){
+    for(const r of novas){ try{ await dbInsert('recebimentos', r); }catch(e){ console.warn('[recebCriar]', e?.message||e); } }
+  }
+  return novas.length;
+}
+
+async function _recebMarcarPago(id, pago){
+  const r=todosReceb.find(x=>x.id===id); if(!r) return;
+  const data = pago ? _hojeLocal() : null;
+  r.data_pagamento=data; lsRecebSalvar(todosReceb);
+  renderContasReceber();
+  if(dbOk&&db){
+    try{ const res=await dbUpdate('recebimentos', {data_pagamento:data}, 'id', id);
+      if(res?.error) throw res.error;
+    }catch(e){ console.warn('[recebPago]', e?.message||e); toast('⚠️ Não sincronizou — verifique a conexão'); }
+  }
+  toast(pago?'✅ Recebimento registrado':'↩ Recebimento desfeito');
+}
+
+// Modal "Como vai receber?" — aparece na aprovação. "Decidir depois" é opção
+// legítima: melhor não lançar nada do que lançar vencimento inventado (o
+// orçamento aparece no card de "sem cobrança lançada" até alguém decidir).
+function abrirModalReceb(orcId){
+  const o=todosOrc.find(x=>x.id===orcId); if(!o) return;
+  if(_recebDoOrc(orcId).length){ toast('Este orçamento já tem cobrança lançada'); return; }
+  abrirModal({id:'receb-modal-bg', corpo:`
+    <h3>Como vai receber?</h3>
+    <p class="rd-modal-sub">${esc(o.cliente||'—')} · ${brl(o.total||0)}</p>
+    <div class="rd-field"><label class="rd-field-lbl">Parcelas</label>
+      <div class="rd-field-box"><input type="number" id="receb-n" min="1" max="24" value="1" style="width:100%"></div></div>
+    <div class="rd-field"><label class="rd-field-lbl">Primeiro vencimento</label>
+      <div class="rd-field-box"><input type="date" id="receb-venc" value="${_hojeLocal()}" style="width:100%"></div></div>
+    <div class="rd-field"><label class="rd-field-lbl">Forma</label>
+      <div class="rd-field-box"><select id="receb-forma" style="width:100%">
+        <option value="">—</option><option>Pix</option><option>Cartão</option><option>Dinheiro</option><option>Boleto</option><option>Transferência</option>
+      </select></div></div>
+    <div class="rd-modal-acts">
+      <button class="rd-modal-btn rd-modal-btn-nao" onclick="fecharModalGenerico('receb-modal-bg')">Decidir depois</button>
+      <button class="rd-modal-btn rd-modal-btn-sim" onclick="_recebConfirmarModal('${orcId}')">Lançar cobrança</button>
+    </div>`});
+}
+async function _recebConfirmarModal(orcId){
+  const n=parseInt(gV('receb-n'))||1;
+  const venc=gV('receb-venc')||_hojeLocal();
+  const forma=gV('receb-forma')||'';
+  fecharModalGenerico('receb-modal-bg');
+  const criadas=await _recebCriarParcelas(orcId,{n, primeiroVenc:venc, forma});
+  if(criadas) toast(`✅ ${criadas} parcela${criadas!==1?'s':''} lançada${criadas!==1?'s':''}`);
+  renderContasReceber();
+}
+
 function renderContasReceber(){
   const tbody=document.getElementById('cr-tabela-body'); if(!tbody) return;
   const resumo=document.getElementById('cr-resumo');
+  const agingEl=document.getElementById('cr-aging');
+  const gapEl=document.getElementById('cr-gap');
+
   const aprov=filtrarPorLoja(todosOrc).filter(o=>o.status==='aprovado');
-  const comSaldo=aprov.map(o=>({o, saldo:(o.total||0)-(o.valor_recebido||0)}))
-                      .filter(x=>x.saldo>0.005)
-                      .sort((a,b)=>b.saldo-a.saldo);
-  const totalReceber=comSaldo.reduce((a,x)=>a+x.saldo,0);
-  const totalRecebido=aprov.reduce((a,o)=>a+(o.valor_recebido||0),0);
-  const totalAprovado=aprov.reduce((a,o)=>a+(o.total||0),0);
+  const orcIds=new Set(aprov.map(o=>o.id));
+  const parcelas=(todosReceb||[]).filter(r=>orcIds.has(r.orcamento_id));
+  const abertas=parcelas.filter(r=>!r.data_pagamento);
+  const pagas=parcelas.filter(r=>r.data_pagamento);
+
+  // Soma os dois modelos, mas nunca o mesmo orçamento duas vezes:
+  // _orcSaldoAReceber decide, por orçamento, qual fonte vale.
+  const totalReceber=aprov.reduce((a,o)=>a+_orcSaldoAReceber(o),0);
+  const vencido=abertas.filter(r=>_recebDiasAtraso(r)>0).reduce((a,r)=>a+(parseFloat(r.valor)||0),0);
+  const totalRecebido=pagas.reduce((a,r)=>a+(parseFloat(r.valor)||0),0)
+    + aprov.filter(o=>!_recebDoOrc(o.id).length).reduce((a,o)=>a+(parseFloat(o.valor_recebido)||0),0);
+
   if(resumo){
-    // Cards .rd-* (redesign task #37, 16/08) — mesmo padrão das outras telas.
     resumo.innerHTML=`
       <div class="rd-card rd-card-dense">
         <div class="rd-kpi-lbl"><span class="rd-badge rd-badge-bad">A receber</span></div>
         <div class="rd-kpi-num rd-kpi-num-sm" style="color:var(--bad)">${brl(totalReceber)}</div>
+        <div class="rd-kpi-apoio">${vencido>0?brl(vencido)+' vencido':'nada vencido'}</div>
       </div>
       <div class="rd-card rd-card-dense">
         <div class="rd-kpi-lbl"><span class="rd-badge rd-badge-ok">Já recebido</span></div>
@@ -7317,21 +7495,77 @@ function renderContasReceber(){
       </div>
       <div class="rd-card rd-card-dense rd-card-dark">
         <div class="rd-kpi-lbl">Total aprovado</div>
-        <div class="rd-kpi-num rd-kpi-num-sm">${brl(totalAprovado)}</div>
+        <div class="rd-kpi-num rd-kpi-num-sm">${brl(aprov.reduce((a,o)=>a+(parseFloat(o.total)||0),0))}</div>
       </div>`;
   }
-  if(!comSaldo.length){ tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--gray);padding:18px">✅ Nenhum saldo em aberto — tudo recebido!</td></tr>'; return; }
-  tbody.innerHTML=comSaldo.map(({o,saldo})=>{
-    const num=String(o.numero||'—').padStart(3,'0');
-    const rec=o.valor_recebido||0;
-    const parcial=rec>0;
+
+  // Aging — só faz sentido com parcela lançada (é o vencimento que dá a idade)
+  if(agingEl){
+    if(!abertas.length){ agingEl.innerHTML=''; }
+    else{
+      const porFaixa={};
+      abertas.forEach(r=>{ const f=_recebFaixaAging(r); porFaixa[f]=(porFaixa[f]||0)+(parseFloat(r.valor)||0); });
+      const maior=Math.max(...Object.values(porFaixa),1);
+      agingEl.innerHTML=`<div class="rd-card">
+        <div class="rd-card-title">Idade do saldo em aberto</div>
+        <div style="display:flex;gap:10px;align-items:flex-end;height:110px;margin-top:10px">
+          ${_RECEB_FAIXAS.map(f=>{
+            const v=porFaixa[f.id]||0;
+            const h=Math.max(4, Math.round(v/maior*80));
+            return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
+              <div style="font-size:10.5px;font-weight:700;color:${f.cor}">${v?brl(v):''}</div>
+              <div style="width:100%;height:${h}px;background:${f.cor};border-radius:6px 6px 0 0;opacity:${v?1:.25}"></div>
+              <div style="font-size:10.5px;color:var(--gray);text-align:center">${f.lbl}</div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+    }
+  }
+
+  // Aprovado sem NENHUMA cobrança lançada — o buraco que o modelo antigo
+  // escondia: sem parcela e sem vencimento, esse dinheiro nunca aparece
+  // como atrasado em lugar nenhum.
+  if(gapEl){
+    const gap=_orcAprovadosSemReceb();
+    if(!gap.length){ gapEl.innerHTML=''; }
+    else{
+      const soma=gap.reduce((a,o)=>a+_orcSaldoAReceber(o),0);
+      gapEl.innerHTML=`<div class="rd-card rd-card-warn">
+        <div style="font-size:13px;font-weight:700;color:var(--warn);margin-bottom:4px">
+          ${gap.length} aprovado${gap.length!==1?'s':''} sem cobrança lançada · ${brl(soma)}</div>
+        <div style="font-size:12px;color:var(--gray);margin-bottom:9px">
+          Sem parcela e sem vencimento, esse valor nunca aparece como atrasado. Lance a cobrança pra ele entrar no acompanhamento.</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          ${gap.slice(0,6).map(o=>`<button class="rd-btn rd-btn-secondary" style="font-size:11.5px" onclick="abrirModalReceb('${o.id}')">#${String(o.numero||'').padStart(3,'0')} ${esc((o.cliente||'').slice(0,18))} · ${brl(_orcSaldoAReceber(o))}</button>`).join('')}
+          ${gap.length>6?`<span style="font-size:11.5px;color:var(--gray);align-self:center">+${gap.length-6}</span>`:''}
+        </div>
+      </div>`;
+    }
+  }
+
+  // Lista: parcela a parcela, mais atrasada primeiro (é a ordem de cobrança).
+  // Parcela paga sai da lista — o total dela já aparece em "Já recebido".
+  const linhas=abertas.slice().sort((a,b)=>(a.vencimento||'').localeCompare(b.vencimento||''));
+  if(!linhas.length){
+    tbody.innerHTML=`<tr><td colspan="6" style="text-align:center;color:var(--gray);padding:18px">${
+      parcelas.length?'✅ Nenhuma parcela em aberto':'Nenhuma cobrança lançada ainda — aprove um orçamento ou use o card acima.'
+    }</td></tr>`;
+    return;
+  }
+  tbody.innerHTML=linhas.map(r=>{
+    const o=todosOrc.find(x=>x.id===r.orcamento_id)||{};
+    const dias=_recebDiasAtraso(r);
+    const atraso = dias>0
+      ? `<span style="font-size:10px;background:var(--red-bg);color:var(--red);padding:1px 6px;border-radius:50px;font-weight:700">${dias}d</span>`
+      : '';
     return `<tr>
-      <td><strong>#${num}</strong></td>
-      <td>${esc(o.cliente||'—')}${parcial?' <span style="font-size:10px;background:var(--yellow-bg);color:var(--yellow);padding:1px 6px;border-radius:50px;font-weight:700">parcial</span>':''}</td>
-      <td>${brl(o.total||0)}</td>
-      <td>${rec>0?brl(rec):'—'}</td>
-      <td><strong style="color:var(--red)">${brl(saldo)}</strong></td>
-      <td><button class="tb g" style="font-size:11px" onclick="abrirModalPg('${o.id}',${o.total||0})">💰 Registrar</button></td>
+      <td><strong>#${String(o.numero||'—').padStart(3,'0')}</strong></td>
+      <td>${esc(o.cliente||'—')} ${atraso}</td>
+      <td>${r.parcelas_total>1?`${r.parcela_n}/${r.parcelas_total}`:'única'}</td>
+      <td${dias>0?' style="color:var(--red);font-weight:700"':''}>${r.vencimento?_dataBR(r.vencimento):'—'}</td>
+      <td><strong>${brl(r.valor||0)}</strong></td>
+      <td><button class="tb g" style="font-size:11px" onclick="_recebMarcarPago('${r.id}',true)">✓ Recebi</button></td>
     </tr>`;
   }).join('');
 }

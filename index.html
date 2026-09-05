@@ -2022,10 +2022,15 @@
     <div class="fin-card" id="cr-card">
       <div class="ct" style="margin:0 0 12px">📥 Contas a Receber</div>
       <div id="cr-resumo" class="desp-dash" style="margin-bottom:14px"></div>
+      <!-- Idade do saldo em aberto: um total só não diz se o dinheiro está
+           atrasado há 3 dias ou há 3 meses — e é essa diferença que decide
+           quem precisa de cobrança hoje. -->
+      <div id="cr-aging" style="margin-bottom:14px"></div>
+      <div id="cr-gap" style="margin-bottom:14px"></div>
       <div class="fin-tabela-wrap">
         <table class="fin-tabela">
           <thead><tr>
-            <th>#</th><th>Cliente</th><th>Total</th><th>Recebido</th><th>Saldo</th><th></th>
+            <th>#</th><th>Cliente</th><th>Parcela</th><th>Vencimento</th><th>Valor</th><th></th>
           </tr></thead>
           <tbody id="cr-tabela-body"></tbody>
         </table>
