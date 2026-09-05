@@ -16198,6 +16198,24 @@ function _filaHojeItens(){
       dismiss: `event.stopPropagation();_visOportDismiss('${op.id}')`
     });
   });
+  // OS atrasadas — agendada com data no passado. É o "aja agora" mais claro:
+  // serviço marcado que não aconteceu. Peso máximo.
+  {
+    const _hj=_hojeLocal();
+    filtrarPorLoja(todosOS||[])
+      .filter(o=>o.status==='agendado' && o.data_servico && o.data_servico<_hj)
+      .sort((a,b)=>(a.data_servico||'').localeCompare(b.data_servico||''))
+      .slice(0,8)
+      .forEach(o=>{
+        const dias=Math.round((new Date(_hj+'T12:00:00')-new Date(o.data_servico+'T12:00:00'))/86400000);
+        itens.push({
+          peso:0, icone:'📋🔴',
+          titulo:`${o.cliente||'—'} · OS #${String(o.numero||'').padStart(3,'0')}`,
+          sub:`atrasada ${dias} dia${dias!==1?'s':''} · agendada ${_visDataBR(o.data_servico)}`,
+          onclick:`verDetalhesOS('${o.id}')`
+        });
+      });
+  }
   if(_crmAtivo()){
     const {fuDue}=_crmComputarStats();
     fuDue.forEach(o=>{
@@ -16220,6 +16238,24 @@ function _filaHojeItens(){
         onclick: `go('estoque')`
       });
     });
+  }
+  // Garantias vencendo/vencidas — janela de 30 dias. Renovar ou avisar o cliente
+  // antes de virar problema. Peso baixo (não é urgente hoje).
+  if(eGestor()){
+    const _hjG=new Date(_hojeLocal()+'T12:00:00');
+    filtrarPorLoja(todosEq||[])
+      .map(e=>{ if(!e.garantia_vencimento) return null; const dias=Math.ceil((new Date(e.garantia_vencimento+'T12:00:00')-_hjG)/86400000); return dias<=30?{e,dias}:null; })
+      .filter(Boolean)
+      .sort((a,b)=>a.dias-b.dias)
+      .slice(0,5)
+      .forEach(({e,dias})=>{
+        itens.push({
+          peso:3, icone:'🛡️',
+          titulo:`${[e.marca,e.modelo].filter(Boolean).join(' ')||e.tipo||'Equipamento'} · ${e.cliente_nome||'—'}`,
+          sub: dias<0?`garantia vencida há ${-dias} dia${dias!==-1?'s':''}`:dias===0?'garantia vence hoje':`garantia vence em ${dias} dia${dias!==1?'s':''}`,
+          onclick:`go('equipamentos')`
+        });
+      });
   }
   if(flagAtiva('crm_cadencia')){
     cadenciaCandidatos().slice(0,5).forEach(c=>{
