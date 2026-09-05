@@ -596,6 +596,17 @@ da tabela é escrita à mão, senão encolher uma coluna incha todas as outras.
 
 **1 migração**: `delta36` (`despesas.natureza`, `recorrente`, `competencia`).
 
+**Promovido pra `main`** (`45f741d`, sw `fluxa-v60`), verificado no ar com
+cache limpo: console sem erros, as 12 funções novas e os 8 elementos de DOM
+presentes na produção.
+
+> ⚠️ **`git add -A` neste repo é perigoso.** Um deles arrastou 240K de cache
+> do graphify (`graphify-out/`) pra dentro de um commit. Conferi antes de
+> remover — só metadados estruturais, sem segredo nem dado de cliente, então
+> não precisou reescrever histórico — mas o repo é PÚBLICO e da próxima vez
+> pode não ser inofensivo. `graphify-out/` está no `.gitignore` agora;
+> **confira `git status` antes de commitar**, não confie no `-A`.
+
 ### Dívida de verificação declarada
 Tudo foi testado com dados sintéticos e banco desligado ou mockado. **Não houve
 teste de ponta a ponta logado**, em especial: **A Receber** (muda como o
