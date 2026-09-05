@@ -547,6 +547,61 @@ financeiro não deve ser legível por vendas/técnico nem pela API).
 
 sw.js: fluxa-v42 → fluxa-v52. Tudo em `dev`, **nada promovido pra `main`**.
 
+### Continuação — promoção e os 8 recursos restantes (mesma sessão)
+
+`dev` → `main` promovido com `--ff-only` depois de conferir que os 13 commits
+eram todos desta sessão (o CLAUDE.md avisa que outra IA commita no mesmo repo),
+que `fiscal-service/` não foi tocado, que `emitirNota()` segue desligado, e que
+o schema já estava aplicado. Verificado no ar com cache limpo: `fluxa-v52`,
+console limpo, os 10 recursos presentes.
+
+Depois disso, mais 8 itens (`3aee34d`…`a41df35`, sw v52 → v60):
+
+| # | Recurso | Onde |
+|---|---|---|
+| 1 | Baixa rápida de material | estoque |
+| 2 | Ações em lote (técnico, remarcar, concluir, cancelar) | OS |
+| 3 | Custo da empresa: fixa × variável, competência, recorrência | despesas |
+| 4 | DRE por unidade | financeiro |
+| 5 | Colunas redimensionáveis + PMR no aging | tabelas / A Receber |
+| 6 | Equipamento fora da lista, renomear, descartar em andamento | vistoria |
+| 7 | Ordem de Entrega | orçamento |
+| 8 | Vincular registros digitados à mão à ficha + saldo em data passada e ruptura | clientes / estoque |
+
+**4 bugs reais do v2 achados no caminho** (nenhum era do porte — todos já
+estavam lá):
+- `getTecnicos()` fazia `CFG.tecnicos || LOJAS.flatMap(...)`. **Array vazio é
+  truthy em JS**, então o fallback NUNCA rodava: todo seletor de técnico do app
+  (8 pontos) ficava vazio pra qualquer empresa que não tivesse preenchido à mão
+  um `<textarea>` escondido — que também era morto e foi removido.
+- `loadMinhasOS()` chamava `go('home')`; `#page-home` não existe → `TypeError`
+  em `.classList`, a função abortava no meio e TODAS as páginas perdiam `.on`:
+  tela branca. Corrigido com `_telaInicialPerfil(sess)`, ponto único.
+- `_limparFormVistoria()` não zerava os chips de equipamento: como cliente e
+  local são limpos ali, a vistoria seguinte começava com os equipamentos do
+  local anterior marcados.
+- rascunho de vistoria só era gravado ao mexer em equipamento — quem digitava
+  o cliente e via o app ir pra segundo plano perdia até esse nome.
+
+**Armadilha de teste que reapareceu:** `LOJAS`, `db`, `dbOk`, `dbInsert`,
+`dbUpdate` são bindings léxicos de topo. `window.X = mock` **não** os
+substitui — tem que atribuir o identificador nu (`dbUpdate = mock`). E ao
+trocar `LOJAS` na mão, `GRUPO_PRINCIPAL` fica velho e o DRE aparece sem
+colunas.
+
+**Uma decisão de UI que só apareceu testando o arraste de verdade:** sob
+`table-layout:fixed`, a coluna "auto" é a que paga a conta — a de Ações era
+espremida a 0px. Todas as colunas passam a ser congeladas, e a largura total
+da tabela é escrita à mão, senão encolher uma coluna incha todas as outras.
+
+**1 migração**: `delta36` (`despesas.natureza`, `recorrente`, `competencia`).
+
+### Dívida de verificação declarada
+Tudo foi testado com dados sintéticos e banco desligado ou mockado. **Não houve
+teste de ponta a ponta logado**, em especial: **A Receber** (muda como o
+dinheiro é registrado) e o **relatório de OS no celular** (`gerarRelatorioOS`
+virou `async`, então `window.print()` roda depois de um `await`).
+
 ---
 
 ## 📦 ESTOQUE (controle inteligente)
