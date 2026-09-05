@@ -725,6 +725,15 @@
       .pd-vis-foto-item{display:flex;flex-direction:column;break-inside:avoid}
       .pd-vis-foto-item img{width:100%;height:210px;object-fit:cover;border-radius:8px;background:#f9fafb;display:block!important;border:1px solid #e9ecef}
       .pd-vis-foto-lbl{font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#9ca3af;margin-top:4px;text-align:center}
+      .pd-vis-foto-lbl.antes{color:#92400e} .pd-vis-foto-lbl.depois{color:#166534}
+      /* comparação antes/depois no relatório de OS */
+      .pd-osr-ad-grid{display:flex;flex-direction:column;gap:14px;margin-top:8px}
+      .pd-osr-ad-pair{display:grid!important;grid-template-columns:1fr 1fr;gap:10px;break-inside:avoid}
+      .pd-osr-ad-col{display:flex;flex-direction:column;border-radius:8px;overflow:hidden;border:1px solid #e9ecef}
+      .pd-osr-ad-col img{width:100%;height:200px;object-fit:cover;background:#f9fafb;display:block!important}
+      .pd-osr-ad-lbl{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;text-align:center;padding:6px 4px}
+      .pd-osr-ad-lbl.antes{background:#fef3c7;color:#92400e}
+      .pd-osr-ad-lbl.depois{background:#dcfce7;color:#166534}
       /* summary table */
       .pd-vis-sumtable{width:100%;border-collapse:collapse;margin-bottom:16px}
       .pd-vis-sumtable th{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;background:#f8f9fb;text-align:left;border-bottom:1.5px solid #e9ecef}

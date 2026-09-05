@@ -1278,7 +1278,11 @@ let _osServidorOffset = 0, _osTemMais = false;
 let osEditId = null; // id da OS sendo editada (null = nova) — evita duplicar ao salvar
 let filtroPeriodo = ''; // legado — não mais usado na tabela principal
 let orcMesRef = ''; // YYYY-MM ou '' = todos os períodos
-let osFotos = ['','',''];
+// Dois grids independentes: o relatório pro cliente destaca antes/depois, e
+// isso só funciona se a captura já separar na hora — exigir que o técnico
+// etiquete cada foto depois não sobrevive ao uso em campo.
+let osFotosAntes = [];
+let osFotosDepois = [];
 let printMode = ''; // 'orc' | 'os' | 'both'
 
 // ── Checklist OS ──
@@ -2075,6 +2079,9 @@ function go(p){
   // Atualiza técnicos disponíveis quando abre form de OS
   if(p==='os'){
     if(!osEditId) restaurarRascunho('os'); // não restaura draft quando editando OS existente
+    // Idempotente e barato: garante os slots desenhados mesmo chegando aqui
+    // por um caminho que não passou por novaOS()/_abrirOSForm().
+    renderOSFotosSlots();
     // A-04: pré-preenche data de hoje se vazio
     const osDataEl=document.getElementById('os-data');
     if(osDataEl && !osDataEl.value) osDataEl.value=_hojeLocal();
@@ -3196,7 +3203,7 @@ async function gerarOSPDF(modo='os'){
     tec:gV('os-tec'), tot:parseFloat(gV('os-total'))||0,
     mat:gV('os-mat'), obs:gV('os-obs'),
     svcs:osSvcs.filter(s=>s.d.trim()).map(s=>s.d.trim()),
-    fotos:osFotos.filter(Boolean), videoLink:gV('os-video-link'),
+    fotos:{antes:osFotosAntes.filter(Boolean), depois:osFotosDepois.filter(Boolean)}, videoLink:gV('os-video-link'),
     checklist: osChecklist.filter(x=>x.checked),
     loja_id: gV('os-loja')||LOJA_PADRAO_ID
   };
@@ -3210,8 +3217,8 @@ async function gerarOSPDF(modo='os'){
       // base64). Se o upload falhar, a foto fica de fora (não perde no PDF gerado agora,
       // só não fica sincronizada no banco até um próximo salvamento bem-sucedido).
       const storageId = (osEditId && !String(osEditId).startsWith('local_')) ? osEditId : ('os_'+Date.now());
-      const fotosUp = await _fotosParaStorage(dados.fotos, storageId, 'os-fotos');
-      const payload={...camposBase, fotos:fotosUp||[]};
+      const fotosUp = await _osFotosParaStorage(dados.fotos, storageId);
+      const payload={...camposBase, fotos:fotosUp};
       if(osEditId && !String(osEditId).startsWith('local_')){
         // EDIÇÃO: atualiza a OS existente (mantém número e status)
         const existente=todosOS.find(x=>x.id===osEditId);
@@ -3341,7 +3348,10 @@ function preencherDocOS(d, num){
   // deixava 1 foto minúscula-e-sozinha e 3 fotos com a 3ª cortada mais agressivo
   // que precisava (achado do Marcos, 04/09).
   const fotosEl=document.getElementById('pd-fotos-os');
-  const fotosArr=(d.fotos||[]).filter(Boolean);
+  // Ordem de serviço é o documento que vai ANTES do serviço — aqui a
+  // narrativa antes/depois não existe ainda, só a lista combinada importa.
+  const _fotOS=_osFotosNormalizar(d.fotos);
+  const fotosArr=[..._fotOS.antes, ..._fotOS.depois];
   if(fotosEl){
     if(fotosArr.length){
       fotosEl.style.display='block';
@@ -4563,17 +4573,7 @@ function novaOS(){
   const checkinInfoEl=document.getElementById('checkin-info'); if(checkinInfoEl) checkinInfoEl.textContent='';
   populaTecCheckIn();
   osOrcId = null;
-  osFotos=['','',''];
-  [0,1,2].forEach(i=>{
-    const prev=document.getElementById('os-foto-prev-'+i);
-    const btn=document.getElementById('os-btn-rm-foto-'+i);
-    const lbl=document.getElementById('os-foto-lbl-'+i);
-    const inp=document.getElementById('os-foto-inp-'+i);
-    if(prev) prev.style.display='none';
-    if(btn) btn.style.display='none';
-    if(lbl) lbl.textContent='Tirar/selecionar';
-    if(inp) inp.value='';
-  });
+  osFotosAntes=[]; osFotosDepois=[]; renderOSFotosSlots();
   setV('os-video-link',''); setV('os-cli-id','');
   setV('os-loja', lojaAtiva||LOJA_PADRAO_ID);
   document.getElementById('os-src-badge').textContent='';
@@ -4892,14 +4892,9 @@ function _abrirOSForm(o){
   }
   osSvcs=(o.servicos||[]).map(s=>({id:Date.now()+Math.random(),d:typeof s==='string'?s:s.desc||''}));
   if(!osSvcs.length) osSvcs=[{id:Date.now(),d:''}];
-  osFotos=(o.fotos||[]).concat(['','','']).slice(0,3);
-  osFotos.forEach((f,i)=>{
-    const prev=document.getElementById('os-foto-prev-'+i);
-    const btn=document.getElementById('os-btn-rm-foto-'+i);
-    const lbl=document.getElementById('os-foto-lbl-'+i);
-    if(f){prev.src=f;prev.style.display='block';if(btn)btn.style.display='block';if(lbl)lbl.textContent='Foto carregada';}
-    else{prev.style.display='none';if(btn)btn.style.display='none';if(lbl)lbl.textContent='Tirar/selecionar';}
-  });
+  const _fot=_osFotosNormalizar(o.fotos);
+  osFotosAntes=_fot.antes.slice(0,6); osFotosDepois=_fot.depois.slice(0,6);
+  renderOSFotosSlots();
   // Checklist: carrega da OS salva ou usa o padrão
   try{
     osChecklist=o.checklist?(typeof o.checklist==='string'?JSON.parse(o.checklist):o.checklist):OS_CHECKLIST_DEFAULT.map(x=>({...x}));
@@ -5129,31 +5124,47 @@ function _enviarRelatorioOSWhats(id, tel){
 // ──────────────────────────────────────────────────
 //  OS FOTOS
 // ──────────────────────────────────────────────────
-function carregarOSFoto(inp, idx){
+// ordens_servico.fotos guarda {antes:[],depois:[]} desde a separação dos dois
+// grids. Registro anterior a isso é um array simples e vale como 100%
+// "depois" — é o que essas fotos sempre representaram (resultado do serviço).
+// Ponto ÚNICO de leitura: nada lê o.fotos direto, senão um registro antigo
+// quebra ao voltar como array.
+function _osFotosNormalizar(fotosRaw){
+  if(Array.isArray(fotosRaw)) return {antes:[], depois:fotosRaw.filter(Boolean)};
+  if(fotosRaw && typeof fotosRaw==='object') return {antes:(fotosRaw.antes||[]).filter(Boolean), depois:(fotosRaw.depois||[]).filter(Boolean)};
+  return {antes:[], depois:[]};
+}
+function _osFotosArr(tipo){ return tipo==='antes' ? osFotosAntes : osFotosDepois; }
+function renderOSFotosSlots(tipo){
+  if(!tipo){ renderOSFotosSlots('antes'); renderOSFotosSlots('depois'); return; }
+  const grid=document.getElementById('os-fotos-'+tipo+'-grid'); if(!grid) return;
+  const arr=_osFotosArr(tipo);
+  grid.innerHTML='';
+  for(let i=0;i<6;i++){
+    const slot=document.createElement('div');
+    slot.className='fotos-orc-slot'+(arr[i]?' filled':'');
+    slot.innerHTML=`
+      <input type="file" id="os-finp-${tipo}-${i}" accept="image/*" style="display:none" onchange="carregarFotoOS(this,${i},'${tipo}')">
+      ${arr[i]?`<img src="${arr[i]}" alt="foto ${i+1}">`:''}
+      <div class="fotos-orc-slot-icon">📷</div>
+      <div class="fotos-orc-slot-lbl">Foto ${i+1}</div>
+      <button class="fotos-orc-rm" onclick="event.stopPropagation();removerFotoOS(${i},'${tipo}')" title="Remover">✕</button>`;
+    slot.addEventListener('click',()=>document.getElementById(`os-finp-${tipo}-${i}`).click());
+    grid.appendChild(slot);
+  }
+}
+function carregarFotoOS(inp, idx, tipo){
   const f=inp.files[0]; if(!f) return;
   if(f.size > FOTO_MAX_BYTES){ toast('⚠️ Foto muito grande (máx 20 MB).'); inp.value=''; return; }
   const r=new FileReader();
-  r.onload=e=>{
-    osFotos[idx]=e.target.result;
-    const prev=document.getElementById('os-foto-prev-'+idx);
-    const lbl=document.getElementById('os-foto-lbl-'+idx);
-    const btn=document.getElementById('os-btn-rm-foto-'+idx);
-    prev.src=e.target.result; prev.style.display='block';
-    if(lbl) lbl.textContent=f.name;
-    if(btn) btn.style.display='block';
-  };
+  r.onload=async e=>{ _osFotosArr(tipo)[idx]=await compressImage(e.target.result); renderOSFotosSlots(tipo); };
   r.readAsDataURL(f);
 }
-function removerOSFoto(idx){
-  osFotos[idx]='';
-  const prev=document.getElementById('os-foto-prev-'+idx);
-  const lbl=document.getElementById('os-foto-lbl-'+idx);
-  const btn=document.getElementById('os-btn-rm-foto-'+idx);
-  const inp=document.getElementById('os-foto-inp-'+idx);
-  if(prev) prev.style.display='none';
-  if(lbl) lbl.textContent='Tirar/selecionar';
-  if(btn) btn.style.display='none';
-  if(inp) inp.value='';
+function removerFotoOS(idx, tipo){
+  const arr=_osFotosArr(tipo);
+  arr[idx]=null;
+  while(arr.length && !arr[arr.length-1]) arr.pop();
+  renderOSFotosSlots(tipo);
 }
 
 // ──────────────────────────────────────────────────
@@ -7654,7 +7665,7 @@ function _finalizarOSRender(){
   // chips real hoje (limitação já registrada), contagem aproximada por
   // linha/vírgula não vazia.
   const qtdMat=(gV('os-mat')||'').split(/\n|,/).map(x=>x.trim()).filter(Boolean).length;
-  const qtdFotos=(osFotos||[]).filter(Boolean).length;
+  const qtdFotos=(osFotosAntes||[]).filter(Boolean).length+(osFotosDepois||[]).filter(Boolean).length;
   const pendentes=(osSvcs||[]).filter((s,i)=>!_finalizarOSConf[i]?.feito).length;
   const semDecisao=(osSvcs||[]).filter((s,i)=>{ const c=_finalizarOSConf[i]; return c&&!c.feito&&!c.decisao; }).length;
   const isContratoMensal=!!(todosOS||[]).find(x=>x.id===osCheckinId)?.agendamento_id;
@@ -7801,7 +7812,7 @@ function _fazerCheckoutConfirmado(){
   const dadosPreenchidos = {
     obs_tecnica: gV('os-obs')||'',
     materiais: gV('os-mat')||'',
-    fotos: (osFotos||[]).filter(Boolean),
+    fotos: {antes:(osFotosAntes||[]).filter(Boolean), depois:(osFotosDepois||[]).filter(Boolean)},
     video_link: gV('os-video-link')||null,
     checklist: chkOk.length?JSON.stringify(chkOk):null,
     tecnico: gV('os-tec-checkin')||gV('os-tec')||''
@@ -9814,6 +9825,17 @@ async function _fotosParaStorage(fotosOrigem, recId, bucket){
   return urls;
 }
 
+// Sobe os dois lados da OS preservando a forma {antes,depois} — caminhos
+// separados no bucket pra uma foto de "antes" nunca sobrescrever a de mesmo
+// índice do "depois".
+async function _osFotosParaStorage(fotosObj, recId){
+  const {antes,depois}=_osFotosNormalizar(fotosObj);
+  return {
+    antes: (await _fotosParaStorage(antes, recId+'/antes', 'os-fotos'))||[],
+    depois:(await _fotosParaStorage(depois, recId+'/depois','os-fotos'))||[]
+  };
+}
+
 // Faz upload de todas as fotos base64 de uma vistoria para o Storage.
 // Retorna novo objeto rec com URLs no lugar de base64.
 // Fotos que falhar no upload ficam como base64 (sem perder a foto).
@@ -10812,20 +10834,38 @@ function preencherRelatorioOS(os, versao){
   // Registro fotográfico — colunas/altura adaptam à quantidade (achado do
   // Marcos, 04/09): grid fixo de 2 col/210px deixava 1-2 fotos pequenas e
   // 5+ cortando mais do que precisava.
+  // Quando os dois lados existem, a comparação lado a lado vira o centro da
+  // seção — o resto (sobra de um lado só) cai numa grade simples embaixo.
   const fotosWrap=document.getElementById('pd-ros-fotos-wrap');
+  const fotosTitulo=document.getElementById('pd-ros-fotos-titulo');
   const fotosEl=document.getElementById('pd-ros-fotos');
-  const fotos=(os.fotos||[]).filter(Boolean);
-  if(fotosWrap) fotosWrap.style.display=fotos.length?'block':'none';
+  const {antes:fAntes, depois:fDepois}=_osFotosNormalizar(os.fotos);
+  const temAntes=fAntes.length, temDepois=fDepois.length;
+  if(fotosWrap) fotosWrap.style.display=(temAntes||temDepois)?'block':'none';
+  if(fotosTitulo) fotosTitulo.textContent=(temAntes&&temDepois)?'Antes e Depois':temDepois?'Fotos do Serviço':'Fotos da Chegada';
   if(fotosEl){
-    const nFotos=fotos.length;
-    const colsFotos=nFotos===1?1:nFotos<=4?2:3;
-    const hFotos=nFotos===1?320:nFotos<=2?260:190;
-    fotosEl.style.gridTemplateColumns=`repeat(${colsFotos},1fr)`;
-    fotosEl.innerHTML=fotos.map((f,i)=>`
-    <div class="pd-vis-foto-item">
-      <img src="${f}" alt="Foto ${i+1}" style="height:${hFotos}px">
-      <div class="pd-vis-foto-lbl">Foto ${i+1}</div>
-    </div>`).join('');
+    const nPares=Math.min(temAntes,temDepois);
+    const pares=[];
+    for(let i=0;i<nPares;i++){
+      pares.push(`<div class="pd-osr-ad-pair">
+        <div class="pd-osr-ad-col"><img src="${fAntes[i]}" alt="Antes ${i+1}" loading="lazy" decoding="async"><div class="pd-osr-ad-lbl antes">Antes</div></div>
+        <div class="pd-osr-ad-col"><img src="${fDepois[i]}" alt="Depois ${i+1}" loading="lazy" decoding="async"><div class="pd-osr-ad-lbl depois">Depois</div></div>
+      </div>`);
+    }
+    // "Sobra" cobre tanto o resto de quem tem mais fotos que o outro lado
+    // quanto o caso comum de só um lado ter fotos (nPares fica 0, a sobra é
+    // o array inteiro) — não precisa de um 3º caminho pra isso.
+    const sobraAntes=fAntes.slice(nPares), sobraDepois=fDepois.slice(nPares);
+    const nSobra=sobraAntes.length+sobraDepois.length;
+    const colsSobra=nSobra===1?1:nSobra<=4?2:3;
+    const hSobra=nSobra===1?320:nSobra<=2?260:190;
+    const grade=(arr,lbl,classe)=>arr.map((f,i)=>`
+      <div class="pd-vis-foto-item"><img src="${f}" alt="${lbl} ${i+1}" loading="lazy" decoding="async" style="height:${hSobra}px">
+      <div class="pd-vis-foto-lbl ${classe}">${lbl}</div></div>`).join('');
+    const sobraHtml = nSobra
+      ? `<div class="pd-vis-equip-fotos" style="margin-top:${nPares?'14px':'0'};grid-template-columns:repeat(${colsSobra},1fr)">${grade(sobraAntes,'Antes','antes')}${grade(sobraDepois,'Depois','depois')}</div>`
+      : '';
+    fotosEl.innerHTML=(pares.length?`<div class="pd-osr-ad-grid">${pares.join('')}</div>`:'')+sobraHtml;
   }
 
   const signTec=document.getElementById('pd-ros-sign-tec');
