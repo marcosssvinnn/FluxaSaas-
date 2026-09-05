@@ -264,12 +264,22 @@ enumerável. Não expõe PIN nem hash.
 sem módulos. Acoplamento alto; ordem de execução importa; bindings léxicos
 enganam testes. É a causa-raiz de "mexer em A quebra B" e o alvo da Fase 4.
 
-**R-7 — Verificação de RLS por leitura de arquivo é frágil.** `fornecedores`,
-`ordens_compra`, `os_materiais` não têm `CREATE POLICY` óbvio nos deltas (podem
-herdar de setup base ou de política genérica). O teste ao vivo mostrou todas
-bloqueadas para anônimo, mas convém confirmar a **política de escrita** de cada
-uma logada como empresa B tentando gravar em empresa A (teste de acesso cruzado
-da Fase 3).
+**R-7 — ✅ RESOLVIDO (Fase 3).** Auditei as 69 políticas RLS reais direto do
+banco (`pg_policies`, via Management API), não por leitura de arquivo:
+- **Leitura:** toda `SELECT`/`DELETE` escopa por `empresa_id`
+  (`minhas_empresas()`/`meu_perfil()`); nenhuma `USING(true)`.
+- **Escrita:** todo `INSERT` tem `WITH CHECK` escopado. Todo `UPDATE` tem `USING`
+  escopado; os que têm `WITH CHECK` nulo são **seguros** — o Postgres aplica o
+  `USING` como check da linha nova, então não dá pra "mudar o `empresa_id`" de
+  uma linha para outra empresa.
+- **4 tabelas sensíveis sem política** (`certificados_fiscais`,
+  `certificado_upload_tokens`, `contadores`, `plataforma_admins`) têm
+  `rowsecurity=true` → **negam tudo** por padrão; só são tocadas por RPCs
+  `SECURITY DEFINER`. Postura correta.
+- **Nota de robustez (não é furo):** os `UPDATE` dependem do comportamento
+  implícito do Postgres (`WITH CHECK` cai no `USING`). Se uma migração futura
+  adicionar um `WITH CHECK` explícito a essas políticas, ele **tem** que
+  continuar escopado por `empresa_id`.
 
 **R-8 — 20 `catch(e){}` vazios.** A maioria é benigna (`chart.destroy()`,
 `signOut()`, limpeza de UI). Alguns engolem erro de parse no boot
