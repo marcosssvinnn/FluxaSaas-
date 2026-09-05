@@ -2024,6 +2024,20 @@
       </div>
     </div>
 
+    <!-- ── DRE por unidade ──
+         O "Resultado Financeiro" acima é receita − despesa por mês. O DRE
+         abre a conta: separa o custo do que foi vendido das despesas de
+         operar, e mostra a margem de contribuição — quanto sobra de cada
+         venda antes do custo fixo. É o número que diz se o problema do mês
+         foi preço ou estrutura. -->
+    <div class="fin-card" id="dre-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+        <div class="ct" style="margin:0">📊 DRE por unidade</div>
+        <select id="dre-mes" onchange="renderDRE()" style="padding:7px 12px;border:1.5px solid var(--gray-mid);border-radius:50px;font-size:12px;font-family:'Inter',sans-serif;outline:none;cursor:pointer"></select>
+      </div>
+      <div id="dre-corpo"></div>
+    </div>
+
     <!-- ── Contas a Receber ── -->
     <div class="fin-card" id="cr-card">
       <div class="ct" style="margin:0 0 12px">📥 Contas a Receber</div>

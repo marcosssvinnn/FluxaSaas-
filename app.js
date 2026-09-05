@@ -2072,7 +2072,7 @@ function go(p){
   if(p==='agendamentos'){ loadAgendamentos(); populaTecSelects(); initCal(); renderCal(); }
   if(p==='despesas') loadDespesas();
   if(p==='estoque') loadEstoque();
-  if(p==='produtividade'){ loadProdutividade(); Promise.resolve(loadRecebimentos()).then(renderContasReceber).catch(e=>console.warn('[go receb]',e?.message||e)); setTimeout(renderRelatorioFinanceiro,300); }
+  if(p==='produtividade'){ loadProdutividade(); Promise.resolve(loadRecebimentos()).then(renderContasReceber).catch(e=>console.warn('[go receb]',e?.message||e)); if(typeof loadDespesas==='function') Promise.resolve(loadDespesas()).then(()=>renderDRE()).catch(e=>console.warn('[go dre]',e?.message||e)); setTimeout(()=>{ renderRelatorioFinanceiro(); renderDRE(); },300); }
   if(p==='analises') loadAnalises();
   if(p==='plataforma') loadPlataforma();
   if(p==='usuarios') loadUsuarios();
@@ -7830,6 +7830,133 @@ function confirmarBaixaRapida(){
   fecharBaixaRapida();
   if(typeof renderEstoque==='function' && document.getElementById('page-estoque')?.classList.contains('on')) renderEstoque();
   toast(`✅ Baixa de ${fmtQtd(qtd)} ${p.unidade||'un'} — ${cfg.nome.replace(/^\S+\s/,'')}`);
+}
+
+// ══════════════════════════════════════════════════
+//  DRE POR UNIDADE
+// ══════════════════════════════════════════════════
+// "Receita − despesa" responde SE o mês fechou no azul. O DRE responde POR
+// QUÊ: separa o custo do que foi vendido (varia com a venda) das despesas de
+// operar (não variam), e expõe a margem de contribuição — quanto sobra de
+// cada venda antes do custo fixo. É o número que distingue "vendi barato" de
+// "minha estrutura é cara demais".
+//
+// Não tem linha de mão de obra: o Fluxa não registra custo/hora de técnico
+// em lugar nenhum. Inventar um número aqui daria um resultado bonito e falso.
+function _dreMesesDisponiveis(){
+  const set=new Set();
+  (todosOrc||[]).forEach(o=>{
+    if(o.status!=='aprovado') return;
+    const d=o.data_aprovacao||o.data_criacao; if(!d) return;
+    set.add(String(d).slice(0,7));
+  });
+  (todasDesp||[]).forEach(x=>{ const m=_despCompetencia(x); if(m) set.add(m); });
+  set.add(_hojeLocal().slice(0,7));
+  return [...set].filter(Boolean).sort().reverse().slice(0,24);
+}
+function _dreCalcular(mes, lojas){
+  const dentro = lj => lojas.includes(lj||'') || (!lj && lojas.length>0);
+  // Receita reconhecida no mês da APROVAÇÃO — é quando a venda aconteceu.
+  // Orçamento feito em julho e fechado em agosto é receita de agosto.
+  const receita=(todosOrc||[]).filter(o=>{
+    if(o.status!=='aprovado' || !dentro(o.loja_id)) return false;
+    const d=o.data_aprovacao||o.data_criacao;
+    return d && String(d).slice(0,7)===mes;
+  }).reduce((a,o)=>a+(parseFloat(o.total)||0),0);
+
+  // Custo do que saiu por venda, com o custo congelado no dia — não o custo
+  // médio de hoje (senão o resultado de um mês fechado mudaria sozinho toda
+  // vez que o preço de compra mudasse).
+  const custoDireto=(todosMovEstoque||[]).filter(m=>
+    m.tipo==='saida' && String(m.ref||'').startsWith('baixa:orc:') &&
+    dentro(m.loja_id) && String(m.data||'').slice(0,7)===mes
+  ).reduce((a,m)=>a+Math.abs(parseFloat(m.quantidade)||0)*(parseFloat(m.custo_unit)||0),0);
+
+  // Baixa avulsa marcada como VENDA também é custo de venda — sai da mesma
+  // lógica, só não passou por orçamento.
+  const custoBalcao=(todosMovEstoque||[]).filter(m=>
+    m.tipo==='saida' && String(m.ref||'')==='baixa:venda' &&
+    dentro(m.loja_id) && String(m.data||'').slice(0,7)===mes
+  ).reduce((a,m)=>a+Math.abs(parseFloat(m.quantidade)||0)*(parseFloat(m.custo_unit)||0),0);
+
+  // Despesa pela COMPETÊNCIA, não pela data de pagamento.
+  const desp=(todasDesp||[]).filter(x=>dentro(x.loja_id) && _despCompetencia(x)===mes);
+  const soma=l=>l.reduce((a,x)=>a+(parseFloat(x.valor)||0),0);
+  const campo    = soma(desp.filter(x=>(x.natureza||'campo')==='campo'));
+  const empresa  = desp.filter(x=>(x.natureza||'campo')==='empresa');
+  const variavel = soma(empresa.filter(x=>_despFixaOuVariavel(x.tipo)!=='fixa'));
+  const fixo     = soma(empresa.filter(x=>_despFixaOuVariavel(x.tipo)==='fixa'));
+
+  const cpv = custoDireto+custoBalcao;
+  const margemContrib = receita - cpv - campo - variavel;
+  const resultado = margemContrib - fixo;
+  return {receita, cpv, campo, variavel, fixo, margemContrib, resultado,
+    margemPct: receita? (margemContrib/receita*100) : null,
+    resultadoPct: receita? (resultado/receita*100) : null};
+}
+function renderDRE(){
+  const sel=document.getElementById('dre-mes'); if(!sel) return;
+  const meses=_dreMesesDisponiveis();
+  if(!sel.options.length || sel.dataset.n!==String(meses.length)){
+    const atual=sel.value;
+    sel.innerHTML=meses.map(m=>{
+      const [y,mm]=m.split('-');
+      const rot=new Date(parseInt(y),parseInt(mm)-1,1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+      return `<option value="${m}">${rot}</option>`;
+    }).join('');
+    sel.dataset.n=String(meses.length);
+    if(atual && meses.includes(atual)) sel.value=atual;
+  }
+  const mes=sel.value||meses[0];
+
+  // Só as unidades que o usuário enxerga agora (respeita o seletor do topo).
+  const visiveis=((typeof LOJAS!=='undefined'?LOJAS:[])||[]).filter(l=>
+    lojaAtiva ? l.id===lojaAtiva : filtrarPorLoja([{loja_id:l.id}]).length>0);
+  const cols=visiveis.map(l=>({id:l.id, nome:l.nome, d:_dreCalcular(mes,[l.id])}));
+  const total={nome:'Total', d:_dreCalcular(mes, visiveis.map(l=>l.id))};
+  const mostrarTotal=cols.length>1;
+
+  const linha=(rot, campo, o={})=>{
+    const cel=d=>{
+      const v=d[campo];
+      if(v===null||v===undefined) return '<td style="text-align:right;color:var(--gray)">—</td>';
+      const cor=o.neg?'var(--bad)':(o.destaque?(v>=0?'var(--ok)':'var(--bad)'):'var(--c2)');
+      const txt=o.pct?(v.toFixed(1).replace('.',',')+'%'):((o.neg&&v>0?'− ':'')+brl(Math.abs(v)));
+      return `<td style="text-align:right;color:${cor};${o.destaque?'font-weight:800;':''}font-variant-numeric:tabular-nums">${txt}</td>`;
+    };
+    return `<tr${o.borda?' style="border-top:2px solid var(--gray-mid)"':''}>
+      <td style="${o.destaque?'font-weight:800':'font-weight:600'};${o.recuo?'padding-left:16px;font-weight:400;color:var(--gray)':''}">${esc(rot)}</td>
+      ${cols.map(c=>cel(c.d)).join('')}${mostrarTotal?cel(total.d):''}</tr>`;
+  };
+
+  const el=document.getElementById('dre-corpo'); if(!el) return;
+  if(!cols.length){ el.innerHTML='<div style="padding:18px;text-align:center;color:var(--gray);font-size:13px">Nenhuma unidade cadastrada.</div>'; return; }
+  el.innerHTML=`
+  <div style="overflow-x:auto">
+   <table class="fin-tabela" style="width:100%;min-width:${260+cols.length*110}px">
+    <thead><tr>
+      <th style="text-align:left">Conta</th>
+      ${cols.map(c=>`<th style="text-align:right">${esc(c.nome)}</th>`).join('')}
+      ${mostrarTotal?'<th style="text-align:right">Total</th>':''}
+    </tr></thead>
+    <tbody>
+      ${linha('Receita reconhecida','receita')}
+      ${linha('Custo do que foi vendido','cpv',{neg:true,recuo:true})}
+      ${linha('Despesa de campo','campo',{neg:true,recuo:true})}
+      ${linha('Despesa variável','variavel',{neg:true,recuo:true})}
+      ${linha('Margem de contribuição','margemContrib',{destaque:true,borda:true})}
+      ${linha('% sobre a receita','margemPct',{pct:true,recuo:true})}
+      ${linha('Despesa fixa','fixo',{neg:true,recuo:true})}
+      ${linha('Resultado','resultado',{destaque:true,borda:true})}
+      ${linha('% sobre a receita','resultadoPct',{pct:true,recuo:true})}
+    </tbody>
+   </table>
+  </div>
+  <div style="font-size:11px;color:var(--gray);margin-top:10px;line-height:1.5">
+    Receita pelo mês da aprovação · despesa pela competência · custo do produto
+    congelado no dia da venda. <strong>Não inclui mão de obra</strong> — o
+    sistema não registra custo/hora de técnico.
+  </div>`;
 }
 
 function renderContasReceber(){
