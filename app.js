@@ -3336,14 +3336,20 @@ function preencherDocOS(d, num){
         '</div>';
     } else { chkEl.style.display='none'; chkEl.innerHTML=''; }
   }
-  // fotos OS no PDF
+  // fotos OS no PDF — mesmo esquema adaptativo do orçamento (preencherDocOrc):
+  // colunas/altura variam com a quantidade em vez de grid fixo 2 col/140px, que
+  // deixava 1 foto minúscula-e-sozinha e 3 fotos com a 3ª cortada mais agressivo
+  // que precisava (achado do Marcos, 04/09).
   const fotosEl=document.getElementById('pd-fotos-os');
   const fotosArr=(d.fotos||[]).filter(Boolean);
   if(fotosEl){
     if(fotosArr.length){
       fotosEl.style.display='block';
-      fotosEl.innerHTML='<div style="font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:#9ca3af;margin-bottom:8px">Fotos do Serviço</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
-        fotosArr.map(f=>`<img src="${f}" style="width:100%;max-height:140px;object-fit:cover;border-radius:8px;border:1px solid #e9ecef">`).join('')+'</div>';
+      const cols=fotosArr.length===1?1:2;
+      const maxH=fotosArr.length===1?'320px':fotosArr.length===2?'240px':'190px';
+      fotosEl.innerHTML='<div class="pd-fotos-lbl">Fotos do Serviço</div>'+
+        `<div class="pd-fotos-grid" style="grid-template-columns:repeat(${cols},1fr)">`+
+        fotosArr.map(f=>`<img src="${f}" style="max-height:${maxH};border:1px solid #e9ecef">`).join('')+'</div>';
       if(d.videoLink) fotosEl.innerHTML+=`<div style="margin-top:8px;font-size:11px;color:#6b7280">📹 Vídeo: <a href="${esc(d.videoLink)}">${esc(d.videoLink)}</a></div>`;
     } else { fotosEl.style.display='none'; fotosEl.innerHTML=''; }
   }
