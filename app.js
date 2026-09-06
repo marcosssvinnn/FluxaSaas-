@@ -5834,15 +5834,9 @@ function renderMinhasOS(){
     return;
   }
   const _hj=_hojeLocal();
-  // Ordena: pendentes por data crescente; concluídas/canceladas no final
-  lista=lista.slice().sort((a,b)=>{
-    const ac=a.status==='concluido'||a.status==='cancelado';
-    const bc=b.status==='concluido'||b.status==='cancelado';
-    if(ac&&!bc) return 1; if(!ac&&bc) return -1;
-    const da=a.data_servico||'9999'; const db2=b.data_servico||'9999';
-    return da<db2?-1:da>db2?1:0;
-  });
-  el.innerHTML = lista.map(o => {
+  // "Meu Dia" (Fase 16): agrupa por urgência em vez de uma lista plana — o
+  // técnico quer saber PRA ONDE IR e o que fazer HOJE, não rolar um ERP.
+  const _cardMinhaOS=(o)=>{
     const num = String(o.numero||'?').padStart(3,'0');
     const dt = o.data_servico ? new Date(o.data_servico+'T12:00:00').toLocaleDateString('pt-BR') : '—';
     const atrasado=o.status==='agendado'&&o.data_servico&&o.data_servico<_hj;
@@ -5858,9 +5852,12 @@ function renderMinhasOS(){
     const telCli=(o.tel_cliente||'').replace(/\D/g,'');
     const btnWA=o.status==='concluido'&&telCli
       ?`<button class="tb" style="background:var(--wa);color:white;border-color:var(--wa);font-size:11px;padding:5px 8px" title="Enviar relatório ao cliente via WhatsApp" onclick="event.stopPropagation();_enviarRelatorioOSWhats('${o.id}','${telCli}')">💬 WA</button>`:'';
+    // Ir até o cliente: link de mapa (endereço) — o técnico quer navegar, não copiar.
+    const endMap=(o.local_servico||'').trim();
+    const btnMapa=endMap&&o.status!=='concluido'&&o.status!=='cancelado'
+      ?`<a class="tb" style="font-size:11px;padding:5px 8px;text-decoration:none" title="Abrir no mapa" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(endMap)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">🗺️ Ir</a>`:'';
     const btnPDF=`<button class="tb" style="font-size:11px;padding:5px 8px" title="Gerar PDF desta OS" onclick="event.stopPropagation();_gerarPDFdaOS('${o.id}')">📄 PDF</button>`;
     const naoConcluida=o.status!=='concluido'&&o.status!=='cancelado';
-    // Botão grande de conclusão em 1 toque — para uso em campo, sem abrir o formulário longo
     const btnConcluir=naoConcluida
       ?`<button class="tb" style="background:#16a34a;color:white;border-color:#16a34a;font-weight:700;font-size:13px;padding:8px 14px" title="Concluir esta OS (baixa de estoque automática)" onclick="event.stopPropagation();concluirOSHistorico('${o.id}')">✅ Concluir</button>`:'';
     return `<div class="tec-os-card" onclick="editarOS('${o.id}')">
@@ -5873,10 +5870,30 @@ function renderMinhasOS(){
       ${svcs?`<div class="tec-os-det" style="margin-top:2px;color:var(--gray)">${esc(svcs)}</div>`:''}
       <div style="margin-top:8px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
         <div>${getLojaBadge(o.loja_id)}</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${btnWA}${btnPDF}${btnConcluir}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${btnMapa}${btnWA}${btnPDF}${btnConcluir}</div>
       </div>
     </div>`;
-  }).join('');
+  };
+  const ativa=o=>o.status!=='concluido'&&o.status!=='cancelado';
+  const buckets={
+    atrasadas: lista.filter(o=>ativa(o)&&o.data_servico&&o.data_servico<_hj),
+    hoje:      lista.filter(o=>ativa(o)&&o.data_servico===_hj),
+    proximas:  lista.filter(o=>ativa(o)&&(!o.data_servico||o.data_servico>_hj)),
+    feitas:    lista.filter(o=>!ativa(o)),
+  };
+  const ordData=(a,b)=>{ const da=a.data_servico||'9999', db2=b.data_servico||'9999'; return da<db2?-1:da>db2?1:0; };
+  Object.values(buckets).forEach(arr=>arr.sort(ordData));
+  const secao=(titulo,cor,arr)=> arr.length? `<div class="tec-dia-sec"><div class="tec-dia-sec-tit" style="color:${cor}">${titulo} <span style="opacity:.6">(${arr.length})</span></div>${arr.map(_cardMinhaOS).join('')}</div>`:'';
+  // Resumo do dia no topo (só nas visões que incluem OS ativas).
+  let resumo='';
+  if(tecOSFiltro!=='concluido' && (buckets.atrasadas.length||buckets.hoje.length)){
+    resumo=`<div class="tec-dia-resumo">${buckets.hoje.length?`<span>📅 <b>${buckets.hoje.length}</b> hoje</span>`:''}${buckets.atrasadas.length?`<span style="color:var(--red)">⚠️ <b>${buckets.atrasadas.length}</b> atrasada${buckets.atrasadas.length!==1?'s':''}</span>`:''}${buckets.proximas.length?`<span style="color:var(--gray)">🗓️ <b>${buckets.proximas.length}</b> próxima${buckets.proximas.length!==1?'s':''}</span>`:''}</div>`;
+  }
+  el.innerHTML = resumo
+    + secao('⚠️ Atrasadas','var(--red)',buckets.atrasadas)
+    + secao('📅 Hoje','var(--c1)',buckets.hoje)
+    + secao('🗓️ Próximas','var(--c2)',buckets.proximas)
+    + secao('✅ Feitas','var(--gray)',buckets.feitas);
 }
 function filtTecOS(btn){
   document.querySelectorAll('[data-tec-st]').forEach(b=>b.classList.remove('on'));
