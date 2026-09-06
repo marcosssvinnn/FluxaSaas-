@@ -3630,14 +3630,28 @@ Fases entregues e em produção (sw v52→v72):
 - **Fases 23-24** rentabilidade/custo-hora (`e750830`) — receita−material−mão de
   obra=lucro/margem no relatório Interno da OS + margem por técnico. Custo-hora
   configurável em Produtividade.
+- **Importar equipamentos da vistoria** (`7c88ae8`) — botão no histórico cadastra
+  no patrimônio o que o técnico viu em campo. Casa por cliente+tipo, idempotente.
+- **Reservas órfãs** (`cfed707`) — libera reserva de orçamento sumido/recusado/
+  super-reservado. Preview + recarga do banco antes de escrever.
+- **Fase 38 (sino)** (`494576b`) — oportunidades/OS atrasadas/preventiva/garantias
+  no sino de notificações (badge visível de qualquer tela). Push real (app fechado)
+  fica em aberto — outward-facing, não faço sozinho.
+- **Observação por ambiente na vistoria** (`e71658b`) — campo ambiente por
+  equipamento + obs geral por ambiente (delta38 ambiente_obs jsonb).
+- **Fase 7** sincronização visível (`c84aedc`) — indicador no header
+  salvo/salvando/pendente/offline, agregando registros só-locais.
+- **Fase 37** retrabalho (`8fba791`) — OS repetida no mesmo equipamento/serviço
+  em ≤30 dias; usa o equipamento_id. Card do técnico + sino.
 
-### Ainda em aberto (não feito)
+### Ainda em aberto (não feito) — sw até v78
 - Fase 4: ~24 onclick complexos no index.html + dinâmicos em template strings do
   app.js. Baixo valor, o shell já está desacoplado.
-- Fase 38 (alertas ativos via push), Fase 7 (estados PENDING/SYNCING/SYNCED na
-  UI), Fases 35-37 (SLA/retrabalho), Fase 41 (documentos por entidade).
-- Recursos do v1 ainda não portados: reconciliação de reservas órfãs, importar
-  equipamento da vistoria, observação por ambiente na vistoria.
+- Push real quando o app está FECHADO (Fase 38 completa) — outward-facing, precisa
+  de gatilho no backend; não faço sozinho.
+- Fase 35 (SLA: tempo de resposta/agendamento/resolução — dados existem:
+  data_criacao/data_servico/checkin/checkout/duracao_min), Fase 41 (documentos
+  por entidade), Fase 19 (auditoria de alterações — parcial, tabela auditoria+logAcao).
 
 ### Dívida de verificação
 Tudo testado com dados sintéticos + prova visual, verificado ao vivo em produção
