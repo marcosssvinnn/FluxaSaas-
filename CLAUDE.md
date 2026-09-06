@@ -3644,6 +3644,20 @@ Fases entregues e em produção (sw v52→v72):
 - **Fase 37** retrabalho (`8fba791`) — OS repetida no mesmo equipamento/serviço
   em ≤30 dias; usa o equipamento_id. Card do técnico + sino.
 
+### Continuação (sw v78→v85 + edge fn) — mais fases e o que o Marcos destravou
+- Fase 35 SLA (`b25446c`), Fase 37 retrabalho (`8fba791`), Fase 19 auditoria
+  antes→depois (`5f22fb7`), Fase 16 "Meu Dia" do técnico (`c7c7152`), contexto
+  do equipamento na OS (`274e367`), base instalada na ficha do cliente
+  (`5e06b4f`).
+- **Fase 46 onboarding** (`f142caa`) — checklist guiado da empresa nova no painel.
+- **Push real app fechado** (`5f99ef7`, delta40) — vistoria com item crítico
+  finalizada dispara push pro gestor via RPC+segredo (espelha o do portal).
+  pg_cron indisponível → event-driven, não digest agendado.
+- **Segurança** (`43bfadc`) — corrigido o ramo JWT da edge `enviar-push` que não
+  validava a empresa do chamador. Deployado via Management API (ver
+  [[fluxa-edge-functions-deploy]]). App não usa esse path (push vai por
+  RPC+segredo), então é hardening.
+
 ### Ainda em aberto (não feito) — sw até v78
 - Fase 4: ~24 onclick complexos no index.html + dinâmicos em template strings do
   app.js. Baixo valor, o shell já está desacoplado.
