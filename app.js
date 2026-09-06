@@ -7085,13 +7085,42 @@ async function loadPlataforma(){
   const tbody=document.getElementById('plat-empresas-tbody');
   if(tbody) tbody.innerHTML='<tr><td colspan="7" style="color:var(--gray);padding:10px">Carregando…</td></tr>';
   try{
-    const [{data:empresasData,error:e1}, {data:uso,error:e2}] = await Promise.all([
+    const [{data:empresasData,error:e1}, {data:uso,error:e2}, {data:met}] = await Promise.all([
       db.rpc('admin_listar_empresas'),
-      db.rpc('admin_uso_plataforma')
+      db.rpc('admin_uso_plataforma'),
+      db.rpc('admin_metricas_saas').catch(()=>({data:null}))
     ]);
     if(e1) throw e1; if(e2) throw e2;
     renderPlataforma(empresasData||[], uso||{});
+    renderPlatSaude(met||null);
   }catch(e){ console.warn('[loadPlataforma]', e?.message||e); toast('Erro ao carregar painel'); }
+}
+
+// Saúde do SaaS (Fase 50) — crescimento, ativas de verdade, ativação.
+function renderPlatSaude(met){
+  const card=document.getElementById('plat-saude-card');
+  const kel=document.getElementById('plat-saude-kpis');
+  const cel=document.getElementById('plat-crescimento');
+  if(!card||!kel||!cel) return;
+  if(!met){ card.style.display='none'; return; }
+  card.style.display='';
+  kel.innerHTML=
+    _kpiTile('Ativas (30d)', String(met.ativas_30d??0))+
+    _kpiTile('Paradas', String(met.paradas??0))+
+    _kpiTile('Ativação', (met.ativacao_pct??0)+'%')+
+    _kpiTile('OS · Vistorias', (met.total_os??0)+' · '+(met.total_vistorias??0));
+  const meses=met.novas_por_mes||[];
+  if(!meses.length){ cel.innerHTML='<div style="color:var(--gray);font-size:12px">Sem dados de crescimento ainda</div>'; return; }
+  const max=Math.max(...meses.map(m=>m.n),1);
+  cel.innerHTML=meses.map(m=>{
+    const h=Math.round((m.n/max)*60)+8;
+    const lbl=m.mes.slice(5)+'/'+m.mes.slice(2,4);
+    return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
+      <div style="font-size:11px;font-weight:700;color:var(--c2)">${m.n}</div>
+      <div style="width:100%;max-width:34px;height:${h}px;background:var(--c1);border-radius:4px 4px 0 0"></div>
+      <div style="font-size:9px;color:var(--gray)">${lbl}</div>
+    </div>`;
+  }).join('');
 }
 
 function renderPlataforma(empresas, uso){
