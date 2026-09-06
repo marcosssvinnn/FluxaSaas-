@@ -2845,6 +2845,17 @@
         </div>
         <div class="vis-equip-grid" id="vis-equip-grid"></div>
       </div>
+      <datalist id="vis-amb-sug">
+        <option value="Casa de máquinas"><option value="Área da piscina"><option value="Deck"><option value="Spa"><option value="Sauna"><option value="Cozinha"><option value="Subsolo"><option value="Cobertura">
+      </datalist>
+
+      <!-- Observações por ambiente (Fase vistoria): o que vale pro espaço todo,
+           separado da obs por equipamento. Aparece só quando algum equipamento
+           tem ambiente preenchido. -->
+      <div class="card" id="vis-ambientes-card" style="display:none">
+        <div class="ct">📍 Observações por Ambiente</div>
+        <div id="vis-ambientes-body"></div>
+      </div>
 
       <!-- Recomendações — separado de "Observações" de propósito: é o que vira
            proposta de serviço depois, não descrição do que foi encontrado. -->

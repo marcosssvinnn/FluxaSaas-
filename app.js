@@ -11749,6 +11749,7 @@ function renderVisEquipGrid(){
     const fill=document.getElementById('vis-progresso-fill');
     if(fill) fill.style.width=Math.round(feitos/ordem.length*100)+'%';
   })();
+  _renderVisAmbientes();
 }
 
 function buildEquipBlock(id,emoji,nome,d,modelo,potencia,opts){
@@ -11786,6 +11787,11 @@ function buildEquipBlock(id,emoji,nome,d,modelo,potencia,opts){
         <button class="vis-status-btn${d.status==='na'?' sel-na':''}" onclick="setVisEquipStatus('${id}','na')">— N/A</button>
       </div>
       <div class="fl" style="margin-bottom:8px">
+        <label>Ambiente <span style="font-weight:400;color:var(--gray);text-transform:none">(onde fica — casa de máquinas, deck, etc.)</span></label>
+        <input type="text" id="vis-amb-${id}" list="vis-amb-sug" placeholder="Ex: Casa de máquinas" value="${esc(d.ambiente||'')}" oninput="visUpdAmbEquip('${id}',this.value)"
+          style="width:100%;padding:8px 10px;border:1.5px solid var(--gray-mid);border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;margin-bottom:8px">
+      </div>
+      <div class="fl" style="margin-bottom:8px">
         <label>Observações</label>
         <div class="vis-obs-chips">
           ${['OK – funcionando','Limpeza realizada','Vazando','Barulho anormal','Pressão baixa','Necessita troca de peça','Filtro sujo'].map(t=>`<span class="vis-obs-chip" onclick="visAddObs('${id}','${t.replace(/'/g,'\\x27')}',this)">${t}</span>`).join('')}
@@ -11819,6 +11825,44 @@ function visUpdObs(id, val){
   if(!visEquipDados[id]) visEquipDados[id]={ status:'na', obs:'', fotos:[] };
   visEquipDados[id].obs = val;
   _salvarRascunhoVisDeb();
+}
+// Ambiente do equipamento (casa de máquinas, deck…). Alimenta o agrupamento por
+// ambiente no relatório e o prefixo "[Ambiente —]" do orçamento gerado.
+function visUpdAmbEquip(id, val){
+  if(!visEquipDados[id]) visEquipDados[id]={ status:'na', obs:'', fotos:[] };
+  visEquipDados[id].ambiente = val;
+  _renderVisAmbientes();
+  _salvarRascunhoVisDeb();
+}
+// Observação GERAL por ambiente (separada da obs por equipamento) — o que vale
+// pro espaço todo: "área alagando", "acesso difícil". visAmbienteObs: {amb: obs}.
+let visAmbienteObs = {};
+function visUpdAmbObs(amb, val){
+  const k=(amb||'').trim(); if(!k) return;
+  if(val && val.trim()) visAmbienteObs[k]=val; else delete visAmbienteObs[k];
+  _salvarRascunhoVisDeb();
+}
+// Ambientes distintos em uso nesta vistoria (dos equipamentos).
+function _visAmbientesEmUso(){
+  const set=new Set();
+  Object.values(visEquipDados||{}).forEach(d=>{ const a=(d&&d.ambiente||'').trim(); if(a) set.add(a); });
+  return [...set];
+}
+// Renderiza o cartão "Observações por ambiente" — um textarea por ambiente em
+// uso. Aparece só quando há ambiente preenchido em algum equipamento.
+function _renderVisAmbientes(){
+  const card=document.getElementById('vis-ambientes-card');
+  const el=document.getElementById('vis-ambientes-body');
+  if(!el||!card) return;
+  const ambientes=_visAmbientesEmUso();
+  if(!ambientes.length){ card.style.display='none'; el.innerHTML=''; return; }
+  card.style.display='';
+  el.innerHTML=ambientes.map(a=>`
+    <div class="fl" style="margin-bottom:8px">
+      <label>📍 ${esc(a)}</label>
+      <textarea rows="2" placeholder="Observação geral deste ambiente (opcional)" oninput="visUpdAmbObs('${esc(a).replace(/'/g,"\\x27")}',this.value)"
+        style="width:100%;padding:8px 10px;border:1.5px solid var(--gray-mid);border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;resize:vertical;outline:none">${esc(visAmbienteObs[a]||'')}</textarea>
+    </div>`).join('');
 }
 
 function visAddObs(id, txt, chipEl){
@@ -11871,7 +11915,7 @@ function _salvarRascunhoVis(){
     // só salva se há algo em andamento — senão sobrescreve rascunho bom com vazio
     if(!cli && !visEquipSelecionados.length && !(_visEquipsCustom||[]).length && !visCheckinTime) return;
     const d={ t:Date.now(), campos:{},
-      sel:visEquipSelecionados, custom:_visEquipsCustom, dados:visEquipDados,
+      sel:visEquipSelecionados, custom:_visEquipsCustom, dados:visEquipDados, ambObs:visAmbienteObs,
       checkin:visCheckinTime?visCheckinTime.getTime():null,
       checkout:visCheckoutTime?visCheckoutTime.getTime():null,
       localId:window._visLocalId||null, editId:visEditId||null, draftId:_visDraftId||null,
@@ -11963,6 +12007,7 @@ function _restaurarRascunhoVis(){
   visEquipSelecionados=d.sel||[];
   _visEquipsCustom=d.custom||[];
   visEquipDados=d.dados||{};
+  visAmbienteObs=d.ambObs||{};
   window._visLocalId=d.localId||null; visEditId=d.editId||null; _visDraftId=d.draftId||null;
   _visPiscinaSelecionadaId=d.piscinaId||null;
   visCheckinTime=d.checkin?new Date(d.checkin):null;
@@ -12234,12 +12279,12 @@ function _montarEquipamentosVistoria(){
   return [
     ...(_visEquipsCustom||[]).map(ceq=>{
       const d=visEquipDados[ceq.id]||{status:'na',obs:'',fotos:[]};
-      return {id:ceq.id,nome:ceq.nome,emoji:ceq.emoji||'⚙️',modelo:ceq.modelo||'',potencia:ceq.potencia||'',origem:ceq.origem||'plano',status:d.status,obs:d.obs||'',fotos:(d.fotos||[]).filter(Boolean)};
+      return {id:ceq.id,nome:ceq.nome,emoji:ceq.emoji||'⚙️',modelo:ceq.modelo||'',potencia:ceq.potencia||'',origem:ceq.origem||'plano',ambiente:d.ambiente||'',status:d.status,obs:d.obs||'',fotos:(d.fotos||[]).filter(Boolean)};
     }),
     ...visEquipSelecionados.filter(id=>!customIds.includes(id)).map(id=>{
       const def=VIS_EQUIPAMENTOS_DEFAULT.find(x=>x.id===id)||{id,nome:id,emoji:''};
       const d=visEquipDados[id]||{status:'na',obs:'',fotos:[]};
-      return {id,nome:def.nome,emoji:def.emoji,modelo:'',potencia:'',status:d.status,obs:d.obs||'',fotos:(d.fotos||[]).filter(Boolean)};
+      return {id,nome:def.nome,emoji:def.emoji,modelo:'',potencia:'',ambiente:d.ambiente||'',status:d.status,obs:d.obs||'',fotos:(d.fotos||[]).filter(Boolean)};
     })
   ];
 }
@@ -12298,6 +12343,7 @@ async function _montarRecVistoria(){
     assinatura_tecnico_meta: _visAssinaturaTecnico?.meta||null,
     email_responsavel: (document.getElementById('vis-email-resp')?.value||'').trim()||null,
     equipamentos: _montarEquipamentosVistoria(),
+    ambiente_obs: Object.keys(visAmbienteObs||{}).length?JSON.stringify(visAmbienteObs):null,
     created_at: new Date().toISOString()
   };
 }
@@ -12415,6 +12461,7 @@ function _resetCheckinVis(){
 }
 function _limparFormVistoria(){
   visEquipDados = {};
+  visAmbienteObs = {};
   _visEquipsCustom = [];
   visCheckinTime = null;
   visCheckoutTime = null;
@@ -13401,8 +13448,14 @@ function _orcarDaVistoriaConfirmado(v, itens){
       addSvc(d, '', 1); // preço em branco de propósito — quem precifica revisa
     });
     const escopoEl=document.getElementById('escopo');
+    // Observações gerais por ambiente da vistoria entram no escopo — contexto
+    // do espaço (acesso, condição do local) que ajuda a precificar.
+    let ambTxt='';
+    try{ const ao=v.ambiente_obs?(typeof v.ambiente_obs==='string'?JSON.parse(v.ambiente_obs):v.ambiente_obs):null;
+      if(ao){ const ls=Object.keys(ao).filter(k=>(ao[k]||'').trim()).map(k=>`📍 ${k}: ${ao[k].trim()}`);
+        if(ls.length) ambTxt='\n\n'+ls.join('\n'); } }catch(e){}
     if(escopoEl) escopoEl.value=`Serviços apontados na vistoria de ${_visDataBR(v.data)}${v.tecnico?` (técnico: ${v.tecnico})`:''}.`
-      +(v.recomendacoes?`\n\nRecomendações do técnico: ${v.recomendacoes}`:'');
+      +(v.recomendacoes?`\n\nRecomendações do técnico: ${v.recomendacoes}`:'')+ambTxt;
     setV('nota-interna', `Gerado da vistoria ${v.id}`);
     renderSvcs(); upd();
     toast(`📋 ${itens.length} item(ns) importado(s) — revise os preços`);
@@ -13679,7 +13732,8 @@ function editarVistoria(id){
   const stdDefs=VIS_EQUIPAMENTOS_DEFAULT.map(x=>x.id);
   visEquipSelecionados=equips.filter(e=>stdDefs.includes(e.id)).map(e=>e.id);
   _visEquipsCustom=equips.filter(e=>!stdDefs.includes(e.id)).map(e=>({id:e.id,nome:e.nome,emoji:e.emoji||'⚙️',modelo:e.modelo||'',potencia:e.potencia||'',origem:_visOrigemEquip(e)}));
-  equips.forEach(e=>{ visEquipDados[e.id]={status:e.status||'na',obs:e.obs||'',fotos:(e.fotos||[]).filter(Boolean)}; });
+  equips.forEach(e=>{ visEquipDados[e.id]={status:e.status||'na',obs:e.obs||'',fotos:(e.fotos||[]).filter(Boolean),ambiente:e.ambiente||''}; });
+  try{ visAmbienteObs = vis.ambiente_obs ? (typeof vis.ambiente_obs==='string'?JSON.parse(vis.ambiente_obs):vis.ambiente_obs) : {}; }catch(e){ visAmbienteObs={}; }
   renderVisChips();
   renderVisEquipGrid();
   const card=document.getElementById('vis-equip-card');
