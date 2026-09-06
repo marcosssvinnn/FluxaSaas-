@@ -6072,6 +6072,7 @@ function verHistoricoCliente(cliId){
   const osCli=filtrarPorLoja(todosOS).filter(o=>(o.cliente||'').toLowerCase()===nomeL||o.cliente_id===cliId);
   const visCli=filtrarPorLoja(lsVisLer(),'loja_id').filter(v=>(v.cliente||'').toLowerCase()===nomeL);
   const agCli=filtrarPorLoja(todosAg).filter(a=>(a.cliente||'').toLowerCase()===nomeL);
+  const eqCli=filtrarPorLoja(todosEq||[]).filter(e=>e.cliente_id===cliId || _normNome(e.cliente_nome||'')===_normNome(cli.nome||''));
   const totalFat=orcCli.filter(o=>o.status==='aprovado').reduce((a,o)=>a+(o.total||0),0);
   const totalOS=osCli.filter(o=>o.status==='concluido').reduce((a,o)=>a+(o.total||0),0);
   const stC={aprovado:'var(--green)',pendente:'var(--yellow)',recusado:'var(--red)',vencido:'var(--gray)',agendado:'var(--blue)',concluido:'var(--green)',cancelado:'var(--red)'};
@@ -6117,6 +6118,21 @@ function verHistoricoCliente(cliId){
       </div>
     </div>`).join('')
     :'<div style="padding:10px 0;font-size:13px;color:var(--gray)">Nenhuma vistoria encontrada</div>';
+  const _hjEq=new Date(_hojeLocal()+'T12:00:00');
+  const eqHTML=eqCli.length?[...eqCli].map(e=>{
+    const nome=[e.tipo,e.marca,e.modelo].filter(Boolean).join(' ')||'Equipamento';
+    let gar=''; if(e.garantia_vencimento){ const dd=Math.ceil((new Date(e.garantia_vencimento+'T12:00:00')-_hjEq)/86400000); gar=dd<0?'<span style="color:var(--red)">garantia vencida</span>':dd<=30?`<span style="color:var(--yellow)">garantia vence em ${dd}d</span>`:'garantia ok'; }
+    return `<div class="chi">
+      <div>
+        <div class="chi-desc">🔧 ${esc(nome)}${e.numero_serie?` · ${esc(e.numero_serie)}`:''}</div>
+        <div class="chi-sub">${e.data_instalacao?'instalado '+_dt(e.data_instalacao,true):''}${e.data_instalacao&&gar?' · ':''}${gar}</div>
+      </div>
+      <div class="chi-right">
+        <button class="tb" style="font-size:10px" onclick="document.getElementById('modal-hist-cli')?.remove();abrirProntuarioEq('${e.id}')">📋 Prontuário</button>
+      </div>
+    </div>`;
+  }).join('')
+    :'<div style="padding:10px 0;font-size:13px;color:var(--gray)">Nenhum equipamento cadastrado</div>';
   const agHTML=agCli.length?[...agCli].sort((a,b)=>(b.data||'').localeCompare(a.data||'')).map(a=>`
     <div class="chi">
       <div>
@@ -6145,6 +6161,7 @@ function verHistoricoCliente(cliId){
         <div class="chr-item"><span class="chr-val">${orcCli.length}</span><div class="chr-label">Orçamentos</div></div>
         <div class="chr-item"><span class="chr-val">${osCli.length}</span><div class="chr-label">OS</div></div>
         <div class="chr-item"><span class="chr-val">${visCli.length}</span><div class="chr-label">Vistorias</div></div>
+        <div class="chr-item"><span class="chr-val">${eqCli.length}</span><div class="chr-label">Equip.</div></div>
         <div class="chr-item"><span class="chr-val">${brl(totalGeral)}</span><div class="chr-label">Faturado</div></div>
       </div>
       <div class="cli-hist-secao">
@@ -6152,6 +6169,9 @@ function verHistoricoCliente(cliId){
       </div>
       <div class="cli-hist-secao">
         <div class="cli-hist-sec-titulo">Ordens de Serviço</div>${osHTML}
+      </div>
+      <div class="cli-hist-secao">
+        <div class="cli-hist-sec-titulo">Base instalada (equipamentos)</div>${eqHTML}
       </div>
       <div class="cli-hist-secao">
         <div class="cli-hist-sec-titulo">Vistorias</div>${visHTML}
