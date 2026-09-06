@@ -2034,6 +2034,64 @@ function setDbSt(ok, txt){
   document.getElementById('db-dot').className=cls;
   const d2=document.getElementById('db-dot2'); if(d2) d2.className=cls;
   const t2=document.getElementById('db-txt2'); if(t2) t2.textContent=(ok?'✅ Banco conectado':'⚠️ Banco offline — salvando local');
+  _atualizarIndicadorSync();
+}
+
+// ── SINCRONIZAÇÃO VISÍVEL (Fase 7) ──────────────────────────────────────
+// O técnico em campo precisa saber se o que acabou de fazer CHEGOU ao servidor.
+// O app é local-first: grava no localStorage na hora, sincroniza em background.
+// Registro preso só no aparelho tem id 'local_' (orçamento/OS) ou _pendingSync
+// (vistoria/local). Este indicador agrega isso num estado claro no header:
+// SALVO (nada pendente) · SALVANDO (sync em curso) · PENDENTE (espera conexão).
+function _syncPendentes(){
+  const p={};
+  try{ p.orcamentos=(todosOrc||[]).filter(o=>String(o.id).startsWith('local_')).length; }catch(e){}
+  try{ p.os=(todosOS||[]).filter(o=>String(o.id).startsWith('local_')).length; }catch(e){}
+  try{ p.vistorias=((typeof lsVisLer==='function'?lsVisLer():[])||[]).filter(v=>v&&v._pendingSync===true).length; }catch(e){}
+  try{ p.locais=((typeof locaisVistoria!=='undefined'?locaisVistoria:[])||[]).filter(l=>l&&l._pendingSync===true).length; }catch(e){}
+  try{ p.despesas=(todasDesp||[]).filter(d=>String(d.id||'').startsWith('local_')).length; }catch(e){}
+  try{ p.equipamentos=(todosEq||[]).filter(x=>String(x.id||'').startsWith('eq_')&&_eqSyncInFlight&&!_eqSyncInFlight.has(x.id)).length; }catch(e){}
+  const total=Object.values(p).reduce((a,b)=>a+(b||0),0);
+  let emVoo=0; try{ emVoo=(_orcSyncInFlight?_orcSyncInFlight.size:0)+(_eqSyncInFlight?_eqSyncInFlight.size:0); }catch(e){}
+  return {porTipo:p, total, emVoo};
+}
+let _syncIndTimer=null;
+function _atualizarIndicadorSync(){
+  const el=document.getElementById('sync-indicador'); if(!el) return;
+  const {total, emVoo}=_syncPendentes();
+  if(total<=0 && emVoo<=0){
+    // Tudo salvo — mostra um check discreto por alguns segundos e some.
+    el.className='sync-ind ok'; el.textContent='✓ salvo';
+    el.style.display='';
+    clearTimeout(_syncIndTimer); _syncIndTimer=setTimeout(()=>{ if(_syncPendentes().total<=0){ el.style.display='none'; } }, 2500);
+    return;
+  }
+  el.style.display='';
+  if(!dbOk){ el.className='sync-ind off'; el.textContent=`⚠ ${total} sem enviar`; el.title='Sem conexão — '+total+' registro(s) salvos só neste aparelho, serão enviados quando a internet voltar'; return; }
+  if(emVoo>0){ el.className='sync-ind syncing'; el.textContent='⟳ salvando…'; el.title='Enviando ao servidor…'; return; }
+  el.className='sync-ind pend'; el.textContent=`⟳ ${total} pendente${total!==1?'s':''}`; el.title=total+' registro(s) aguardando envio ao servidor';
+}
+function _abrirSyncDetalhe(){
+  const {porTipo, total, emVoo}=_syncPendentes();
+  if(total<=0 && emVoo<=0){ toast('✅ Tudo sincronizado com o servidor'); return; }
+  const nomes={orcamentos:'orçamentos',os:'OS',vistorias:'vistorias',locais:'locais de vistoria',despesas:'despesas',equipamentos:'equipamentos'};
+  const linhas=Object.keys(porTipo).filter(k=>porTipo[k]>0).map(k=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)"><span>${nomes[k]||k}</span><b>${porTipo[k]}</b></div>`).join('');
+  abrirModal({id:'sync-detalhe-bg', corpo:`
+    <div class="rd-modal-title">Sincronização</div>
+    <p class="rd-modal-sub">${!dbOk?'Sem conexão com o servidor. ':''}${total} registro(s) salvos neste aparelho${dbOk?' aguardando envio':' — serão enviados quando a internet voltar'}. Nada se perde: fica guardado localmente.</p>
+    ${linhas||'<div style="color:var(--gray);font-size:13px">Enviando…</div>'}
+    <div class="rd-modal-acts">${dbOk?`<button class="rd-modal-btn rd-modal-btn-sim" onclick="_forcarSyncAgora()">Tentar enviar agora</button>`:''}<button class="rd-modal-btn rd-modal-btn-nao" onclick="fecharModalGenerico('sync-detalhe-bg')">Fechar</button></div>`});
+}
+async function _forcarSyncAgora(){
+  fecharModalGenerico('sync-detalhe-bg');
+  toast('Enviando…');
+  try{ if(typeof loadHist==='function') await loadHist(); }catch(e){}
+  try{ if(typeof loadOSHist==='function') await loadOSHist(); }catch(e){}
+  try{ if(typeof loadEquipamentos==='function') await loadEquipamentos(); }catch(e){}
+  try{ if(typeof loadLocaisRemoto==='function') await loadLocaisRemoto(); }catch(e){}
+  _atualizarIndicadorSync();
+  const {total}=_syncPendentes();
+  toast(total>0?`${total} ainda pendente(s)`:'✅ Tudo enviado');
 }
 async function conectarDB(url, key, mostrarErro=true){
   try{
@@ -16114,6 +16172,9 @@ async function _reenviarPendentes(silencioso=true){
 window.addEventListener('online', ()=>{ toast('🌐 Conexão restaurada — sincronizando…'); _reenviarPendentes(false); });
 // Rede de segurança: a cada 3 min, se online, empurra pendentes silenciosamente
 setInterval(()=>{ if(navigator.onLine) _reenviarPendentes(true); }, 180000);
+// Indicador de sync visível (Fase 7): atualiza a cada 8s e ao voltar pra aba.
+setInterval(()=>{ try{ _atualizarIndicadorSync(); }catch(e){} }, 8000);
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'){ try{ _atualizarIndicadorSync(); }catch(e){} } });
 
 if('serviceWorker' in navigator){
   // Reload automático quando um novo SW assume o controle (nova versão deployada)
