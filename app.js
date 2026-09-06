@@ -8006,7 +8006,11 @@ function metricasTec(tec, ini, fim){
   const custoHora=getCustoHora();
   const custoMO=custoHora*horas;
   const margemEst = faturamento - custoMO - desp;
-  return { total:os.length, conc:conc.length, canc:canc.length, taxa, tempoMed, desp, clientes, faturamento, horas, custoMO, margemEst, custoHoraDef:custoHora>0 };
+  // Retrabalho do técnico no período: pares de OS repetidas onde ELE fez a
+  // repetição (a 2ª OS). Sinaliza diagnóstico/execução a rever.
+  let retrab=0;
+  try{ retrab=_retrabalhos(ini,fim).filter(r=>r.tecnico===tec).length; }catch(e){}
+  return { total:os.length, conc:conc.length, canc:canc.length, taxa, tempoMed, desp, clientes, faturamento, horas, custoMO, margemEst, custoHoraDef:custoHora>0, retrab };
 }
 // Config de comissão/metas (global, editável na tela de Produtividade)
 function getComissaoPct(){ return parseFloat(ls('fluxa_comissao_pct')||'0')||0; }
@@ -8725,6 +8729,7 @@ function renderProd(){
       <div style="font-size:12px;color:var(--gray)">Despesas: <strong>${brl(m.desp)}</strong></div>
       ${m.custoHoraDef?`<div style="font-size:12px;color:var(--gray)">Mão de obra: <strong>${brl(m.custoMO)}</strong> <span style="font-size:10.5px">(${m.horas.toFixed(1)}h)</span></div>
       <div style="font-size:12px;font-weight:700;color:${m.margemEst>=0?'var(--green)':'var(--red)'}">Margem est.: ${brl(m.margemEst)}</div>`:''}
+      ${m.retrab?`<div style="font-size:12px;color:var(--red);font-weight:700" title="OS repetida no mesmo equipamento/serviço em até ${_RETRAB_JANELA_DIAS} dias">↩️ ${m.retrab} retrabalho${m.retrab!==1?'s':''}</div>`:''}
       ${metaHtml}
     </div>`;
   }).join('');
@@ -13521,6 +13526,62 @@ function _orcarDaVistoriaConfirmado(v, itens){
   }, 60);
 }
 
+// ── DETECÇÃO DE RETRABALHO (Fase 37) ────────────────────────────────────
+// Retrabalho destrói margem e sinaliza diagnóstico errado, execução inadequada,
+// peça ruim ou problema recorrente. Sinal: o MESMO equipamento (ou o mesmo
+// cliente+serviço, quando não há vínculo de aparelho) recebe uma OS repetida
+// numa janela curta. Só conta OS concluídas, e o par tem que ser de OS
+// DIFERENTES (não a mesma reaberta).
+const _RETRAB_JANELA_DIAS=30;
+function _normServico(s){
+  // primeira "frase" do serviço, normalizada — pra casar "troca de gás" com
+  // "Troca de gás da bomba" sem exigir texto idêntico.
+  const t=(typeof s==='string'?s:(s&&s.desc)||'').toLowerCase();
+  return _normNome(t).split(/[.:;\-]/)[0].trim().slice(0,40);
+}
+function _osServicosNorm(o){
+  return [...new Set((o.servicos||[]).map(_normServico).filter(x=>x&&x.length>=4))];
+}
+function _retrabalhos(ini, fim){
+  const conc=filtrarPorLoja(todosOS||[]).filter(o=>o.status==='concluido' && o.data_servico);
+  const dentro=o=>{ const d=new Date(o.data_servico+'T12:00:00'); return (!ini||d>=ini)&&(!fim||d<=fim); };
+  const pares=[];
+  const vistos=new Set();
+  conc.forEach(a=>{
+    conc.forEach(b=>{
+      if(a===b || a.id===b.id) return;
+      // a = a 2ª (mais recente); b = a anterior. Só a mais recente dentro da janela.
+      const da=new Date(a.data_servico+'T12:00:00'), db=new Date(b.data_servico+'T12:00:00');
+      if(!(da>db)) return; // garante ordem e não conta o par duas vezes
+      const dias=Math.round((da-db)/86400000);
+      if(dias>_RETRAB_JANELA_DIAS || dias<0) return;
+      if(!dentro(a)) return; // ancora no fim do par (a repetição)
+      // mesmo aparelho (preciso) OU mesmo cliente + serviço em comum (fallback)
+      let motivo=null, chave=null;
+      if(a.equipamento_id && a.equipamento_id===b.equipamento_id){ motivo='mesmo equipamento'; chave='eq:'+a.equipamento_id; }
+      else {
+        const mesmoCli=(a.cliente_id&&a.cliente_id===b.cliente_id) || (!a.cliente_id&&_normNome(a.cliente||'')===_normNome(b.cliente||'')&&_normNome(a.cliente||''));
+        if(!mesmoCli) return;
+        // Casa serviço por prefixo/contido (min 6 chars) — pega "limpeza do
+        // filtro" vs "limpeza do filtro da piscina" sem casar coisas curtas
+        // demais que dariam falso positivo.
+        const sa=_osServicosNorm(a), sb=_osServicosNorm(b);
+        const comum=sa.find(x=>sb.some(y=>{ const m=Math.min(x.length,y.length); return m>=6 && (x.startsWith(y)||y.startsWith(x)); }));
+        if(!comum) return;
+        motivo='mesmo serviço no mesmo cliente'; chave='cli:'+(a.cliente_id||_normNome(a.cliente||''))+':'+comum;
+      }
+      const pk=[a.id,b.id].sort().join('|');
+      if(vistos.has(pk)) return; vistos.add(pk);
+      pares.push({
+        os2:a.id, os1:b.id, num2:String(a.numero||'').padStart(3,'0'), num1:String(b.numero||'').padStart(3,'0'),
+        cliente:a.cliente||'—', tecnico:a.tecnico||b.tecnico||'', dias, motivo,
+        servico:(_osServicosNorm(a)[0]||'')
+      });
+    });
+  });
+  return pares.sort((x,y)=>x.dias-y.dias);
+}
+
 // ── VISTORIA → OPORTUNIDADE (Fase 13) ───────────────────────────────────
 // O caminho vistoria→orçamento já existe (orcarDaVistoria). O que faltava: a
 // recomendação MORRE no relatório se ninguém orçar na hora. Uma vistoria com
@@ -16599,6 +16660,16 @@ function getNotificacoes(){
         sub:'Chance de renovar ou avisar o cliente', acao:'Ver', fn:"go('equipamentos')"});
     }
   }catch(e){ console.warn('[notif:garantia]', e?.message||e); }
+  try{
+    if(eGestor()){
+      const hj=new Date(_hojeLocal()+'T12:00:00'); const ini=new Date(hj); ini.setDate(ini.getDate()-_RETRAB_JANELA_DIAS-30);
+      const rt=_retrabalhos(ini, hj);
+      if(rt.length) out.push({id:'retrabalho', cor:'var(--red)', icone:'↩️',
+        titulo:`${rt.length} retrabalho${rt.length!==1?'s':''} recente${rt.length!==1?'s':''}`,
+        sub:`OS repetida no mesmo ${rt[0].motivo==='mesmo equipamento'?'equipamento':'cliente/serviço'} em poucos dias`,
+        acao:'Ver', fn:"go('produtividade')"});
+    }
+  }catch(e){ console.warn('[notif:retrab]', e?.message||e); }
   return out.filter(n=>n.id && !_notifDismissAtivo(n.id));
 }
 // Throttle: getNotificacoes() varre clientes/orçamentos/estoque, e o badge é
