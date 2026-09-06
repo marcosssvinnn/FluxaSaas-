@@ -2192,6 +2192,7 @@ function go(p){
     document.getElementById('painel-nome').textContent=getSessao()?.nome||'';
     document.getElementById('painel-mes-label').textContent='Como está '+_renderOrcMesLabelStr();
     setTimeout(renderGraficoDash,200);
+    setTimeout(renderOnboarding,180);
     setTimeout(renderPainelCRM,250);
     setTimeout(renderPainelFilaHoje,250); // task #45 — junta funil+estoque; roda de novo abaixo se a cadência ligar depois
     setTimeout(_notifAtualizarBadge,300); // sino reflete os mesmos alertas, alcançáveis de qualquer tela
@@ -16502,6 +16503,57 @@ function _crmComputarStats(){
 
 // Resumo do funil pro Painel — mesmos números do board completo (via _crmComputarStats),
 // só que compactos e com atalho pra abrir os itens que precisam de atenção agora.
+// ── ONBOARDING DE NOVA EMPRESA (Fase 46) ────────────────────────────────
+// Empresa recém-criada cai num app vazio. Este checklist guia o gestor pelos
+// primeiros passos e detecta sozinho o que já foi feito. Some quando tudo está
+// pronto ou quando o gestor dispensa. Só gestor/master vê.
+const LS_ONBOARD_DISMISS='fluxa_onboarding_dismiss';
+function _onboardingPassos(){
+  const temContato = !!((CFG&&(CFG.tel||CFG.logoB64||CFG.cidades)) || (LOJAS[0]&&(LOJAS[0].tel||LOJAS[0].logoB64)));
+  const temTec = (typeof getTecnicos==='function'?getTecnicos():[]).length>0;
+  const temProd = (todosProdutos||[]).length>0;
+  const temCli = (()=>{ try{ return (lsCliLer()||[]).length>0; }catch(e){ return false; } })();
+  const temOrc = (todosOrc||[]).length>0;
+  return [
+    {k:'empresa', ok:temContato, t:'Dados da empresa', d:'Logo, cores e contato no orçamento', fn:"go('empresa')"},
+    {k:'tecnicos', ok:temTec, t:'Cadastrar técnicos', d:'Quem executa as OS e vistorias', fn:"go('empresa')"},
+    {k:'produtos', ok:temProd, t:'Cadastrar produtos', d:'Estoque de químicos e peças', fn:"go('estoque')"},
+    {k:'cliente', ok:temCli, t:'Primeiro cliente', d:'Cadastre ou importe dos orçamentos', fn:"go('clientes')"},
+    {k:'orcamento', ok:temOrc, t:'Primeiro orçamento', d:'O coração do fluxo', fn:"irNovoOrc()"},
+  ];
+}
+function renderOnboarding(){
+  const el=document.getElementById('onboarding-card'); if(!el) return;
+  if(!eGestor()){ el.style.display='none'; return; }
+  let dispensado=false; try{ dispensado=ls(LS_ONBOARD_DISMISS)==='1'; }catch(e){}
+  const passos=_onboardingPassos();
+  const feitos=passos.filter(p=>p.ok).length;
+  if(dispensado || feitos===passos.length){ el.style.display='none'; el.innerHTML=''; return; }
+  el.style.display='';
+  const pct=Math.round(feitos/passos.length*100);
+  el.innerHTML=`<div class="rd-card" style="margin-bottom:14px;border-left:4px solid var(--c1)">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <div style="font-size:15px;font-weight:800;color:var(--c2)">👋 Bem-vindo ao Fluxa — vamos configurar</div>
+      <button class="col-rz-reset" style="text-decoration:none;color:var(--gray)" onclick="_onboardingDispensar()">dispensar</button>
+    </div>
+    <div style="font-size:12.5px;color:var(--gray);margin:4px 0 10px">${feitos} de ${passos.length} passos · ${pct}%</div>
+    <div style="height:6px;background:var(--gray-light);border-radius:50px;overflow:hidden;margin-bottom:12px"><div style="height:100%;width:${pct}%;background:var(--c1);transition:width .3s"></div></div>
+    ${passos.map(p=>`<div onclick="${p.ok?'':p.fn}" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);${p.ok?'':'cursor:pointer'}">
+      <span style="font-size:18px;flex-shrink:0">${p.ok?'✅':'⬜'}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13.5px;font-weight:600;color:${p.ok?'var(--gray)':'var(--c2)'};${p.ok?'text-decoration:line-through':''}">${p.t}</div>
+        <div style="font-size:11.5px;color:var(--gray)">${p.d}</div>
+      </div>
+      ${p.ok?'':'<span style="color:var(--c1);font-size:18px">›</span>'}
+    </div>`).join('')}
+  </div>`;
+}
+function _onboardingDispensar(){
+  try{ lsSet(LS_ONBOARD_DISMISS,'1'); }catch(e){}
+  const el=document.getElementById('onboarding-card'); if(el){ el.style.display='none'; el.innerHTML=''; }
+  toast('Guia dispensado — você configura quando quiser');
+}
+
 function renderPainelCRM(){
   const body=document.getElementById('painel-crm-body'); if(!body) return;
   if(!_crmAtivo()){ document.getElementById('painel-crm-card').style.display='none'; return; }
