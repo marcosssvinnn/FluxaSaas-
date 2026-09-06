@@ -8681,9 +8681,49 @@ function renderRelatorioFinanceiro(){
   tbody.innerHTML=linhas.join('');
 }
 
+// ── SLA / TEMPOS DE ATENDIMENTO (Fase 35) ───────────────────────────────
+// Tempos que dá pra medir com o que a OS já registra:
+//   agendamento: criação → data do serviço (dias)
+//   execução:    duracao_min (checkin→checkout)
+//   resolução:   criação → conclusão (checkout ou data do serviço)
+// Cada média só conta as OS que TÊM o dado — sem inventar zero pra quem não
+// registrou. Devolve null quando não há amostra.
+function _slaMetricas(ini, fim){
+  const conc=filtrarPorLoja(todosOS||[]).filter(o=>o.status==='concluido');
+  const noPer=o=>{ const d=o.data_criacao?new Date(o.data_criacao):(o.data_servico?new Date(o.data_servico+'T12:00:00'):null); return d && (!ini||d>=ini) && (!fim||d<=fim); };
+  const lista=conc.filter(noPer);
+  const med=(arr)=> arr.length? arr.reduce((a,b)=>a+b,0)/arr.length : null;
+  const agend=[], exec=[], resol=[];
+  lista.forEach(o=>{
+    const criacao=o.data_criacao?new Date(o.data_criacao):null;
+    const servico=o.data_servico?new Date(o.data_servico+'T12:00:00'):null;
+    if(criacao&&servico){ const dd=Math.round((servico-criacao)/86400000); if(dd>=0&&dd<365) agend.push(dd); }
+    if(o.duracao_min>0) exec.push(parseFloat(o.duracao_min));
+    const fimO=o.checkout_time?new Date(o.checkout_time):servico;
+    if(criacao&&fimO){ const dd=Math.round((fimO-criacao)/86400000); if(dd>=0&&dd<365) resol.push(dd); }
+  });
+  return { n:lista.length, agendDias:med(agend), execMin:med(exec), resolDias:med(resol),
+    nAgend:agend.length, nExec:exec.length, nResol:resol.length };
+}
+function renderProdSLA(ini, fim){
+  const card=document.getElementById('prod-sla-card'), body=document.getElementById('prod-sla-body');
+  if(!card||!body) return;
+  const m=_slaMetricas(ini, fim);
+  if(!m.n){ card.style.display='none'; return; }
+  card.style.display='';
+  const fmtMin=v=> v==null?'—': v>=60? `${Math.floor(v/60)}h ${Math.round(v%60)}min` : `${Math.round(v)} min`;
+  const fmtDias=v=> v==null?'—': v<1? 'no mesmo dia' : `${v.toFixed(1)} dia${v.toFixed(1)==='1.0'?'':'s'}`;
+  const kpi=(lbl,val,apoio)=>`<div class="rd-card rd-card-dense"><div class="rd-kpi-lbl">${lbl}</div><div class="rd-kpi-num rd-kpi-num-sm">${val}</div><div class="rd-kpi-apoio">${apoio}</div></div>`;
+  body.innerHTML=
+    kpi('Até o agendamento', fmtDias(m.agendDias), m.nAgend?`${m.nAgend} OS`:'sem dado')+
+    kpi('Tempo em campo', fmtMin(m.execMin), m.nExec?`${m.nExec} com check-in`:'sem check-in')+
+    kpi('Até a conclusão', fmtDias(m.resolDias), m.nResol?`${m.nResol} OS`:'sem dado');
+}
+
 function renderProd(){
   const {inicio, fim}=getPeriodoProd();
   const ant=getPeriodoAntProd();
+  renderProdSLA(inicio, fim);
   const filtTec=gV('prod-filtro-tec');
   const tecs=filtTec?[filtTec]:getTecnicos();
 
