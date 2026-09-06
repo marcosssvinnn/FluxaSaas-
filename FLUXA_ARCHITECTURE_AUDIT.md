@@ -292,6 +292,35 @@ Fase 4 até virar event delegation.
 
 ---
 
+## 6b. Revisão de segurança das RPCs (autenticado cross-tenant) — 2026-09
+
+Depois de achar um furo na edge function `enviar-push` (o ramo JWT não validava
+se o `empresa_id` do corpo era do chamador — corrigido em `43bfadc`, deploy via
+Management API), revisei a MESMA classe de bug em todas as funções
+`SECURITY DEFINER` concedidas a `anon`/`authenticated`: um usuário autenticado
+passando o id/empresa de OUTRO tenant.
+
+**Resultado: a camada de RPC está sólida.** Todas as mutadoras/sensíveis
+validam a empresa do chamador antes de agir:
+- `desativar_funcionario`, `resetar_pin_funcionario`, `proximo_numero` —
+  checam `membros WHERE user_id=auth.uid() AND empresa_id=p_empresa` (as de
+  funcionário exigem perfil gestor/master).
+- `rpc_entregar_orcamento`, `rpc_sincronizar_reserva_orcamento`,
+  `insight_marcar`, `crm_candidatos_insight` — checam
+  `empresa_id IN (SELECT minhas_empresas())`.
+- `notificar_vistoria_critica` (nova) — checa membership da empresa da vistoria.
+- `admin_*` — checam `is_platform_admin()` (Fase 3: anon recebe "sem acesso").
+
+**Considerações de design (não bugs, decisão do Marcos):**
+- `usuarios_para_login(p_empresa)` / `meu_nome(p_empresa)` expõem NOMES a quem
+  tiver o `empresa_id` (R-6) — tradeoff do login por dispositivo compartilhado.
+- `verificar_pin_interno/bootstrap` são chamáveis sem membership (é o portão de
+  auth). O lockout de tentativas é no CLIENTE — no servidor, um atacante que
+  saiba o slug + usuário poderia forçar o PIN de 4 dígitos. É a fragilidade
+  conhecida do modelo de PIN (conveniência pra device de campo compartilhado,
+  com a conta e-mail+senha do gestor como âncora forte). Endurecer (rate-limit
+  server-side / PIN maior) é decisão de produto.
+
 ## 7. Correspondência com o plano mestre de 52 fases
 
 Para não construir o que já existe:
