@@ -16450,6 +16450,40 @@ function getNotificacoes(){
         acao:'Revisar', fn:"go('clientes')"});
     }
   }catch(e){ console.warn('[notif:duplicados]', e?.message||e); }
+  // Fontes da central de ações (Fase 38) — o sino fica na header, então o
+  // gestor vê o número de qualquer tela, sem precisar abrir o painel.
+  try{
+    const ops=_visOportunidades();
+    if(ops.length){ const crit=ops.reduce((a,o)=>a+o.criticos,0);
+      out.push({id:'vis-oportunidades', cor:'var(--c1)', icone:'🔧',
+        titulo:`${ops.length} vistoria${ops.length!==1?'s':''} a orçar`,
+        sub: crit?`${crit} item${crit!==1?'s':''} crítico${crit!==1?'s':''} apontado${crit!==1?'s':''} pelo técnico`:'itens de atenção esperando orçamento',
+        acao:'Ver', fn:"go('painel')"}); }
+  }catch(e){ console.warn('[notif:visop]', e?.message||e); }
+  try{
+    if(!eTecnico()){
+      const _hj=_hojeLocal();
+      const atr=filtrarPorLoja(todosOS||[]).filter(o=>o.status==='agendado' && o.data_servico && o.data_servico<_hj).length;
+      if(atr) out.push({id:'os-atrasadas', cor:'var(--red)', icone:'📋',
+        titulo:`${atr} OS atrasada${atr!==1?'s':''}`,
+        sub:'Serviço agendado que não aconteceu', acao:'Ver', fn:"go('os-history')"});
+    }
+  }catch(e){ console.warn('[notif:osatr]', e?.message||e); }
+  try{
+    const prev=_manutencoesPreventivas().filter(m=>m.diasAte<0 || m.nuncaVistoriado);
+    if(prev.length) out.push({id:'manut-preventiva', cor:'var(--yellow)', icone:'🗓️',
+      titulo:`${prev.length} manutenção${prev.length!==1?'ões':''} vencida${prev.length!==1?'s':''}`,
+      sub:'Plano recorrente sem visita no prazo', acao:'Ver', fn:"go('painel')"});
+  }catch(e){ console.warn('[notif:preventiva]', e?.message||e); }
+  try{
+    if(eGestor()){
+      const hj=new Date(_hojeLocal()+'T12:00:00');
+      const gar=filtrarPorLoja(todosEq||[]).filter(e=>{ if(!e.garantia_vencimento) return false; const dd=Math.ceil((new Date(e.garantia_vencimento+'T12:00:00')-hj)/86400000); return dd<=30; }).length;
+      if(gar) out.push({id:'garantias-vencendo', cor:'var(--yellow)', icone:'🛡️',
+        titulo:`${gar} garantia${gar!==1?'s':''} vencendo`,
+        sub:'Chance de renovar ou avisar o cliente', acao:'Ver', fn:"go('equipamentos')"});
+    }
+  }catch(e){ console.warn('[notif:garantia]', e?.message||e); }
   return out.filter(n=>n.id && !_notifDismissAtivo(n.id));
 }
 // Throttle: getNotificacoes() varre clientes/orçamentos/estoque, e o badge é
