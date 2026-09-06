@@ -14134,6 +14134,91 @@ function _sincronizarReservaOrcamentoLocal(orc){
   if(mudou && document.getElementById('page-estoque')?.classList.contains('on')) renderEstoque();
 }
 
+// ── RECONCILIAÇÃO DE RESERVAS ÓRFÃS (recurso do v1) ─────────────────────
+// Reserva só é legítima com orçamento APROVADO aguardando entrega. Se o
+// orçamento foi apagado, recusado/revertido, ou já entregue sem liberar, a
+// reserva fica presa PARA SEMPRE, roubando o "disponível" e distorcendo a
+// lista de compras. (No v1 uma auditoria achou 7 reservas presas.)
+//
+// ⚠️ ESCREVE no ledger. Só pode rodar sobre dados CONFIRMADOS pelo banco — se
+// rodar com cache velho, um orçamento aprovado ainda não carregado é lido como
+// "sumido" e tem a reserva liberada errado. Por isso abrirReconciliarReservas()
+// recarrega orçamento+estoque do banco ANTES de calcular, e mostra um preview
+// pra confirmar. A liberação é registrada como liberacao_reserva (auditável),
+// nunca apaga movimento.
+function _reservasOrfas(){
+  // net de reserva por (orcId, pid) a partir do ref 'res|libres:orc:<id>:<pid>...'
+  const net={}; // chave orcId||pid
+  filtrarPorLoja(todosMovEstoque||[]).forEach(m=>{
+    if(!_TIPOS_RESERVA.includes(m.tipo) || !m.ref) return;
+    const mm=/orc:([^:]+):([^:]+)/.exec(m.ref); if(!mm) return;
+    const orcId=mm[1], pid=mm[2], k=orcId+'||'+pid;
+    net[k]=(net[k]||0)+(parseFloat(m.quantidade)||0);
+  });
+  const orfas=[];
+  Object.keys(net).forEach(k=>{
+    const res=net[k]; if(res<=0.0001) return; // só o que ainda está reservado
+    const [orcId,pid]=k.split('||');
+    const orc=(todosOrc||[]).find(o=>String(o.id)===String(orcId));
+    let legitimo=0, motivo='';
+    if(!orc){ motivo='orçamento não existe mais'; }
+    else if(orc.status!=='aprovado'){ motivo=`orçamento ${orc.status||'sem status'}`; }
+    else {
+      // aprovado: reserva legítima = pedido pendente do produto
+      const pedido=(orc.servicos||[]).filter(x=>String(x.produto_id)===String(pid)).reduce((a,x)=>a+(parseInt(x.qty)||1),0);
+      legitimo=Math.max(0, pedido-_qtdResolvidaProdutoOrc(orcId,pid));
+      if(res<=legitimo+0.0001) return; // reserva coerente, não é órfã
+      motivo='reservado além do pedido';
+    }
+    const excesso=res-legitimo;
+    if(excesso<=0.0001) return;
+    const prod=produtoById(pid);
+    orfas.push({orcId, pid, qtd:excesso, motivo, produto: prod?prod.nome:pid,
+      numero: orc?String(orc.numero||'').padStart(3,'0'):'?', lojaId: orc?orc.loja_id:null});
+  });
+  return orfas.sort((a,b)=>b.qtd-a.qtd);
+}
+async function abrirReconciliarReservas(){
+  toast('Atualizando do banco antes de calcular…');
+  if(typeof loadHist==='function') await loadHist();
+  if(typeof loadEstoque==='function') await loadEstoque();
+  const orfas=_reservasOrfas();
+  if(!orfas.length){ toast('Nenhuma reserva presa — estoque coerente'); return; }
+  const totalItens=orfas.length;
+  const linhas=orfas.map(o=>`
+    <div style="padding:8px 0;border-bottom:1px solid var(--line)">
+      <div style="font-size:13px;font-weight:700;color:var(--c2)">${esc(o.produto)} · ${fmtQtd(o.qtd)}</div>
+      <div style="font-size:11.5px;color:var(--tx3)">orçamento #${esc(o.numero)} — ${esc(o.motivo)}</div>
+    </div>`).join('');
+  window._reservasOrfasAtual=orfas;
+  abrirModal({id:'resv-orfa-bg', largura:'wide', corpo:`
+    <h3>Liberar reservas presas</h3>
+    <p class="rd-modal-sub">${totalItens} reserva${totalItens!==1?'s':''} sem orçamento aprovado que a justifique. Liberar devolve essa quantidade ao "disponível". Nada é apagado — cada liberação fica registrada no histórico do produto.</p>
+    ${linhas}
+    <div class="rd-modal-acts">
+      <button class="rd-modal-btn rd-modal-btn-nao" onclick="fecharModalGenerico('resv-orfa-bg')">Cancelar</button>
+      <button class="rd-modal-btn rd-modal-btn-sim" onclick="_confirmarReconciliarReservas()">Liberar ${totalItens}</button>
+    </div>`});
+}
+function _confirmarReconciliarReservas(){
+  const orfas=window._reservasOrfasAtual||[];
+  let n=0;
+  orfas.forEach(o=>{
+    registrarMovimento({produto_id:o.pid, tipo:'liberacao_reserva', quantidade:-o.qtd, custo_unit:null,
+      // ref inclui 'orc:<id>:<pid>' pra o net de _reservasOrfas subtrair esta
+      // liberação; o prefixo 'orfa:' evita casar com o ref exato 'libres:orc:
+      // <id>:<pid>' de _qtdResolvidaProdutoOrc (não conta como entrega).
+      motivo:'Reserva órfã liberada (orç. #'+o.numero+' — '+o.motivo+')', ref:'libres:orfa:orc:'+o.orcId+':'+o.pid, lojaId:o.lojaId});
+    n++;
+  });
+  fecharModalGenerico('resv-orfa-bg');
+  window._reservasOrfasAtual=null;
+  _invalidarSaldoCache();
+  if(typeof renderEstoque==='function') renderEstoque();
+  if(typeof logAcao==='function') logAcao('reservas_orfas_liberadas', String(n));
+  toast(`✅ ${n} reserva(s) liberada(s)`);
+}
+
 // ── Entrega: converte reserva em baixa física (OS concluída, botão manual ou validação de itens) ──
 // qtyMap (opcional): { produto_id: quantidade realmente levada }. Item ausente = leva a qtd do
 // orçamento; item com 0 = não foi levado (não baixa física, mas libera a reserva).
@@ -14833,6 +14918,14 @@ function renderEstoque(){
     let aviso='';
     if(enc.length) aviso+=`<div style="color:#b91c1c"><strong>📥 ${enc.length} para comprar:</strong> `+enc.slice(0,5).map(x=>`${esc(x.p.nome)} (faltam ${fmtQtd(x.falta)})`).join(' · ')+(enc.length>5?' …':'')+`</div>`;
     if(repor.length) aviso+=`<div style="margin-top:${enc.length?'6px':'0'}"><strong>🔄 ${repor.length} para repor:</strong> `+repor.slice(0,5).map(p=>`${esc(p.nome)} (${fmtQtd(disponivelProduto(p.id))})`).join(' · ')+(repor.length>5?' …':'')+`</div>`;
+    // Reservas possivelmente presas (sweep sobre o cache atual; o botão faz a
+    // checagem autoritativa recarregando do banco antes de liberar).
+    if(!eVendas()){
+      const orfas=_reservasOrfas();
+      if(orfas.length){ const q=orfas.reduce((a,o)=>a+o.qtd,0);
+        aviso+=`<div style="margin-top:${aviso?'6px':'0'};display:flex;align-items:center;gap:8px;flex-wrap:wrap"><strong>🔒 ${orfas.length} reserva${orfas.length!==1?'s':''} presa${orfas.length!==1?'s':''}</strong> (${fmtQtd(q)} un. travadas no "disponível") <button class="rd-btn rd-btn-secondary" style="padding:3px 10px;font-size:11px" onclick="abrirReconciliarReservas()">Revisar e liberar</button></div>`;
+      }
+    }
     al.style.display=aviso?'':'none'; al.innerHTML=aviso;
   }
   renderInsightsEstoque(abc, parados);
