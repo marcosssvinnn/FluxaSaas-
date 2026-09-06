@@ -12671,6 +12671,7 @@ function renderVisHistorico(){
           <button class="tb" title="Enviar resumo via WhatsApp" onclick="event.stopPropagation();enviarWAResumoVistoria('${v.id}')" style="font-size:11px;background:var(--wa-light,#dcfce7);color:var(--wa);border-color:var(--wa-light,#dcfce7)">💬</button>
           ${(!eTecnico() && (cnt.critico||cnt.atencao))?`<button class="tb" title="Gerar orçamento com os itens críticos e de atenção desta vistoria" onclick="event.stopPropagation();orcarDaVistoria('${v.id}')" style="font-size:11px;background:var(--c1);color:white;border-color:var(--c1);font-weight:700">💰 Orçar ${cnt.critico+cnt.atencao}</button>`:''}
           ${(!eTecnico() && cnt.critico)?`<button class="tb" title="Laudo para o síndico apresentar na assembleia" onclick="event.stopPropagation();gerarDossieAssembleia('${v.id}')" style="font-size:11px;background:var(--c2);color:white;border-color:var(--c2);font-weight:700">🗳️ Dossiê</button>`:''}
+          ${(!eTecnico() && _visEquipParaCadastrar(v).length)?`<button class="tb" title="Cadastrar os equipamentos desta vistoria no patrimônio do cliente" onclick="event.stopPropagation();importarEquipamentosVistoria('${v.id}')" style="font-size:11px;background:var(--green-bg);color:var(--green);border-color:var(--green-bg)">＋🔧 Patrimônio</button>`:''}
           <button class="tb" title="Editar / refazer vistoria" onclick="event.stopPropagation();editarVistoria('${v.id}')" style="font-size:11px;background:var(--blue-bg);color:var(--blue);border-color:var(--blue-bg)">✏️</button>
           <button class="tb" title="Ver relatório" onclick="event.stopPropagation();abrirVisRelatorio('${v.id}')" style="font-size:11px;background:var(--blue-bg);color:var(--blue);border-color:var(--blue-bg)">👁 Ver</button>
           <button class="tb" title="Baixar PDF" onclick="event.stopPropagation();baixarPDFVistoria('${v.id}',this)" style="font-size:11px;background:var(--c1-light);color:var(--c1);border-color:var(--c1-light)">📥 PDF</button>
@@ -13302,6 +13303,64 @@ function _visDataBR(d){
   if(!d) return '—';
   try{ return new Date(d+'T12:00:00').toLocaleDateString('pt-BR'); }catch(e){ return d; }
 }
+// ── IMPORTAR EQUIPAMENTO DA VISTORIA → PATRIMÔNIO (Fase 10) ──────────────
+// A vistoria coleta em campo os equipamentos reais do local (nome, modelo,
+// potência), mas eles não entram no cadastro (tabela equipamentos). Sem isso o
+// prontuário e o vínculo OS→equipamento ficam vazios pra quem nunca cadastrou à
+// mão. Este importador popula o patrimônio a partir do que o técnico já viu.
+// Casa por cliente + tipo (nome do equipamento) pra não duplicar o que já existe.
+function _visEquipParaCadastrar(v){
+  const equips=(typeof v.equipamentos==='string'?JSON.parse(v.equipamentos||'[]'):v.equipamentos)||[];
+  const cid=v.cliente_id||null, nomeCli=_normNome(v.cliente||'');
+  const jaTem=new Set((todosEq||[]).filter(e=>
+    (cid && e.cliente_id===cid) || (!cid && nomeCli && _normNome(e.cliente_nome||'')===nomeCli)
+  ).map(e=>_normNome(e.tipo||'')));
+  // Só equipamentos com nome real, ainda não cadastrados pra este cliente.
+  const vistos=new Set();
+  return equips.filter(e=>{
+    const t=_normNome(e.nome||''); if(!t) return false;
+    if(jaTem.has(t) || vistos.has(t)) return false; // não duplica nem repete dentro da própria vistoria
+    vistos.add(t); return true;
+  });
+}
+function importarEquipamentosVistoria(id){
+  const v=lsVisLer().find(x=>String(x.id)===String(id));
+  if(!v){ toast('Vistoria não encontrada'); return; }
+  const novos=_visEquipParaCadastrar(v);
+  if(!novos.length){ toast('Todos os equipamentos desta vistoria já estão no patrimônio'); return; }
+  confirmar({
+    titulo:'Cadastrar no patrimônio?',
+    msg:`Vou criar ${novos.length} equipamento(s) no cadastro de ${v.cliente||'este cliente'}, a partir do que a vistoria registrou: ${novos.map(e=>e.nome).slice(0,4).join(', ')}${novos.length>4?'…':''}. Depois você completa marca/série se quiser.`,
+    labelSim:'Cadastrar',
+    onSim:()=>_importarEquipamentosVistoriaConfirmado(v, novos)
+  });
+}
+function _importarEquipamentosVistoriaConfirmado(v, novos){
+  const agora=new Date().toISOString();
+  const criados=novos.map(e=>({
+    id:'eq_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),
+    cliente_nome:v.cliente||'', cliente_id:v.cliente_id||null, piscina_id:null,
+    tipo:e.nome||'Equipamento', marca:'', modelo:e.modelo||'', potencia:e.potencia||'',
+    numero_serie:'', data_instalacao:'', garantia_meses:null, garantia_vencimento:null,
+    obs:`Cadastrado da vistoria de ${_visDataBR(v.data)}`, foto_base64:null, ativo:true,
+    loja_id:v.loja_id||lojaAtiva||LOJA_PADRAO_ID, data_criacao:agora
+  }));
+  todosEq=[...criados, ...(todosEq||[])];
+  lsEqSalvar(todosEq);
+  // Sobe pro banco em background (mesmo padrão de salvarEquipamento).
+  if(dbOk&&db){
+    criados.forEach(rec=>{
+      const payload={...rec}; delete payload.id;
+      dbInsert('equipamentos', payload).then(({data:ins})=>{
+        if(ins){ todosEq=todosEq.filter(x=>x.id!==rec.id); todosEq.unshift(ins); lsEqSalvar(todosEq); if(document.getElementById('page-equipamentos')?.classList.contains('on')) renderEqGrid(); }
+      }).catch(err=>console.warn('[importEqVis]', err?.message||err));
+    });
+  }
+  if(typeof renderEqGrid==='function') renderEqGrid();
+  if(typeof logAcao==='function') logAcao('equipamentos_da_vistoria', `${v.cliente||''} — ${criados.length}`);
+  toast(`✅ ${criados.length} equipamento(s) no patrimônio`);
+}
+
 function orcarDaVistoria(id){
   const v=lsVisLer().find(x=>String(x.id)===String(id));
   if(!v){ toast('Vistoria não encontrada'); return; }
