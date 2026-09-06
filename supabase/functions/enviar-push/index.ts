@@ -29,21 +29,28 @@ Deno.serve(async (req) => {
   }
 
   // ── Autorização ──
+  // Dois caminhos: (1) server-to-server com o segredo interno (triggers do
+  // banco) — confiável, empresa vem do próprio SQL; (2) usuário autenticado
+  // por JWT — aqui NÃO basta estar logado: tem que ser MEMBRO da empresa alvo,
+  // senão qualquer usuário logado mandaria push pra qualquer tenant. A checagem
+  // de membro fica após ler o body (precisa do empresa_id).
   const internalSecret = req.headers.get("x-push-secret");
   const authHeader = req.headers.get("authorization") || "";
-  let autorizado = false;
+  const viaSegredo = !!(internalSecret && internalSecret === PUSH_INTERNAL_SECRET);
+  let jwtUserId: string | null = null;
 
-  if (internalSecret && internalSecret === PUSH_INTERNAL_SECRET) {
-    autorizado = true; // chamada server-to-server (trigger do banco)
-  } else if (authHeader.startsWith("Bearer ")) {
+  if (!viaSegredo) {
+    if (!authHeader.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "não autorizado" }), { status: 401 });
+    }
     const anon = createClient(SUPABASE_URL, ANON_KEY, {
       global: { headers: { Authorization: authHeader } },
     });
     const { data, error } = await anon.auth.getUser();
-    if (!error && data?.user) autorizado = true;
-  }
-  if (!autorizado) {
-    return new Response(JSON.stringify({ error: "não autorizado" }), { status: 401 });
+    if (error || !data?.user) {
+      return new Response(JSON.stringify({ error: "não autorizado" }), { status: 401 });
+    }
+    jwtUserId = data.user.id;
   }
 
   // ── Payload ──
@@ -61,6 +68,19 @@ Deno.serve(async (req) => {
 
   if (!empresa_id || !titulo || !corpo) {
     return new Response(JSON.stringify({ error: "empresa_id, titulo e corpo são obrigatórios" }), { status: 400 });
+  }
+
+  // Path JWT: o usuário só pode notificar a PRÓPRIA empresa (é membro dela).
+  if (!viaSegredo) {
+    const { data: mem } = await admin
+      .from("membros")
+      .select("user_id")
+      .eq("empresa_id", empresa_id)
+      .eq("user_id", jwtUserId)
+      .maybeSingle();
+    if (!mem) {
+      return new Response(JSON.stringify({ error: "sem acesso a esta empresa" }), { status: 403 });
+    }
   }
 
   // ── Busca inscrições ativas da empresa ──
