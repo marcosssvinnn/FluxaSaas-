@@ -10,12 +10,16 @@ function eGestor(){ const s=getSessao(); return s?.perfil==='gestor'||s?.perfil=
 let _auditoria = [];
 function lsAuditLer(){ try{ return JSON.parse(ls('fluxa_auditoria')||'[]'); }catch(e){ return []; } }
 function lsAuditSalvar(l){ lsSet('fluxa_auditoria', JSON.stringify(l.slice(0,500))); }
-function logAcao(acao, detalhe){
+// 3º arg opcional: {antes, depois, ref} — registra valor anterior→novo (Fase 19).
+function logAcao(acao, detalhe, extra){
   const s=getSessao();
   const reg={
     id:'aud_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
     usuario: s?.nome||'(não logado)', perfil: s?.perfil||'',
     acao, detalhe: detalhe||'',
+    antes: extra&&extra.antes!=null?String(extra.antes):null,
+    depois: extra&&extra.depois!=null?String(extra.depois):null,
+    ref: extra&&extra.ref!=null?String(extra.ref):null,
     loja_id: s?.loja_id||lojaAtiva||null,
     data: new Date().toISOString()
   };
@@ -52,12 +56,13 @@ function renderAuditoria(){
   if(fU) lista=lista.filter(a=>a.usuario===fU);
   lista=lista.slice(0,300);
   if(!lista.length){ body.innerHTML='<div style="padding:18px;text-align:center;color:var(--gray);font-size:13px">Nenhum registro ainda.</div>'; return; }
-  const acaoTxt={login:'🔑 Login',orcamento_criado:'📝 Orçamento criado',orcamento_status:'🔄 Status do orçamento',orcamento_excluido:'🗑 Orçamento excluído',estoque_mov:'📦 Movimento de estoque',estoque_entrega:'📦 Baixa/entrega',os_concluida:'✅ OS concluída',usuario_criado:'👤 Usuário criado',usuario_editado:'✏️ Usuário editado',usuario_removido:'🗑 Usuário removido'};
+  const acaoTxt={login:'🔑 Login',orcamento_criado:'📝 Orçamento criado',orcamento_status:'🔄 Status do orçamento',orcamento_excluido:'🗑 Orçamento excluído',estoque_mov:'📦 Movimento de estoque',estoque_entrega:'📦 Baixa/entrega',os_concluida:'✅ OS concluída',usuario_criado:'👤 Usuário criado',usuario_editado:'✏️ Usuário editado',usuario_removido:'🗑 Usuário removido',os_excluida:'🗑 OS excluída',os_criada:'📋 OS criada',reservas_orfas_liberadas:'🔓 Reservas liberadas',equipamentos_da_vistoria:'🔧 Equipamentos cadastrados'};
   body.innerHTML=lista.map(a=>{
     const d=new Date(a.data);
     return `<div style="display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--gray-light)">
       <div style="min-width:0">
         <div style="font-size:13px;font-weight:600;color:var(--c2)">${acaoTxt[a.acao]||esc(a.acao)}${a.detalhe?' <span style="font-weight:400;color:var(--gray)">— '+esc(a.detalhe)+'</span>':''}</div>
+        ${(a.antes!=null||a.depois!=null)?`<div style="font-size:11px;color:var(--gray);margin-top:1px">${a.antes!=null?'<span style="text-decoration:line-through;opacity:.7">'+esc(a.antes)+'</span>':''} ${a.antes!=null&&a.depois!=null?'→':''} ${a.depois!=null?'<b style="color:var(--c2)">'+esc(a.depois)+'</b>':''}</div>`:''}
         <div style="font-size:11px;color:var(--gray)">👤 ${esc(a.usuario||'—')}${a.perfil?' ('+esc(a.perfil)+')':''}${a.loja_id?' · '+esc(getLojaNome(a.loja_id)):''}</div>
       </div>
       <div style="font-size:11px;color:var(--gray);white-space:nowrap;text-align:right">${d.toLocaleDateString('pt-BR')}<br>${d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</div>
@@ -4506,6 +4511,7 @@ function _margemOrc(orc){
 }
 
 async function _setStatusOrc(id, st, extras){
+  const _stAntigo=(todosOrc.find(x=>x.id===id)||{}).status||'pendente';
   const changes={status:st, etapa_desde:new Date().toISOString(), ...(extras||{})};
   if(st==='aprovado') changes.data_aprovacao=new Date().toISOString();
   // Sair de "pendente" limpa a situação/decisão prevista — não fazem mais sentido fora da negociação
@@ -4519,7 +4525,7 @@ async function _setStatusOrc(id, st, extras){
   atualizarDash();
   if(dbOk&&db&&!String(id).startsWith('local_'))
     orcSyncUpdate(id, changes).catch(e=>console.warn('[mudarSt]', e?.message||e));
-  logAcao('orcamento_status', `#${o?.numero||'?'} ${o?.cliente||''} → ${st}`);
+  logAcao('orcamento_status', `#${o?.numero||'?'} ${o?.cliente||''}`, {antes:_stAntigo, depois:st, ref:'orc:'+id});
   // Feedback de reserva de estoque ao aprovar + modal para criar OS
   if(st==='aprovado' && o){
     const prods=(o.servicos||[]).filter(s=>s.produto_id);
@@ -5750,8 +5756,10 @@ function excluirOS(id){
   confirmar('Excluir esta OS?', ()=>_excluirOSConfirmado(id), 'Excluir OS');
 }
 async function _excluirOSConfirmado(id){
+  const _os=todosOS.find(x=>x.id===id);
   todosOS=todosOS.filter(x=>x.id!==id);
   if(dbOk&&db) db.from('ordens_servico').delete().eq('id',id).then(()=>{}).catch(()=>{});
+  if(typeof logAcao==='function') logAcao('os_excluida', `#${String(_os?.numero||'?').padStart(3,'0')} ${_os?.cliente||''}`, {ref:'os:'+id});
   renderOSTabela(); toast('🗑 OS excluída');
 }
 
