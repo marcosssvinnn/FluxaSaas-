@@ -12559,6 +12559,14 @@ function _persistVistoria(rec){
           // Sync bem-sucedido — remove flag _pendingSync do localStorage
           const _ls=lsVisLer(); const _i=_ls.findIndex(x=>x.id===rec.id);
           if(_i>=0){ delete _ls[_i]._pendingSync; lsVisSalvar(_ls); }
+          // Push pro gestor se a vistoria tem item crítico (app fechado). A RPC
+          // deriva a empresa da própria linha e só envia uma vez (push_critico_em).
+          try{
+            const eqs=(rec.equipamentos||[]);
+            if(eqs.some(e=>e&&e.status==='critico') && dbOk&&db){
+              db.rpc('notificar_vistoria_critica', {p_vis_id:String(rec.id)}).then(()=>{}).catch(er=>console.warn('[pushVisCritica]', er?.message||er));
+            }
+          }catch(e){ console.warn('[pushVisCritica]', e?.message||e); }
         }
       }catch(e){ console.warn('Visita Supabase sync (bg):', e?.message||e); toast('⚠️ Vistoria salva localmente mas não sincronizou com a nuvem. Será reenviada na próxima conexão.'); }
     })();
