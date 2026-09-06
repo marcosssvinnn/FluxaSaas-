@@ -6719,6 +6719,31 @@ function _osPopularEquipamentos(selecionadoId){
     return `<option value="${esc(e.id)}">${esc(lbl)}${e.numero_serie?' · '+esc(e.numero_serie):''}</option>`;
   }).join('');
   if(selecionadoId) sel.value=selecionadoId;
+  _osEquipContexto();
+}
+// Contexto do equipamento no momento da OS (Fase 11 no ponto de uso): o técnico
+// entende o passado antes de decidir. Resumo compacto do prontuário — última
+// passagem, nº de vistorias/OS, e o achado crítico mais recente se houver.
+function _osEquipContexto(){
+  const box=document.getElementById('os-equip-contexto'); if(!box) return;
+  const id=gV('os-equip-id');
+  const eq=(todosEq||[]).find(e=>e.id===id);
+  if(!eq){ box.style.display='none'; box.innerHTML=''; return; }
+  let evs=[]; try{ evs=_eqEventos(eq); }catch(e){}
+  // Exclui a própria OS aberta da contagem de "passado".
+  evs=evs.filter(e=>!(e.tipo==='os' && e.ref===osEditId));
+  if(!evs.length){ box.style.display='none'; box.innerHTML=''; return; }
+  const ult=evs[0];
+  const nVis=evs.filter(e=>e.tipo==='vistoria').length;
+  const nOS=evs.filter(e=>e.tipo==='os').length;
+  const critico=evs.find(e=>e.tipo==='vistoria' && e.status==='critico');
+  const partes=[];
+  partes.push(`🕘 última passagem: <b>${ult._d.toLocaleDateString('pt-BR')}</b> (${ult.titulo})`);
+  const contagem=[nOS?`${nOS} OS`:'', nVis?`${nVis} vistoria${nVis!==1?'s':''}`:''].filter(Boolean).join(' · ');
+  if(contagem) partes.push('📋 '+contagem+' no histórico');
+  if(critico) partes.push(`🔴 vistoria de ${critico._d.toLocaleDateString('pt-BR')} apontou crítico${critico.detalhe?': '+esc(critico.detalhe.replace(/^.*?—\s*/,'')):''}`);
+  box.innerHTML=partes.join('<br>')+` · <a href="#" onclick="event.preventDefault();abrirProntuarioEq('${eq.id}')" style="color:var(--c1);font-weight:600">ver prontuário</a>`;
+  box.style.display='';
 }
 
 // ──────────────────────────────────────────────────
