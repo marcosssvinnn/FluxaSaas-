@@ -96,16 +96,16 @@
           <div class="login-err" id="auth-err" style="margin-top:-4px"></div>
           <div id="auth-consent-wrap" style="display:none;text-align:center;font-size:12px;color:var(--gray);line-height:1.5;margin-top:-2px">
             Ao criar minha empresa, você concorda com os
-            <a href="#termos" onclick="abrirLegal('termos');return false" style="color:var(--c1);text-decoration:none">Termos de Uso</a> e a
-            <a href="#privacidade" onclick="abrirLegal('privacidade');return false" style="color:var(--c1);text-decoration:none">Política de Privacidade</a>.
+            <a href="#termos" data-act="abrirLegal" data-a="termos" style="color:var(--c1);text-decoration:none">Termos de Uso</a> e a
+            <a href="#privacidade" data-act="abrirLegal" data-a="privacidade" style="color:var(--c1);text-decoration:none">Política de Privacidade</a>.
           </div>
           <button class="login-btn" id="auth-btn" data-act="authSubmit" style="margin-top:2px">Entrar →</button>
           <div id="auth-esqueci-wrap" style="text-align:center;font-size:13px;margin-top:-4px">
-            <a href="#" id="auth-esqueci-link" onclick="authEsqueciSenha();return false" style="color:var(--gray);text-decoration:none">Esqueci minha senha</a>
+            <a href="#" id="auth-esqueci-link" data-act="authEsqueciSenha" style="color:var(--gray);text-decoration:none">Esqueci minha senha</a>
           </div>
           <div style="text-align:center;font-size:13px;color:var(--gray)">
             <span id="auth-toggle-txt">Ainda não tem conta?</span>
-            <a href="#" id="auth-toggle-link" onclick="authToggleModo();return false" style="color:var(--c1);font-weight:600;text-decoration:none">Criar minha empresa</a>
+            <a href="#" id="auth-toggle-link" data-act="authToggleModo" style="color:var(--c1);font-weight:600;text-decoration:none">Criar minha empresa</a>
           </div>
         </div>
       </div>
@@ -179,8 +179,8 @@
     </div><!-- /login-card -->
     <div style="text-align:center;margin-top:16px;font-size:12px;color:var(--gray);opacity:.8">
       © Fluxa ·
-      <a href="#termos" onclick="abrirLegal('termos');return false" style="color:var(--gray);text-decoration:underline">Termos de Uso</a> ·
-      <a href="#privacidade" onclick="abrirLegal('privacidade');return false" style="color:var(--gray);text-decoration:underline">Privacidade</a>
+      <a href="#termos" data-act="abrirLegal" data-a="termos" style="color:var(--gray);text-decoration:underline">Termos de Uso</a> ·
+      <a href="#privacidade" data-act="abrirLegal" data-a="privacidade" style="color:var(--gray);text-decoration:underline">Privacidade</a>
     </div>
   </div><!-- /login-right -->
 </div>
@@ -256,12 +256,12 @@
       <div class="gear-menu" id="gear-menu" style="display:none">
         <div class="gear-status"><span class="db-dot" id="db-dot2"></span><span id="db-txt2" style="font-size:12px;color:#6b7280">…</span></div>
         <div class="gear-section">Configurações</div>
-        <button id="gear-btn-empresa" onclick="closeGear();go('empresa')">🏢 Dados da Empresa</button>
-        <button id="gear-btn-analises" onclick="closeGear();go('analises')">📊 Análises</button>
-        <button id="gear-btn-usuarios" onclick="closeGear();go('usuarios')">👥 Usuários</button>
-        <button id="gear-btn-auditoria" onclick="closeGear();go('auditoria')">🔐 Auditoria</button>
-        <button onclick="closeGear();fazerLogout()">🔄 Trocar usuário</button>
-        <button onclick="closeGear();authLogout()" style="color:var(--red)">🚪 Sair da conta</button>
+        <button id="gear-btn-empresa" data-act="_gearGo" data-a="empresa">🏢 Dados da Empresa</button>
+        <button id="gear-btn-analises" data-act="_gearGo" data-a="analises">📊 Análises</button>
+        <button id="gear-btn-usuarios" data-act="_gearGo" data-a="usuarios">👥 Usuários</button>
+        <button id="gear-btn-auditoria" data-act="_gearGo" data-a="auditoria">🔐 Auditoria</button>
+        <button data-act="_gearLogout">🔄 Trocar usuário</button>
+        <button data-act="_gearAuthLogout" style="color:var(--red)">🚪 Sair da conta</button>
       </div>
     </div>
   </div>
@@ -286,7 +286,7 @@
        tela. Substitui o antigo snb-form (mesmo onclick); visibilidade
        controlada em aplicarPermissoesPerfil() (app.js, snbRules). -->
   <div class="snav-primary" id="snav-primary-wrap">
-    <button class="snav-primary-btn" onclick="novoOrc();go('form')" title="Novo orçamento">
+    <button class="snav-primary-btn" data-act="irNovoOrc" title="Novo orçamento">
       <svg class="sicon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
       <span class="snav-primary-label">Novo orçamento</span>
     </button>
@@ -411,8 +411,8 @@
     </div>
 
     <div class="painel-acoes">
-      <button class="painel-acao-btn" onclick="novoOrc();go('form')"><span class="sicon">＋</span> Novo Orçamento</button>
-      <button class="painel-acao-btn" onclick="novaOS();go('os')"><span class="sicon">📋</span> Nova OS</button>
+      <button class="painel-acao-btn" data-act="irNovoOrc"><span class="sicon">＋</span> Novo Orçamento</button>
+      <button class="painel-acao-btn" data-act="irNovaOS"><span class="sicon">📋</span> Nova OS</button>
       <button class="painel-acao-btn" data-act="go" data-a="crm"><span class="sicon">🎯</span> Ver Funil</button>
       <button class="painel-acao-btn" data-act="go" data-a="estoque"><span class="sicon">📦</span> Ver Estoque</button>
     </div>
@@ -2707,7 +2707,7 @@
         <div style="font-size:18px;font-weight:800;color:var(--c2)">🔍 Vistorias de Manutenção</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="fb on" id="vis-tab-nova" onclick="visTab('nova');window._visLocalId=null;visEditId=null;_visDraftId=null;_visAssinaturaTecnico=null;renderVisAssinaturaStatus();_resetCheckinVis();document.getElementById('vis-plano-banner').style.display='none'">📋 Nova Vistoria</button>
+        <button class="fb on" id="vis-tab-nova" data-act="_visNovaDoZero">📋 Nova Vistoria</button>
         <button class="fb" id="vis-tab-hist" data-act="visTab" data-a="hist">📜 Histórico</button>
         <button class="fb" id="vis-tab-locais" data-act="visTab" data-a="locais">📍 Meus Locais</button>
       </div>

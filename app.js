@@ -76,7 +76,10 @@ document.addEventListener('click', e=>{
   const el=e.target.closest('[data-act]');
   if(el){
     const fn=window[el.getAttribute('data-act')];
-    if(typeof fn==='function'){ const raw=el.getAttribute('data-a'); fn(...(raw!=null && raw!=='' ? raw.split('|') : [])); }
+    if(typeof fn==='function'){
+      if(el.tagName==='A') e.preventDefault(); // link agindo como botão (era return false)
+      const raw=el.getAttribute('data-a'); fn(...(raw!=null && raw!=='' ? raw.split('|') : []));
+    }
   }
   // Fecha-modal por clique no FUNDO: só quando o alvo é o próprio backdrop
   // (não um filho). Substitui o onclick="if(event.target===this)fecharX()".
@@ -88,6 +91,17 @@ document.addEventListener('click', e=>{
 // Intenção nomeada pro que era `novaOS();go('os')` no menu (o resto dos
 // compostos da nav colapsou: go() já fecha a sidebar; fazerLogout() também).
 function irNovaOS(){ novaOS(); go('os'); }
+function irNovoOrc(){ novoOrc(); go('form'); }
+// Itens do menu de engrenagem: fecham o dropdown e então agem.
+function _gearGo(p){ closeGear(); go(p); }
+function _gearLogout(){ closeGear(); fazerLogout(); }
+function _gearAuthLogout(){ closeGear(); authLogout(); }
+// "Nova vistoria do zero" — limpa todo o estado da vistoria em edição.
+function _visNovaDoZero(){
+  visTab('nova'); window._visLocalId=null; visEditId=null; _visDraftId=null;
+  _visAssinaturaTecnico=null; renderVisAssinaturaStatus(); _resetCheckinVis();
+  const b=document.getElementById('vis-plano-banner'); if(b) b.style.display='none';
+}
 function eTecnico(){ const s=getSessao(); return s?.perfil==='tecnico'; }
 function getLojaFiltro(){ const s=getSessao(); return s?.loja_id||null; }
 
