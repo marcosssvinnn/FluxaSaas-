@@ -3588,3 +3588,57 @@ schema (migrações aplicadas e verificadas via Management API).
   não promover sem validação. Antes de promover, testar o fluxo completo
   (orçamento → OS → finalizar → relatório) com um clique real de ponta a
   ponta, já que esta sessão só testou via `javascript_exec`/mocks.
+
+---
+
+## Sessão 2026-09-05 — Plano Mestre de Evolução (auditoria + fases)
+
+O Marcos entregou um "Plano Mestre" de 52 fases pra evoluir o Fluxa de "gestão de
+OS" pra "SaaS vertical de manutenção técnica", com a cadeia
+Cliente→Local→Equipamento→Vistoria→Recomendação→Oportunidade→Orçamento→OS→
+Estoque→Financeiro→Histórico→Próxima manutenção. **Este sistema (v2) é da FLUXA
+PISCINAS** — Marcos corrigiu explicitamente: não é da Forthemp (essa é o v1).
+Ver [[fluxa-fluxa-app-v1-relacao]]. Instrução: "faça tudo, não precisa perguntar".
+
+**Achado que muda o plano:** boa parte foi escrita olhando o v1. O v2 já resolveu
+várias fases. Entregável da Fase 1: `FLUXA_ARCHITECTURE_AUDIT.md` no repo (mapa de
+16 módulos, 26 tabelas, 17 RPCs, 128 globais, ~30 chaves LS; RLS e RPCs testadas
+AO VIVO contra o banco).
+
+Fases entregues e em produção (sw v52→v72):
+- **Fase 1** auditoria (`b29192f`) — RLS bloqueia anônimo nas 26 tabelas: multi-tenant
+  já está estruturalmente pronto.
+- **R-2/R-3/R-4** (`49f699f`) — 3 rascunhos gravavam/liam em escopos de LS diferentes.
+  R-2 (vistoria) era grave: nunca restaurava em produção (passava no teste só com
+  EMPRESA_ID vazio). Ver [[fluxa-localstorage-escopo-empresa]].
+- **Fase 2.2** autorização granular (`d85b19d`) — matriz PERMISSOES + can()/podeVerPagina().
+  Corrigiu divergência real: as 2 listas de páginas discordavam (venda-balcao).
+- **Fase 3** acesso cruzado (`795bcf1`) — auditadas 69 políticas RLS no banco:
+  leitura E escrita presas a empresa_id, sem brecha. WITH CHECK nulo em UPDATE é
+  seguro (Postgres aplica o USING à linha nova).
+- **Fases 10-11** patrimônio (`24a2fa9`,`a738028`) — prontuário do equipamento
+  (timeline de vistorias/OS/orçamentos) + equipamento_id OPCIONAL na OS
+  (delta37). Vínculo por aparelho cresce com o uso, sem forçar o fluxo.
+- **Fase 13** vistoria→oportunidade (`3f1fb12`) — recomendação não orçada vira
+  oportunidade rastreada na fila "Precisa de você hoje".
+- **Fase 34** central de ações (`38c7e67`) — OS atrasadas + garantias na fila.
+- **Fase 29** preventiva (`e4dff2a`) — plano recorrente + última vistoria =
+  manutenção vencida na fila. Dismiss chaveado pela data (reaparece no ciclo).
+- **Fase 4** desacoplamento sem build (Marcos escolheu event delegation, não
+  bundler): `data-act`/`data-close` (`3556e17`,`a1c2676`,`fd3cc58`,`2552d41`).
+  onclick inline no index.html: 255→~24 (só complexos com event./objeto inline).
+- **Fases 23-24** rentabilidade/custo-hora (`e750830`) — receita−material−mão de
+  obra=lucro/margem no relatório Interno da OS + margem por técnico. Custo-hora
+  configurável em Produtividade.
+
+### Ainda em aberto (não feito)
+- Fase 4: ~24 onclick complexos no index.html + dinâmicos em template strings do
+  app.js. Baixo valor, o shell já está desacoplado.
+- Fase 38 (alertas ativos via push), Fase 7 (estados PENDING/SYNCING/SYNCED na
+  UI), Fases 35-37 (SLA/retrabalho), Fase 41 (documentos por entidade).
+- Recursos do v1 ainda não portados: reconciliação de reservas órfãs, importar
+  equipamento da vistoria, observação por ambiente na vistoria.
+
+### Dívida de verificação
+Tudo testado com dados sintéticos + prova visual, verificado ao vivo em produção
+após cada promoção (cache limpo). Sem teste logado ponta a ponta com dados reais.
