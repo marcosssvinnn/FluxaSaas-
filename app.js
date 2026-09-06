@@ -3632,7 +3632,7 @@ async function loadHist(){
       todosOrc=[...data,...soLocal];
       lsOrcSalvar(todosOrc);
       verificarVencidos();
-      atualizarDash(); renderTabela();
+      atualizarDash(); renderTabela(); _refreshPainelIndicadores();
       // Recupera orçamentos presos só no aparelho (não sincronizados) → reenvia ao banco
       if(soLocal.length){
         const mudou=await _reenviarOrcamentosLocais(soLocal);
@@ -3717,6 +3717,21 @@ function verificarVencidos(){
     }
   });
   return mudou;
+}
+
+// Refresca os indicadores do painel (fila + sino + funil) quando uma carga
+// termina — sem isto, eles rodavam num setTimeout fixo de 250ms e, na carga
+// FRIA do login, pegavam dado incompleto e não recalculavam (indicadores
+// "demorando" a aparecer). Debounced e só se o painel está aberto.
+let _painelRefreshTimer=null;
+function _refreshPainelIndicadores(){
+  if(!document.getElementById('page-painel')?.classList.contains('on')) return;
+  clearTimeout(_painelRefreshTimer);
+  _painelRefreshTimer=setTimeout(()=>{
+    try{ renderPainelFilaHoje(); }catch(e){}
+    try{ _notifAtualizarBadge(true); }catch(e){}
+    try{ renderPainelCRM(); }catch(e){}
+  }, 150);
 }
 
 function atualizarDash(){
@@ -4970,7 +4985,7 @@ async function loadOSHist(){
       const soLocal=todosOS.filter(x=>String(x.id).startsWith('local_')&&!dbIds.has(x.id));
       todosOS=[...(data||[]),...soLocal];
       lsSet('fluxa_os_hist', JSON.stringify(todosOS.slice(0,600)));
-      renderOSTabela();
+      renderOSTabela(); _refreshPainelIndicadores();
       // Recupera OS presas só no aparelho (não sincronizadas) → reenvia ao banco
       if(soLocal.length){
         const mudou=await _reenviarOSLocais(soLocal);
