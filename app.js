@@ -7940,13 +7940,61 @@ function metricasTec(tec, ini, fim){
   const desp=despNoPeriodo(tec, ini, fim).reduce((a,d)=>a+(d.valor||0),0);
   const clientes=new Set(os.map(o=>o.cliente).filter(Boolean)).size;
   const faturamento=conc.reduce((a,o)=>a+(o.total||0),0); // fatura das OS concluídas do técnico
-  return { total:os.length, conc:conc.length, canc:canc.length, taxa, tempoMed, desp, clientes, faturamento };
+  // Mão de obra e margem estimada (Fase 24). Horas do duracao_min das OS
+  // concluídas; margem = faturamento − mão de obra − despesas. Material NÃO
+  // entra aqui (custo por OS exige os_materiais, caro de agregar) — por isso
+  // "estimada"; a rentabilidade cheia por OS está no relatório Interno.
+  const horas=conc.reduce((a,o)=>a+(parseFloat(o.duracao_min)||0),0)/60;
+  const custoHora=getCustoHora();
+  const custoMO=custoHora*horas;
+  const margemEst = faturamento - custoMO - desp;
+  return { total:os.length, conc:conc.length, canc:canc.length, taxa, tempoMed, desp, clientes, faturamento, horas, custoMO, margemEst, custoHoraDef:custoHora>0 };
 }
 // Config de comissão/metas (global, editável na tela de Produtividade)
 function getComissaoPct(){ return parseFloat(ls('fluxa_comissao_pct')||'0')||0; }
 function getMetaTec(){ return parseFloat(ls('fluxa_meta_tec')||'0')||0; }
 function setComissaoPct(v){ lsSet('fluxa_comissao_pct', String(parseFloat(v)||0)); renderProd(); }
 function setMetaTec(v){ lsSet('fluxa_meta_tec', String(parseFloat(v)||0)); renderProd(); }
+
+// ── RENTABILIDADE / CUSTO-HORA (Fases 23-24) ────────────────────────────
+// Faturamento não é lucro. O gestor precisa ver, por OS e por técnico, o que
+// sobra depois de material, mão de obra e despesas — senão uma OS de R$2.000
+// que consumiu R$1.700 parece ótima.
+//
+// Custo-hora é um número que o gestor configura (remuneração + encargos +
+// veículo, rateados sobre a hora produtiva — a conta é dele; aqui é o valor
+// final por hora). Guardado como config da empresa, igual à comissão.
+function getCustoHora(){ return parseFloat(ls('fluxa_custo_hora')||'0')||0; }
+function setCustoHora(v){ lsSet('fluxa_custo_hora', String(parseFloat(v)||0)); if(typeof renderProd==='function') renderProd(); }
+
+// Custo de material de uma OS. Usa os_materiais já carregado no relatório
+// (_materiaisRelatorio: qtd × custo_unit); sem isso, cai no custo congelado do
+// orçamento vinculado (servicos[].custo_total). Retorna null quando não há
+// NENHUM sinal de custo — pra não fingir margem cheia sobre custo desconhecido.
+function _osCustoMaterial(os, orc){
+  const mats=os && Array.isArray(os._materiaisRelatorio) ? os._materiaisRelatorio : null;
+  if(mats && mats.length) return {valor: mats.reduce((a,m)=>a+(m.qtd||0)*(m.custo_unit||0),0), fonte:'materiais'};
+  if(orc && Array.isArray(orc.servicos)){
+    const c=orc.servicos.reduce((a,x)=>a+(parseFloat(x.custo_total)||0),0);
+    if(c>0) return {valor:c, fonte:'orcamento'};
+  }
+  return null;
+}
+// Rentabilidade de UMA OS. horas do duracao_min; mão de obra = custo_hora×horas.
+function _osRentabilidade(os, orc){
+  const receita = parseFloat(os?.total)||0;
+  const mat=_osCustoMaterial(os, orc);
+  const material = mat?mat.valor:0;
+  const horas = (parseFloat(os?.duracao_min)||0)/60;
+  const custoHora=getCustoHora();
+  const maoObra = custoHora>0 ? custoHora*horas : 0;
+  const lucro = receita - material - maoObra;
+  return {
+    receita, material, materialFonte: mat?mat.fonte:null, materialConhecido: !!mat,
+    horas, custoHora, maoObra,
+    lucro, margemPct: receita>0 ? lucro/receita*100 : null
+  };
+}
 
 async function loadProdutividade(){
   // Popula select de técnicos
@@ -8585,6 +8633,7 @@ function renderProd(){
   const comPct=getComissaoPct(), meta=getMetaTec();
   // Preenche os inputs de config com os valores salvos
   const _ip=document.getElementById('prod-comissao-pct'); if(_ip&&document.activeElement!==_ip) _ip.value=comPct||'';
+  const _ch=document.getElementById('prod-custo-hora'); if(_ch&&document.activeElement!==_ch) _ch.value=getCustoHora()||'';
   const _im=document.getElementById('prod-meta-tec'); if(_im&&document.activeElement!==_im) _im.value=meta||'';
 
   cardsEl.innerHTML=tecs.map(tec=>{
@@ -8616,6 +8665,8 @@ function renderProd(){
       <div style="font-size:12px;color:var(--gray)">Faturamento: <strong>${brl(m.faturamento)}</strong></div>
       ${comPct>0?`<div style="font-size:12px;color:var(--green);font-weight:700">Comissão: ${brl(comissao)}</div>`:''}
       <div style="font-size:12px;color:var(--gray)">Despesas: <strong>${brl(m.desp)}</strong></div>
+      ${m.custoHoraDef?`<div style="font-size:12px;color:var(--gray)">Mão de obra: <strong>${brl(m.custoMO)}</strong> <span style="font-size:10.5px">(${m.horas.toFixed(1)}h)</span></div>
+      <div style="font-size:12px;font-weight:700;color:${m.margemEst>=0?'var(--green)':'var(--red)'}">Margem est.: ${brl(m.margemEst)}</div>`:''}
       ${metaHtml}
     </div>`;
   }).join('');
@@ -13112,11 +13163,25 @@ function preencherRelatorioOS(os, versao){
   const ocultarValores=!!orc?.ocultar_valores;
   if(internaWrap) internaWrap.style.display=(versao==='interna'&&!ocultarValores)?'block':'none';
   if(internaEl && versao==='interna' && !ocultarValores){
-    const totalVendido=servicosOrc.reduce((a,s)=>a+(parseFloat(s.precoUnit||s.preco||0)*(parseInt(s.qty)||1)),0)||os.total||0;
     const naoExecCount=itensServico.filter(x=>!x.checked).length;
+    // Rentabilidade (Fases 23-24): receita − material − mão de obra = lucro.
+    const rent=_osRentabilidade(os, orc);
+    const linha=(lbl,val,cor)=>`<div style="display:flex;justify-content:space-between;padding:2px 0"><span>${lbl}</span><b style="color:${cor||'inherit'};font-variant-numeric:tabular-nums">${val}</b></div>`;
+    const moTxt = rent.custoHora>0
+      ? `− ${brl(rent.maoObra)} <span style="font-weight:400;color:#6b7280">(${rent.horas.toFixed(1)}h × ${brl(rent.custoHora)})</span>`
+      : `<span style="font-weight:400;color:#9ca3af">custo-hora não configurado</span>`;
+    const matTxt = rent.materialConhecido ? `− ${brl(rent.material)}` : `<span style="font-weight:400;color:#9ca3af">material sem custo registrado</span>`;
+    const parcial = !rent.materialConhecido || rent.custoHora===0;
     internaEl.innerHTML=`
-      <div>Valor vendido nesta OS: <b>${brl(totalVendido)}</b></div>
-      <div>Serviços não executados: <b>${naoExecCount}</b></div>`;
+      ${linha('Receita (valor vendido)', brl(rent.receita))}
+      ${linha('Material', matTxt)}
+      ${linha('Mão de obra', moTxt)}
+      <div style="border-top:1px solid #e5e7eb;margin-top:5px;padding-top:5px">
+        ${linha('Lucro', brl(rent.lucro), rent.lucro>=0?'#16a34a':'#dc2626')}
+        ${linha('Margem', rent.margemPct==null?'—':rent.margemPct.toFixed(0)+'%', rent.lucro>=0?'#16a34a':'#dc2626')}
+      </div>
+      ${parcial?`<div style="font-size:10.5px;color:#9ca3af;margin-top:4px">${!rent.materialConhecido?'Material não lançado nesta OS. ':''}${rent.custoHora===0?'Configure o custo-hora em Produtividade para incluir a mão de obra.':''}</div>`:''}
+      <div style="margin-top:6px;color:#6b7280">Serviços não executados: <b>${naoExecCount}</b></div>`;
   }
 
   // Registro fotográfico — colunas/altura adaptam à quantidade (achado do

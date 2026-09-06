@@ -2046,7 +2046,12 @@
         <input id="prod-meta-tec" type="number" min="0" step="100" onchange="setMetaTec(this.value)"
           style="width:100px;padding:6px 8px;border:1.5px solid var(--gray-mid);border-radius:8px;font-family:'Inter',sans-serif;font-size:13px;outline:none">
       </label>
-      <div style="font-size:11px;color:var(--gray)">Comissão = faturamento das OS concluídas × %. Meta aplicada por técnico.</div>
+      <label style="font-size:12px;color:var(--gray);display:flex;align-items:center;gap:6px">
+        Custo-hora (R$)
+        <input id="prod-custo-hora" type="number" min="0" step="1" onchange="setCustoHora(this.value)"
+          style="width:90px;padding:6px 8px;border:1.5px solid var(--gray-mid);border-radius:8px;font-family:'Inter',sans-serif;font-size:13px;outline:none">
+      </label>
+      <div style="font-size:11px;color:var(--gray)">Comissão = faturamento × %. Custo-hora (salário+encargos+veículo por hora) alimenta a margem por técnico e a rentabilidade no relatório Interno da OS.</div>
     </div>
 
     <!-- Cards por técnico -->
