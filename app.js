@@ -96,6 +96,16 @@ document.addEventListener('click', e=>{
 // Intenção nomeada pro que era `novaOS();go('os')` no menu (o resto dos
 // compostos da nav colapsou: go() já fecha a sidebar; fazerLogout() também).
 function irNovaOS(){ novaOS(); go('os'); }
+// Avisa o técnico no celular quando uma OS agendada é atribuída a ele (app
+// fechado). A RPC se auto-protege: só dispara se status=agendado, tem técnico,
+// o técnico tem conta/inscrição, e ainda não avisou (push_tec_em). id 'local_'
+// (ainda não sincronizado) é ignorado — avisa só quando existir no banco.
+function _pushOSTecnico(id){
+  try{
+    if(!id || String(id).startsWith('local_') || !dbOk || !db) return;
+    db.rpc('notificar_os_tecnico', {p_os_id:String(id)}).then(()=>{}).catch(e=>console.warn('[pushOSTec]', e?.message||e));
+  }catch(e){ console.warn('[pushOSTec]', e?.message||e); }
+}
 function irNovoOrc(){ novoOrc(); go('form'); }
 // Itens do menu de engrenagem: fecham o dropdown e então agem.
 function _gearGo(p){ closeGear(); go(p); }
@@ -2336,7 +2346,7 @@ async function criarOSjunto(dados, orcNum){
       if(error) throw error;
       const num=insOS?.numero||1;
       numStr=String(num).padStart(3,'0');
-      if(insOS) todosOS.unshift(insOS); // faltava — OS não aparecia no Histórico até um reload
+      if(insOS){ todosOS.unshift(insOS); _pushOSTecnico(insOS.id); } // faltava — OS não aparecia no Histórico até um reload
     }else{
       const n=(parseInt(ls('fluxa_os_num')||'0'))+1; lsSet('fluxa_os_num',String(n));
       _salvarOSLocal(camposBase, 'local_'+Date.now(), n);
@@ -2402,7 +2412,7 @@ async function _criarOSDeOrcamento(orc, data, hora, tec){
       if(error) throw error;
       const num=insOS?.numero||1;
       numStr=String(num).padStart(3,'0');
-      if(insOS) todosOS.unshift(insOS);
+      if(insOS){ todosOS.unshift(insOS); _pushOSTecnico(insOS.id); }
     }catch(e){
       console.warn('[_criarOSDeOrcamento] falha ao salvar no banco:', e?.message||e);
       const n=(parseInt(ls('fluxa_os_num')||'0'))+1; lsSet('fluxa_os_num',String(n));
@@ -3418,6 +3428,7 @@ async function gerarOSPDF(modo='os'){
           }
           todosOS.unshift(insOS);
           osEditId=insOS.id;
+          _pushOSTecnico(insOS.id);
           // Só agora existe id real — gravar antes deixaria os materiais
           // órfãos, presos ao id local que acabou de deixar de existir.
           await _osSyncMateriais(insOS.id);
@@ -4932,6 +4943,7 @@ async function _reenviarOSLocais(soLocal){
         lista.unshift(ins);
         lsSet('fluxa_os_hist', JSON.stringify(lista.slice(0,600)));
         todosOS=todosOS.filter(x=>x.id!==rec.id);
+        _pushOSTecnico(ins.id);
         todosOS.unshift(ins);
         mudou=true;
       }
@@ -5103,6 +5115,7 @@ async function _osLoteAtribuirConfirmar(){
         // dbUpdate NÃO rejeita em erro de query — só resolve com {error}.
         // Contar sucesso sem checar isto marcaria como feito o que não foi.
         if(r?.error){ console.warn('[osLoteAtribuir]', r.error.message); falhou++; continue; }
+        _pushOSTecnico(o.id); // avisa o técnico no celular
       }catch(e){ console.warn('[osLoteAtribuir]', e?.message||e); falhou++; continue; }
     }
     o.tecnico=tec; ok++;

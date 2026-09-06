@@ -65,6 +65,7 @@ Deno.serve(async (req) => {
   const corpo = body.corpo as string | undefined;
   const url = (body.url as string | undefined) || "/";
   const perfisAlvo = body.perfis_alvo as string[] | undefined;
+  const userIdsAlvo = body.user_ids as string[] | undefined; // mira usuários específicos (ex.: o técnico da OS)
 
   if (!empresa_id || !titulo || !corpo) {
     return new Response(JSON.stringify({ error: "empresa_id, titulo e corpo são obrigatórios" }), { status: 400 });
@@ -95,6 +96,11 @@ Deno.serve(async (req) => {
 
   let alvos = subs || [];
 
+  // Filtro opcional por usuário específico (ex.: só o técnico atribuído).
+  if (userIdsAlvo?.length && alvos.length) {
+    const set = new Set(userIdsAlvo);
+    alvos = alvos.filter((s) => set.has(s.user_id as string));
+  }
   // Filtro opcional por perfil (ex.: só gestor) — junta com membros
   if (perfisAlvo?.length && alvos.length) {
     const userIds = alvos.map((s) => s.user_id);
