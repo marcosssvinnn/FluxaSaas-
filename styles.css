@@ -681,7 +681,7 @@
       .pd-fotos-section{margin-bottom:16px}
       .pd-fotos-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#9ca3af;margin-bottom:8px}
       .pd-fotos-grid{display:grid;gap:8px;margin-bottom:4px}
-      .pd-fotos-grid img{width:100%;border-radius:8px;object-fit:cover;background:#f9fafb;display:block}
+      .pd-fotos-grid img{width:100%;border-radius:8px;object-fit:contain;background:#f9fafb;display:block}
 
       /* ── OBSERVATIONS ── */
       .pd-obs-card{display:flex!important;border:1.5px solid #e9ecef;border-radius:10px;overflow:hidden;margin-bottom:16px}
