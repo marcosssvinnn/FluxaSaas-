@@ -596,7 +596,9 @@ async function authEsqueciSenha(){
   const link=document.getElementById('auth-esqueci-link'); const _t=link?link.textContent:'';
   if(link) link.textContent='Enviando…';
   try{
-    const redirectTo = location.origin+location.pathname+'#recuperar';
+    // SEM '#recuperar': o Supabase acrescenta '#access_token=...&type=recovery',
+    // então um '#recuperar' aqui viraria hash DUPLO e quebraria o parse do token.
+    const redirectTo = location.origin+location.pathname;
     const { error } = await db.auth.resetPasswordForEmail(email, { redirectTo });
     if(error) throw error;
     if(err){ err.style.color='#16a34a'; err.textContent='📧 Link de recuperação enviado para '+email+'. Veja seu e-mail (e o spam).'; }
@@ -1466,10 +1468,22 @@ function lsOrcProxNum(){ return lsOrcLer().reduce((a,o)=>Math.max(a,o.numero||0)
     try{ db.auth.onAuthStateChange((_ev, s)=>{ authUser = s?.user || null; if(_ev==='PASSWORD_RECOVERY') mostrarTelaRecuperar(); }); }catch(e){ console.warn('[onAuthStateChange]', e?.message||e); }
   }
 
-  // Recuperação de senha: o link do e-mail traz o token de recovery no hash. Mostra o
-  // form de NOVA SENHA antes de qualquer auto-login (a sessão de recovery é temporária).
-  if(temCreds && /type=recovery|recuperar/i.test(location.hash||'')){
-    mostrarTelaRecuperar();
+  // Recuperação de senha: o link do e-mail traz access_token+refresh_token no
+  // hash. O redirect antigo gerava '#recuperar#access_token=...' (hash DUPLO),
+  // que o supabase-js NÃO parseia → a sessão de recovery não era criada e salvar
+  // a nova senha falhava com "link expirado" mesmo o link estando válido.
+  // Extrai os tokens na mão (tolerando o prefixo 'recuperar#') e estabelece a
+  // sessão ANTES do form. Cobre o formato antigo (links já enviados) e o novo.
+  if(temCreds && /access_token=|type=recovery|recuperar/i.test(location.hash||'')){
+    (async()=>{
+      try{
+        const h=(location.hash||'').replace(/^#/,'').replace(/^recuperar#?/,'');
+        const prm=new URLSearchParams(h);
+        const at=prm.get('access_token'), rt=prm.get('refresh_token');
+        if(at && rt && db.auth && db.auth.setSession){ await db.auth.setSession({access_token:at, refresh_token:rt}); }
+      }catch(e){ console.warn('[recovery setSession]', e?.message||e); }
+      mostrarTelaRecuperar();
+    })();
     return;
   }
 
