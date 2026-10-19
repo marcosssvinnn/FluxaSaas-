@@ -538,6 +538,17 @@
       <button data-act="go" data-a="form" style="background:none;border:none;cursor:pointer;color:var(--gray);font-size:13px;font-weight:600;font-family:'Inter',sans-serif;display:flex;align-items:center;gap:5px">← Voltar</button>
       <span style="font-size:18px;font-weight:800;color:var(--c2)">⚙️ Configurações da Empresa</span>
     </div>
+    <!-- Senha da conta (dono/gestor com login por e-mail). Aparece só pra quem
+         entrou por conta — perfis internos (PIN) usam resetar PIN em Usuários. -->
+    <div class="card" id="cfg-senha-card" style="display:none">
+      <div class="ct">🔑 Senha da conta</div>
+      <div class="row">
+        <div class="fl"><label>Nova senha (mín. 6)</label><input type="password" id="cfg-nova-senha" autocomplete="new-password" placeholder="••••••"></div>
+        <div class="fl"><label>Confirmar</label><input type="password" id="cfg-nova-senha2" autocomplete="new-password" placeholder="••••••"></div>
+      </div>
+      <div id="cfg-senha-msg" style="font-size:12px;margin:4px 0 8px;min-height:14px"></div>
+      <button class="btn-primary" id="cfg-senha-btn" data-act="trocarSenhaConta">Salvar nova senha</button>
+    </div>
     <div class="card">
       <div class="ct">Identidade da Empresa</div>
 

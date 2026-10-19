@@ -611,6 +611,30 @@ function mostrarTelaRecuperar(){
   const r=document.getElementById('login-step-recuperar'); if(r) r.style.display='';
   try{ resetMarcaSaaS(); }catch(e){}
 }
+// Trocar a senha estando logado (dono/gestor por conta). Fecha o buraco de só
+// dar pra definir senha pelo fluxo de recuperação. updateUser usa a sessão ativa.
+async function trocarSenhaConta(){
+  const s1=gV('cfg-nova-senha')||'', s2=gV('cfg-nova-senha2')||'';
+  const msg=document.getElementById('cfg-senha-msg'); if(msg){ msg.style.color=''; msg.textContent=''; }
+  if(s1.length<6){ if(msg){ msg.style.color='var(--red)'; msg.textContent='A senha precisa de ao menos 6 caracteres.'; } return; }
+  if(s1!==s2){ if(msg){ msg.style.color='var(--red)'; msg.textContent='As senhas não conferem.'; } return; }
+  if(!db||!db.auth){ if(msg){ msg.style.color='var(--red)'; msg.textContent='Banco não conectado.'; } return; }
+  const btn=document.getElementById('cfg-senha-btn'); const _t=btn?btn.textContent:''; if(btn){ btn.disabled=true; btn.textContent='Salvando…'; }
+  try{
+    const { error } = await db.auth.updateUser({ password: s1 });
+    if(error) throw error;
+    if(msg){ msg.style.color='#16a34a'; msg.textContent='✅ Senha alterada! Use a nova no próximo login.'; }
+    setV('cfg-nova-senha',''); setV('cfg-nova-senha2','');
+  }catch(e){ console.warn('[trocarSenhaConta]', e?.message||e); if(msg){ msg.style.color='var(--red)'; msg.textContent='Não foi possível alterar: '+(e?.message||'tente de novo'); } }
+  finally{ if(btn){ btn.disabled=false; btn.textContent=_t; } }
+}
+// Mostra o card de senha só pra quem entrou por CONTA (tem authUser). Perfil
+// interno por PIN não tem senha de conta — reseta o PIN em Usuários.
+function _cfgAtualizarCardSenha(){
+  const card=document.getElementById('cfg-senha-card'); if(!card) return;
+  card.style.display = authUser ? '' : 'none';
+}
+
 async function authNovaSenha(){
   const s1=gV('rec-senha')||'', s2=gV('rec-senha2')||'';
   const err=document.getElementById('rec-err'); if(err) err.textContent='';
@@ -2245,7 +2269,7 @@ function go(p){
   }
   if(p==='os-history') loadOSHist();
   if(p==='clientes'){ renderClientes(); carregarClientesRemoto(); }
-  if(p==='empresa') preencherFormEmpresa();
+  if(p==='empresa'){ preencherFormEmpresa(); _cfgAtualizarCardSenha(); }
   if(p==='equipamentos'){
     loadEquipamentos();
     if(typeof loadPiscinas==='function') Promise.resolve(loadPiscinas()).then(()=>{ if(typeof _eqRenderPiscinas==='function') _eqRenderPiscinas(); }).catch(e=>console.warn('[go equipamentos loadPiscinas]', e?.message||e));
