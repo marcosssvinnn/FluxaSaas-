@@ -1,9 +1,9 @@
     /* ── CSS VARIABLES (white-label via JS) ── */
     :root {
-      --c1: #C45E0A;
+      --c1: #FF6A00;
       --c1-light: #FFF3E8;
       --c1-mid: #fde8d0;
-      --c2: #2B3244;
+      --c2: #0A2840;
       --c2b: #3d4a63;
       --gray: #6b7280;
       --gray-light: #f3f4f6;
@@ -626,7 +626,7 @@
       .pd-hdr-sub{font-size:8px;font-weight:700;letter-spacing:3px;color:rgba(255,255,255,.65);text-transform:uppercase;margin-top:2px}
       .pd-hdr-tagline{font-size:11px;color:rgba(255,255,255,.82);margin-top:3px;font-style:italic;line-height:1.4}
       .pd-escopo{margin-bottom:14px}
-      .pd-escopo-txt{font-size:13px;color:#374151;line-height:1.65;background:#f8f9fb;border-left:3px solid var(--c1,#C45E0A);padding:10px 14px;border-radius:0 8px 8px 0;white-space:pre-wrap}
+      .pd-escopo-txt{font-size:13px;color:#374151;line-height:1.65;background:#f8f9fb;border-left:3px solid var(--c1,#FF6A00);padding:10px 14px;border-radius:0 8px 8px 0;white-space:pre-wrap}
       .pd-hdr-doc{text-align:right;flex-shrink:0}
       .pd-doctype-badge{display:inline-block;border:1.5px solid rgba(255,255,255,.4);color:rgba(255,255,255,.8);font-size:8px;font-weight:700;padding:3px 10px;border-radius:50px;letter-spacing:2px;text-transform:uppercase;margin-bottom:6px}
       .pd-docnum{font-size:30px;font-weight:800;color:white;line-height:1;letter-spacing:-1px}

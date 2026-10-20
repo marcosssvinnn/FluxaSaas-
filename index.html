@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Fluxa">
-  <meta name="theme-color" content="#C45E0A">
+  <meta name="theme-color" content="#FF6A00">
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
@@ -189,7 +189,7 @@
 <div id="legal-overlay" style="display:none;position:fixed;inset:0;z-index:9000;background:var(--bg,#f4f5f7);overflow-y:auto">
   <div style="max-width:760px;margin:0 auto;padding:24px 18px 60px">
     <button data-act="fecharLegal" style="background:none;border:none;color:var(--c1);font-size:15px;font-weight:600;cursor:pointer;padding:8px 0;margin-bottom:8px">← Voltar</button>
-    <div id="legal-body" style="font-size:14.5px;line-height:1.65;color:var(--c2,#2B3244)"></div>
+    <div id="legal-body" style="font-size:14.5px;line-height:1.65;color:var(--c2,#0A2840)"></div>
   </div>
 </div>
 
@@ -567,14 +567,14 @@
       <div class="row">
         <div class="fl"><label>Cor principal</label>
           <div class="color-row">
-            <input type="color" id="cfg-cor" value="#C45E0A" oninput="previewCfg()">
-            <input type="text" id="cfg-cor-txt" value="#C45E0A" oninput="syncCor(this.value)">
+            <input type="color" id="cfg-cor" value="#FF6A00" oninput="previewCfg()">
+            <input type="text" id="cfg-cor-txt" value="#FF6A00" oninput="syncCor(this.value)">
           </div>
         </div>
         <div class="fl"><label>Cor secundária (textos/fundo)</label>
           <div class="color-row">
-            <input type="color" id="cfg-cor2" value="#2B3244" oninput="previewCfg()">
-            <input type="text" id="cfg-cor2-txt" value="#2B3244" oninput="syncCor2(this.value)">
+            <input type="color" id="cfg-cor2" value="#0A2840" oninput="previewCfg()">
+            <input type="text" id="cfg-cor2-txt" value="#0A2840" oninput="syncCor2(this.value)">
           </div>
         </div>
       </div>
@@ -3108,7 +3108,7 @@
       <div class="cal-wrap"><table class="cal" id="cal-tabela"></table></div>
       <div style="display:flex;gap:12px;flex-wrap:wrap;padding:10px 4px 0;font-size:11px;color:var(--gray)">
         <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:3px;background:#7c3aed;display:inline-block"></span>🔍 Vistoria mensal</span>
-        <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:3px;background:#c45e0a;display:inline-block"></span>📄 Do orçamento</span>
+        <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:3px;background:#FF6A00;display:inline-block"></span>📄 Do orçamento</span>
         <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:3px;background:#2563eb;display:inline-block"></span>🔧 Serviço avulso</span>
         <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:3px;background:#16a34a;display:inline-block"></span>✅ Concluída</span>
       </div>
@@ -3331,10 +3331,10 @@ window.onerror = function(msg, src, line, col, err){
 <!-- Tela de erro amigável (oculta por padrão) -->
 <div id="fluxa-error-screen" style="display:none;position:fixed;inset:0;z-index:99999;background:#f0f2f5;flex-direction:column;align-items:center;justify-content:center;font-family:'Inter',sans-serif;padding:24px;text-align:center">
   <div style="font-size:48px;margin-bottom:16px">⚠️</div>
-  <div style="font-size:20px;font-weight:800;color:#2B3244;margin-bottom:8px">Algo deu errado</div>
+  <div style="font-size:20px;font-weight:800;color:#0A2840;margin-bottom:8px">Algo deu errado</div>
   <div style="font-size:14px;color:#6b7280;margin-bottom:6px">O app encontrou um erro inesperado.</div>
   <div id="fluxa-error-detail" style="font-size:11px;color:#9ca3af;background:#e5e7eb;border-radius:8px;padding:8px 14px;margin-bottom:24px;max-width:480px;word-break:break-word"></div>
-  <button onclick="window.location.reload()" style="background:#C45E0A;color:white;border:none;border-radius:10px;padding:12px 28px;font-size:15px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif">🔄 Recarregar o app</button>
+  <button onclick="window.location.reload()" style="background:#FF6A00;color:white;border:none;border-radius:10px;padding:12px 28px;font-size:15px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif">🔄 Recarregar o app</button>
   <div style="margin-top:12px;font-size:12px;color:#9ca3af">Seus dados estão salvos — nada foi perdido.</div>
 </div>
 

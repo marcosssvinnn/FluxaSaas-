@@ -849,7 +849,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // boot antes da posição original (~l.1562) e um `const` em TDZ estourava
 // ("Cannot access 'SAAS_C1' before initialization"), abortando o reset da cor —
 // então o --c1 da empresa (cache) vazava no pré-login. Ver resetMarcaSaaS/aplicarCFG.
-const SAAS_C1 = '#F07820', SAAS_C2 = '#2B3244';
+const SAAS_C1 = '#FF6A00', SAAS_C2 = '#0A2840';
 
 // ══════════════════════════════════════════════════
 //  CONTEXTO DA EMPRESA (tenant ativo) — populado APÓS o login
@@ -1365,7 +1365,7 @@ function voltarParaPin(){
 // ══════════════════════════════════════════════════
 const CFG_DEF = {
   nome:'Minha Empresa', sub:'Serviços', tel:'', whatsapp:'', cidades:'',
-  tagline:'', cor:'#C45E0A', cor2:'#2B3244', logoB64:'', segmento:'geral',
+  tagline:'', cor:'#FF6A00', cor2:'#0A2840', logoB64:'', segmento:'geral',
   svcs:['Serviço 1','Serviço 2','Serviço 3'], pin:'1234',
   // v2 multi-tenant: SEM técnicos padrão chumbados (ver seedTecnicosIniciais) —
   // cada empresa cadastra os seus na tela Usuários. Esses 4 nomes eram da
@@ -1945,14 +1945,14 @@ function renderLojasBrandingUI(){
       <div class="row">
         <div class="fl"><label>Cor principal</label>
           <div class="color-row">
-            <input type="color" id="loja-cfg-cor-${loja.id}" value="${ec.cor||CFG.cor||'#C45E0A'}">
-            <input type="text" value="${ec.cor||CFG.cor||'#C45E0A'}" oninput="document.getElementById('loja-cfg-cor-${loja.id}').value=this.value" placeholder="#C45E0A">
+            <input type="color" id="loja-cfg-cor-${loja.id}" value="${ec.cor||CFG.cor||'#FF6A00'}">
+            <input type="text" value="${ec.cor||CFG.cor||'#FF6A00'}" oninput="document.getElementById('loja-cfg-cor-${loja.id}').value=this.value" placeholder="#FF6A00">
           </div>
         </div>
         <div class="fl"><label>Cor secundária</label>
           <div class="color-row">
-            <input type="color" id="loja-cfg-cor2-${loja.id}" value="${ec.cor2||CFG.cor2||'#2B3244'}">
-            <input type="text" value="${ec.cor2||CFG.cor2||'#2B3244'}" oninput="document.getElementById('loja-cfg-cor2-${loja.id}').value=this.value" placeholder="#2B3244">
+            <input type="color" id="loja-cfg-cor2-${loja.id}" value="${ec.cor2||CFG.cor2||'#0A2840'}">
+            <input type="text" value="${ec.cor2||CFG.cor2||'#0A2840'}" oninput="document.getElementById('loja-cfg-cor2-${loja.id}').value=this.value" placeholder="#0A2840">
           </div>
         </div>
       </div>
@@ -3995,7 +3995,7 @@ function renderGraficoDash(){
   });
 
   if(_dashChart){ try{_dashChart.destroy();}catch(e){} _dashChart=null; }
-  const cor=getComputedStyle(document.documentElement).getPropertyValue('--c1').trim()||'#C45E0A';
+  const cor=getComputedStyle(document.documentElement).getPropertyValue('--c1').trim()||'#FF6A00';
   // Barras mais finas quando há muitos meses
   const muitosMeses=meses.length>12;
 
@@ -4444,7 +4444,7 @@ function renderTabela(){
         <button class="tb" title="Ver PDF" onclick="verOrcPDF('${o.id}')">👁</button>
         <button class="tb" title="Editar" onclick="abrirOrc('${o.id}')">✎</button>
         <button class="tb" title="Duplicar" onclick="duplicarOrc('${o.id}')">⧉</button>
-        ${(()=>{ const osVinc=(todosOS||[]).find(x=>x.orcamento_id===o.id); if(osVinc){ const stOS=osVinc.status||'agendado'; const stLabel={agendado:'agendada',em_andamento:'em andamento',concluido:'concluída'}[stOS]||stOS; return `<button class="tb" title="OS #${String(osVinc.numero||'').padStart(3,'0')} — ${stLabel}" onclick="verDetalhesOS('${osVinc.id}')" style="background:#16a34a;color:white;border-color:#16a34a;font-weight:700">✅ OS#${String(osVinc.numero||'').padStart(3,'0')}</button>`; } if(o.status==='aprovado') return `<button class="tb" title="Gerar Ordem de Serviço" onclick="gerarOS_deOrc('${o.id}')" style="background:#C45E0A;color:white;border-color:#C45E0A;font-weight:700">📋 Gerar OS</button>`; return `<button class="tb" title="Gerar OS" onclick="gerarOS_deOrc('${o.id}')">📋</button>`; })()}
+        ${(()=>{ const osVinc=(todosOS||[]).find(x=>x.orcamento_id===o.id); if(osVinc){ const stOS=osVinc.status||'agendado'; const stLabel={agendado:'agendada',em_andamento:'em andamento',concluido:'concluída'}[stOS]||stOS; return `<button class="tb" title="OS #${String(osVinc.numero||'').padStart(3,'0')} — ${stLabel}" onclick="verDetalhesOS('${osVinc.id}')" style="background:#16a34a;color:white;border-color:#16a34a;font-weight:700">✅ OS#${String(osVinc.numero||'').padStart(3,'0')}</button>`; } if(o.status==='aprovado') return `<button class="tb" title="Gerar Ordem de Serviço" onclick="gerarOS_deOrc('${o.id}')" style="background:#FF6A00;color:white;border-color:#FF6A00;font-weight:700">📋 Gerar OS</button>`; return `<button class="tb" title="Gerar OS" onclick="gerarOS_deOrc('${o.id}')">📋</button>`; })()}
         ${orcTemEntregaPendente(o)?`<button class="tb g" title="Marcar como entregue (baixa do estoque)" onclick="entregarOrcamento(getNC('${o.id}'),'manual')">📦 Entregar</button>`:''}
         ${o.status==='aprovado'&&(o.servicos||[]).length?`<button class="tb" title="Ordem de Entrega — papel que vai junto com o material, pra quem recebe conferir e assinar" onclick="gerarOrdemEntrega('${o.id}')">🧾 Entrega</button>`:''}
         ${ocultarFinanceiro?'':(_recebDoOrc(o.id).length
@@ -9631,7 +9631,7 @@ function renderCal(){
         if(o.status==='concluido'){ extraStyle='background:#16a34a;'; emoji='✅ '; }
         else if(o.status==='cancelado'){ extraStyle='background:#9ca3af;'; emoji='🚫 '; }
         else if(tipo==='vistoria'){ extraStyle='background:#7c3aed;'; emoji='🔍 '; }
-        else if(tipo==='orcamento'){ extraStyle='background:#c45e0a;'; emoji='📄 '; }
+        else if(tipo==='orcamento'){ extraStyle='background:#FF6A00;'; emoji='📄 '; }
         // avulso fica com a classe cal-ev padrão (azul)
         const evLabel=emoji+esc((o.cliente||'').split(' ')[0]);
         const title=`${esc(o.cliente||'')} — ${esc(o.tecnico||'')}${tipo==='vistoria'?' [Vistoria]':tipo==='orcamento'?' [Do orçamento]':' [Avulsa]'}`;
@@ -9664,7 +9664,7 @@ function verDetalhesOS(id){
   const tipo=_osTipo(o);
   const statusLabel={agendado:'📋 Agendado',concluido:'✅ Concluído',cancelado:'🚫 Cancelado',em_andamento:'🔧 Em andamento'};
   const tipoBg={vistoria:'#f3e8ff',orcamento:'#fff7ed',servico:'#eff6ff'};
-  const tipoCor={vistoria:'#7c3aed',orcamento:'#c45e0a',servico:'#1d4ed8'};
+  const tipoCor={vistoria:'#7c3aed',orcamento:'#FF6A00',servico:'#1d4ed8'};
   const tipoLabel={vistoria:'🔍 Vistoria mensal',orcamento:'📄 Do orçamento',servico:'🔧 Serviço avulso'};
   const dataFmt=o.data_servico?new Date(o.data_servico+'T12:00:00').toLocaleDateString('pt-BR'):'—';
   const svcs=Array.isArray(o.servicos)?o.servicos.map(s=>typeof s==='string'?s:(s.desc||s)).filter(Boolean).join(', '):'—';
@@ -13130,7 +13130,7 @@ function abrirVisRelatorio(id){
       .pdoc{display:block!important;max-width:794px;margin:0 auto;
             box-shadow:0 4px 24px rgba(0,0,0,.15);border-radius:8px;overflow:hidden}
       #btn-baixar-pdf{position:fixed;top:16px;left:50%;transform:translateX(-50%);
-        background:#F07820;color:#fff;border:none;border-radius:10px;
+        background:#FF6A00;color:#fff;border:none;border-radius:10px;
         padding:12px 28px;font-size:15px;font-weight:700;cursor:pointer;
         box-shadow:0 4px 16px rgba(0,0,0,.2);z-index:9999;font-family:Inter,sans-serif;
         display:flex;align-items:center;gap:8px;white-space:nowrap}
@@ -13200,8 +13200,8 @@ function preencherRelatorioVistoria(vis){
   pdoc.classList.add('print-active');
 
   const LC = getLojaConfig(vis.loja_id);
-  const cor  = LC.cor  || getComputedStyle(document.documentElement).getPropertyValue('--c1').trim()||'#C45E0A';
-  const cor2 = LC.cor2 || getComputedStyle(document.documentElement).getPropertyValue('--c2').trim()||'#2B3244';
+  const cor  = LC.cor  || getComputedStyle(document.documentElement).getPropertyValue('--c1').trim()||'#FF6A00';
+  const cor2 = LC.cor2 || getComputedStyle(document.documentElement).getPropertyValue('--c2').trim()||'#0A2840';
 
   // Header branding
   const hdr = document.getElementById('pd-header-vis');
@@ -13382,8 +13382,8 @@ function preencherRelatorioOS(os, versao){
   pdoc.classList.add('print-active');
 
   const LC=getLojaConfig(os.loja_id);
-  const cor=LC.cor||getComputedStyle(document.documentElement).getPropertyValue('--c1').trim()||'#C45E0A';
-  const cor2=LC.cor2||getComputedStyle(document.documentElement).getPropertyValue('--c2').trim()||'#2B3244';
+  const cor=LC.cor||getComputedStyle(document.documentElement).getPropertyValue('--c1').trim()||'#FF6A00';
+  const cor2=LC.cor2||getComputedStyle(document.documentElement).getPropertyValue('--c2').trim()||'#0A2840';
 
   const hdr=document.getElementById('pd-header-ros');
   if(hdr) hdr.style.background=`linear-gradient(135deg,${cor2},${cor2}ee)`;
