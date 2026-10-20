@@ -3422,7 +3422,17 @@ function _salvarOSLocal(camposBase, tempId, numero){
   return rec;
 }
 
+let _gerandoOSPDF=false;
 async function gerarOSPDF(modo='os'){
+  // Trava anti-reentrância: salvar faz upload de fotos + grava no banco ANTES de
+  // imprimir (segundos, em conexão lenta). Sem isto, clicar "Salvar OS" de novo
+  // durante a espera empilhava vários window.print() → o diálogo de salvar PDF
+  // aparecia várias vezes seguidas (bug reportado pelo Marcos em 20/10).
+  if(_gerandoOSPDF) return;
+  _gerandoOSPDF=true;
+  const _osPdfBtns=['btn-os-pdf','btn-os-both'].map(id=>document.getElementById(id)).filter(Boolean);
+  _osPdfBtns.forEach(b=>{ b.disabled=true; b.style.opacity='.55'; b.style.pointerEvents='none'; });
+  try{
   const dados={
     cli:gV('os-cli')||'—', loc:gV('os-loc'), cnpj:gV('os-cnpj')||null, cpf:gV('os-cpf')||null, data:gV('os-data'), hora:gV('os-hora'),
     tec:gV('os-tec'), tot:parseFloat(gV('os-total'))||0,
@@ -3520,6 +3530,10 @@ async function gerarOSPDF(modo='os'){
   imprimirDoc(modo);
   // OS salva → limpa o rascunho para não vazar dados na próxima OS
   if(numStr!=='???') limparRascunho('os');
+  } finally {
+    _gerandoOSPDF=false;
+    _osPdfBtns.forEach(b=>{ b.disabled=false; b.style.opacity=''; b.style.pointerEvents=''; });
+  }
 }
 
 function preencherDocOS(d, num){
