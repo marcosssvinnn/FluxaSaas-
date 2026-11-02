@@ -7051,7 +7051,7 @@ window.addEventListener('afterprint',()=>{
 // então o `.pdoc` ficava display:none e o PDF saía EM BRANCO no celular.
 // imprimirDoc() aplica a classe print-active MANUALMENTE antes de window.print(),
 // sem depender do evento. Use SEMPRE isto no lugar de `printMode=x; window.print()`.
-function imprimirDoc(modo){
+async function imprimirDoc(modo){
   printMode = modo;
   const showOrc = modo==='orc' || modo==='both';
   const showOs  = modo==='os'  || modo==='both';
@@ -7071,6 +7071,19 @@ function imprimirDoc(modo){
   _printTitleBackup = document.title;
   const nome = _nomeArquivoImpressao(modo);
   if(nome) document.title = nome;
+  // A logo da empresa é um data URL setado logo ANTES daqui (preencherDoc*). Uma
+  // imagem recém-setada NÃO está pronta no mesmo tick (confirmado: img.complete=
+  // false logo após o src), então o window.print() síncrono capturava o cabeçalho
+  // SEM a logo (saía caixa vazia). Espera o decode das logos visíveis antes de
+  // imprimir, com teto de tempo pra nunca travar a impressão.
+  try{
+    const imgs=[...document.querySelectorAll('.print-active .pd-hdr-logo-img.has-logo')];
+    await Promise.race([
+      Promise.all(imgs.map(im=> (im.complete && im.naturalWidth>0) ? null
+        : (im.decode ? im.decode().catch(()=>{}) : new Promise(res=>{ im.onload=im.onerror=res; })))),
+      new Promise(res=>setTimeout(res, 800))
+    ]);
+  }catch(e){}
   window.print();
 }
 
