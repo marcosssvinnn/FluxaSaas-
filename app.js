@@ -3452,7 +3452,12 @@ async function gerarOSPDF(modo='os'){
       // base64). Se o upload falhar, a foto fica de fora (não perde no PDF gerado agora,
       // só não fica sincronizada no banco até um próximo salvamento bem-sucedido).
       const storageId = (osEditId && !String(osEditId).startsWith('local_')) ? osEditId : ('os_'+Date.now());
-      const fotosUp = await _osFotosParaStorage(dados.fotos, storageId);
+      // Upload de fotos NÃO pode derrubar o salvamento da OS. Se o Storage falhar,
+      // cai pro base64 (durável no próprio registro) em vez de abortar tudo — era
+      // uma das causas de a OS "sumir"/duplicar (o throw caía no catch de erro).
+      let fotosUp;
+      try{ fotosUp = await _osFotosParaStorage(dados.fotos, storageId); }
+      catch(ef){ console.warn('[gerarOSPDF] upload de fotos falhou — mantém base64', ef?.message||ef); fotosUp = dados.fotos; }
       const payload={...camposBase, fotos:fotosUp};
       if(osEditId && !String(osEditId).startsWith('local_')){
         // EDIÇÃO: atualiza a OS existente (mantém número e status)
@@ -3484,11 +3489,26 @@ async function gerarOSPDF(modo='os'){
       }
     }catch(e){
       console.warn('[gerarOSPDF] falha ao salvar OS no banco:', e?.message||e);
-      toast('⚠️ Sem conexão com o banco — OS salva só neste aparelho');
-      const n=osEditId&&String(osEditId).startsWith('local_') ? (todosOS.find(x=>x.id===osEditId)?.numero||((parseInt(ls('fluxa_os_num')||'0'))+1)) : ((parseInt(ls('fluxa_os_num')||'0'))+1);
-      if(!(osEditId&&String(osEditId).startsWith('local_'))) lsSet('fluxa_os_num',String(n));
-      const tempId = (osEditId && String(osEditId).startsWith('local_')) ? osEditId : ('local_'+Date.now());
-      _salvarOSLocal(camposBase, tempId, n);
+      // NUNCA cria uma OS nova aqui quando se está EDITANDO uma que já existe — era
+      // isso que DUPLICAVA (a #NNN seguia no banco e nascia uma local_ nova com outro
+      // número). Editando (osEditId setado): preserva o MESMO id e número; se o id for
+      // do banco, marca _pendUpd pra ressincronizar como UPDATE (nunca como insert novo).
+      const existente = osEditId ? todosOS.find(x=>x.id===osEditId) : null;
+      let n, tempId, pend=false;
+      if(osEditId){
+        tempId = osEditId;
+        n = existente?.numero || (parseInt(ls('fluxa_os_num')||'0')+1);
+        pend = !String(osEditId).startsWith('local_'); // id do banco → precisa de UPDATE, não insert
+        toast('⚠️ Não deu pra sincronizar agora — salvo neste aparelho, sincroniza sozinho depois');
+      } else {
+        n = parseInt(ls('fluxa_os_num')||'0')+1;
+        lsSet('fluxa_os_num', String(n));
+        tempId = 'local_'+Date.now();
+        toast('📴 Sem conexão — OS salva neste aparelho, sincroniza depois');
+      }
+      const rec = {...(existente||{}), ...camposBase, fotos:dados.fotos};
+      if(pend) rec._pendUpd = true;
+      _salvarOSLocal(rec, tempId, n);
       osEditId=tempId;
       numStr=String(n).padStart(3,'0');
     }
@@ -5002,7 +5022,19 @@ async function _reenviarOSLocais(soLocal){
   let mudou=false;
   for(const rec of soLocal){
     try{
-      const payload={...rec}; delete payload.id; // banco gera o id definitivo
+      if(rec._pendUpd && !String(rec.id).startsWith('local_')){
+        // Edição de uma OS que JÁ existe no banco e não sincronizou → UPDATE pelo
+        // mesmo id (nunca insert — senão duplicaria). Tira o flag ao conseguir.
+        const payload={...rec}; const upId=payload.id; delete payload.id; delete payload._pendUpd;
+        const {error}=await db.from('ordens_servico').update(payload).eq('id',upId);
+        if(error){ console.warn('[reenvioOSUpd] update falhou:', error.message); continue; }
+        const lista=JSON.parse(ls('fluxa_os_hist')||'[]').map(x=>{ if(x.id!==upId) return x; const c={...x}; delete c._pendUpd; return c; });
+        lsSet('fluxa_os_hist', JSON.stringify(lista.slice(0,600)));
+        const im=todosOS.findIndex(x=>x.id===upId); if(im>=0) delete todosOS[im]._pendUpd;
+        mudou=true;
+        continue;
+      }
+      const payload={...rec}; delete payload.id; delete payload._pendUpd; // banco gera o id definitivo
       const {data:ins,error}=await dbInsertNumerado('ordens_servico',payload);
       if(error){ console.warn('[reenvioOSLocal] falhou #'+(rec.numero||'?')+':', error.message); continue; }
       if(ins){
@@ -5034,13 +5066,19 @@ async function loadOSHist(){
       if(error) throw error;
       _osServidorOffset=data.length; _osTemMais=data.length===_OS_PAGE;
       const dbIds=new Set((data||[]).map(x=>x.id));
-      const soLocal=todosOS.filter(x=>String(x.id).startsWith('local_')&&!dbIds.has(x.id));
-      todosOS=[...(data||[]),...soLocal];
+      const localArr=JSON.parse(ls('fluxa_os_hist')||'[]');
+      const soLocal=localArr.filter(x=>String(x.id).startsWith('local_')&&!dbIds.has(x.id));
+      // Edições de OS do banco que ainda não sincronizaram: a versão LOCAL (pendente)
+      // tem que vencer a do banco, senão o reload apagaria a alteração.
+      const pendUpd=localArr.filter(x=>x._pendUpd && dbIds.has(x.id));
+      const pendMap=new Map(pendUpd.map(x=>[x.id,x]));
+      todosOS=[...(data||[]).map(d=> pendMap.get(d.id) || d), ...soLocal];
       lsSet('fluxa_os_hist', JSON.stringify(todosOS.slice(0,600)));
       renderOSTabela(); _refreshPainelIndicadores();
-      // Recupera OS presas só no aparelho (não sincronizadas) → reenvia ao banco
-      if(soLocal.length){
-        const mudou=await _reenviarOSLocais(soLocal);
+      // Recupera o que está preso no aparelho: inserts (local_) e updates pendentes (_pendUpd)
+      const pendentes=[...soLocal,...pendUpd];
+      if(pendentes.length){
+        const mudou=await _reenviarOSLocais(pendentes);
         if(mudou) renderOSTabela();
       }
     }catch(e){ console.warn('loadOSHist erro:',e.message); }
@@ -16490,7 +16528,7 @@ function _temPendentes(){
     if((typeof lsOrcLer==='function'?lsOrcLer():[]).some(o=>String(o.id).startsWith('local_'))) return true;
     if((typeof lsVisLer==='function'?lsVisLer():[]).some(v=>v&&v._pendingSync===true)) return true;
     if((typeof lsAgLer==='function'?lsAgLer():[]).some(a=>String(a.id).startsWith('ag_'))) return true;
-    if(JSON.parse(ls('fluxa_os_hist')||'[]').some(o=>String(o.id).startsWith('local_'))) return true;
+    if(JSON.parse(ls('fluxa_os_hist')||'[]').some(o=>String(o.id).startsWith('local_')||o._pendUpd)) return true;
   }catch(e){ console.warn('[temPendentes]', e?.message||e); }
   return false;
 }
@@ -16502,7 +16540,7 @@ async function _reenviarPendentes(silencioso=true){
     // Orçamentos presos só no aparelho (id local_*)
     try{ const soLocal=(typeof lsOrcLer==='function'?lsOrcLer():[]).filter(o=>String(o.id).startsWith('local_')); if(soLocal.length) await _reenviarOrcamentosLocais(soLocal); }catch(e){ console.warn('[reenvio orc]',e?.message||e); }
     // OS presas só no aparelho (id local_*)
-    try{ const soLocalOS=JSON.parse(ls('fluxa_os_hist')||'[]').filter(o=>String(o.id).startsWith('local_')); if(soLocalOS.length) await _reenviarOSLocais(soLocalOS); }catch(e){ console.warn('[reenvio os]',e?.message||e); }
+    try{ const soLocalOS=JSON.parse(ls('fluxa_os_hist')||'[]').filter(o=>String(o.id).startsWith('local_')||o._pendUpd); if(soLocalOS.length) await _reenviarOSLocais(soLocalOS); }catch(e){ console.warn('[reenvio os]',e?.message||e); }
     // Vistorias pendentes (loadVistoriasRemoto reenvia as _pendingSync + sobe fotos)
     try{ await loadVistoriasRemoto?.(); }catch(e){ console.warn('[reenvio vis]',e?.message||e); }
     // Agendamentos presos (loadAgendamentos agora faz merge + reenvio)
