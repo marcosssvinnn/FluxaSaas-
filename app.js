@@ -1376,6 +1376,10 @@ const CFG_DEF = {
   notif_concluida: 'Olá, {nome}! ✅\n\nO serviço foi concluído com sucesso!\n\n🔧 Serviço: {servico}\n👤 Técnico: {tecnico}\n\nAcesse seu portal para ver o histórico completo:\n{link_portal}\n\n*{empresa}*\n📞 {tel_empresa}',
   notif_orcamento: 'Olá, {nome}! 📋\n\nPreparamos um orçamento especial para você:\n\n🔧 Serviços: {servico}\n💰 Valor Total: {valor}\n\nAcesse seu portal para aprovar ou recusar:\n{link_portal}\n\nO orçamento é válido por 5 dias. Qualquer dúvida é só falar!\n\n*{empresa}*\n📞 {tel_empresa}',
   notif_garantia: 'Olá, {nome}! ⚠️\n\nA garantia do seu equipamento está vencendo em breve.\n\n🔧 Equipamento: {servico}\n\nEntre em contato para verificarmos a situação!\n\n*{empresa}*\n📞 {tel_empresa}',
+  // Pós-serviço: retorno ao cliente N dias depois da OS concluída pra saber se
+  // está tudo certo. pos_servico_dias=0 desliga a feature. Diferencial do Marcos.
+  pos_servico_dias: 15,
+  notif_pos_servico: 'Olá, {nome}! 😊\n\nAqui é da {empresa}. Faz alguns dias que concluímos o serviço e eu queria saber: está tudo certo? Surgiu alguma dúvida ou alguma coisa em que eu possa ajudar?\n\nFaço questão de acompanhar depois do serviço — qualquer necessidade, é só me chamar por aqui.\n\n*{empresa}*\n📞 {tel_empresa}',
   // v2: SEM chaves EmailJS chumbadas. Cada empresa configura as suas em Empresa →
   // E-mail Automático; ficam em empresas.config.emailjs = {pubkey, service, template}.
   emailjs: {}
@@ -1901,6 +1905,8 @@ function preencherFormEmpresa(){
   setV('cfg-notif-concluida', CFG.notif_concluida || CFG_DEF.notif_concluida);
   setV('cfg-notif-orcamento', CFG.notif_orcamento || CFG_DEF.notif_orcamento);
   setV('cfg-notif-garantia', CFG.notif_garantia || CFG_DEF.notif_garantia);
+  setV('cfg-notif-pos-servico', CFG.notif_pos_servico || CFG_DEF.notif_pos_servico);
+  setV('cfg-pos-servico-dias', CFG.pos_servico_dias ?? CFG_DEF.pos_servico_dias);
   // Nota Fiscal (v2: sem token no cliente — só dados fiscais não-secretos)
   setV('cfg-nfe-cnpj', CFG.nfe_cnpj||'');
   setV('cfg-nfe-iss', CFG.nfe_iss||'2.0');
@@ -2055,6 +2061,8 @@ async function salvarEmpresa(){
   CFG.notif_concluida = gV('cfg-notif-concluida') || CFG_DEF.notif_concluida;
   CFG.notif_orcamento = gV('cfg-notif-orcamento') || CFG_DEF.notif_orcamento;
   CFG.notif_garantia = gV('cfg-notif-garantia') || CFG_DEF.notif_garantia;
+  CFG.notif_pos_servico = gV('cfg-notif-pos-servico') || CFG_DEF.notif_pos_servico;
+  CFG.pos_servico_dias = (()=>{ const v=gV('cfg-pos-servico-dias'); if(v==='') return CFG_DEF.pos_servico_dias; const n=parseInt(v); return isNaN(n)?CFG_DEF.pos_servico_dias:Math.max(0,Math.min(365,n)); })();
   // Nota Fiscal
   // v2: NÃO guardar token fiscal no cliente (era CFG.nfe_token_prod/hom).
   CFG.nfe_cnpj       = gV('cfg-nfe-cnpj').trim();
@@ -7846,6 +7854,73 @@ function notifConcluida(os){
     link_portal:getPortalLinkCliente(os.cliente||'')
   };
   return aplicarVars(template, vars, os.loja_id);
+}
+
+// ── PÓS-SERVIÇO (diferencial): retorno ao cliente N dias após a OS concluída ──
+function _posServicoDias(){ const n=parseInt(CFG.pos_servico_dias ?? CFG_DEF.pos_servico_dias); return isNaN(n)?15:n; }
+function notifPosServico(os){
+  const template=CFG.notif_pos_servico||CFG_DEF.notif_pos_servico;
+  const vars={
+    nome:(os.cliente||'').split(' ')[0],
+    servico:Array.isArray(os.servicos)?os.servicos.map(s=>typeof s==='string'?s:(s.desc||s)).join(', '):'',
+    tecnico:os.tecnico||'',
+    link_portal:getPortalLinkCliente(os.cliente||'')
+  };
+  return aplicarVars(template, vars, os.loja_id);
+}
+// Data-base do pós-serviço = dia do serviço (ou criação, fallback). Retorna 'YYYY-MM-DD' do vencimento.
+function _posServicoVenc(os){
+  const dias=_posServicoDias(); if(dias<=0) return null;
+  const base=os.data_servico||(os.data_criacao?String(os.data_criacao).slice(0,10):null); if(!base) return null;
+  const d=new Date(base+'T12:00:00'); if(isNaN(d)) return null;
+  d.setDate(d.getDate()+dias);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+// OS concluídas cujo pós-serviço está vencido (do dia até 30 dias depois, pra não
+// floodar com histórico antigo) e ainda não foi feito.
+function _posServicoPendentes(){
+  if(_posServicoDias()<=0) return [];
+  const hj=_hojeLocal();
+  const limite=(()=>{ const d=new Date(hj+'T12:00:00'); d.setDate(d.getDate()-30); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
+  return filtrarPorLoja(todosOS||[])
+    .filter(o=>o.status==='concluido' && !o.pos_servico_feito_em)
+    .map(o=>({o, venc:_posServicoVenc(o)}))
+    .filter(x=>x.venc && x.venc<=hj && x.venc>=limite)
+    .sort((a,b)=>(a.venc||'').localeCompare(b.venc||''));
+}
+function _posServicoMarcarFeito(id){
+  const o=(todosOS||[]).find(x=>x.id===id); if(!o||o.pos_servico_feito_em) return;
+  const agora=new Date().toISOString();
+  o.pos_servico_feito_em=agora;
+  try{ const lista=JSON.parse(ls('fluxa_os_hist')||'[]').map(x=>x.id===id?{...x,pos_servico_feito_em:agora}:x); lsSet('fluxa_os_hist', JSON.stringify(lista.slice(0,600))); }catch(e){}
+  if(dbOk&&db&&!String(id).startsWith('local_')) dbUpdate('ordens_servico',{pos_servico_feito_em:agora},'id',id).catch(e=>console.warn('[posServico]',e?.message||e));
+}
+function abrirPosServico(id){
+  const o=(todosOS||[]).find(x=>x.id===id); if(!o){ toast('OS não encontrada'); return; }
+  const num=String(o.numero||'').padStart(3,'0');
+  const link=getPortalLinkCliente(o.cliente||'');
+  const m=document.createElement('div');
+  m.className='rel-env-bg';
+  m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9500;display:flex;align-items:center;justify-content:center;padding:16px';
+  m.innerHTML=`<div style="background:var(--card,#fff);border-radius:16px;max-width:430px;width:100%;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <div style="font-size:17px;font-weight:700;color:var(--c2);margin-bottom:2px">🤝 Pós-serviço</div>
+    <div style="font-size:13px;color:var(--gray);margin-bottom:4px">${esc(o.cliente||'—')} · OS #${num}${o.data_servico?' · serviço de '+_dataBR(o.data_servico):''}</div>
+    <div style="font-size:12px;color:var(--gray);margin-bottom:18px;line-height:1.45">Um retorno de pós-serviço mostra pro cliente que você acompanha mesmo depois do serviço feito — quase nenhum prestador faz isso.</div>
+    <button type="button" class="btn-primary" style="width:100%;justify-content:center;margin-bottom:6px;background:var(--wa,#25D366);border:none" onclick="_posServicoEnviarWhats('${id}')">💬 Enviar mensagem no WhatsApp</button>
+    <div style="font-size:11px;color:var(--gray);margin:0 0 16px;line-height:1.45">Abre o WhatsApp do cliente com uma mensagem de acompanhamento pronta.${link?'':' ⚠️ (cliente sem telefone/portal — revise antes de enviar)'}</div>
+    <button type="button" class="btn-sec" style="width:100%;justify-content:center;margin-bottom:12px" onclick="_posServicoMarcarFeito('${id}');_relFecharModal();try{renderPainelFilaHoje()}catch(e){};toast('✅ Pós-serviço registrado')">✓ Já entrei em contato</button>
+    <button type="button" class="tb" style="width:100%;justify-content:center" onclick="_relFecharModal()">Deixar pra depois</button>
+  </div>`;
+  m.addEventListener('click',e=>{ if(e.target===m) m.remove(); });
+  document.body.appendChild(m);
+}
+function _posServicoEnviarWhats(id){
+  const o=(todosOS||[]).find(x=>x.id===id); if(!o) return;
+  enviarNotifWA(notifPosServico(o), o.tel_cliente||'');
+  _posServicoMarcarFeito(id);
+  _relFecharModal();
+  toast('💬 WhatsApp aberto · pós-serviço registrado');
+  try{ renderPainelFilaHoje(); }catch(e){}
 }
 
 function notifOrcamento(orc){
@@ -17236,6 +17311,18 @@ function _filaHojeItens(){
       });
     });
   }
+  // Pós-serviço (diferencial): cliente cujo serviço foi concluído há N dias e ainda
+  // não teve o retorno de acompanhamento. Um toque abre o WhatsApp de "tudo certo?".
+  _posServicoPendentes().slice(0,8).forEach(({o,venc})=>{
+    const diasServico=(()=>{ const b=o.data_servico||venc; const d=Math.round((new Date(_hojeLocal()+'T12:00:00')-new Date((o.data_servico||venc)+'T12:00:00'))/86400000); return isNaN(d)?null:d; })();
+    itens.push({
+      peso:2, icone:'🤝',
+      titulo:`${o.cliente||'—'} · OS #${String(o.numero||'').padStart(3,'0')}`,
+      sub:`pós-serviço${o.data_servico?` · serviço de ${_visDataBR(o.data_servico)}`:''}${diasServico!=null?` (há ${diasServico} dia${diasServico!==1?'s':''})`:''}`,
+      onclick:`abrirPosServico('${o.id}')`,
+      dismiss:`event.stopPropagation();_posServicoMarcarFeito('${o.id}');try{renderPainelFilaHoje()}catch(e){}`
+    });
+  });
   itens.sort((a,b)=>a.peso-b.peso);
   return itens;
 }
