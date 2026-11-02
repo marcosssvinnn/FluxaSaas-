@@ -5435,11 +5435,7 @@ function renderOSTabela(){
         <button class="tb" onclick="editarOS('${o.id}')">✎ Editar</button>
         <button class="tb" title="Gerar PDF desta OS" onclick="_gerarPDFdaOS('${o.id}')">📄 PDF</button>
         ${o.status!=='concluido'&&o.status!=='cancelado'?`<button class="tb" title="Marcar como concluída (baixa de estoque automática)" onclick="concluirOSHistorico('${o.id}')" style="background:#16a34a;color:white;border-color:#16a34a;font-weight:700">✅ Concluir</button>`:''}
-        ${o.status==='concluido'?`<button class="tb" title="Notif. OS concluída" style="background:var(--wa);color:white;border-color:var(--wa)" onclick="enviarNotifWA(notifConcluida(getNC('${o.id}')), '${o.tel_cliente||''}')">✅💬</button>`:''}
-        ${o.status==='concluido'?(o.relatorio_enviado_em
-          ?`<button class="tb" title="Relatório já enviado — ver de novo" onclick="gerarRelatorioOS('${o.id}','cliente')">📄 Relatório</button>`
-          :`<button class="tb" title="Revisar e enviar relatório de serviço" onclick="enviarRelatorioOS('${o.id}')" style="background:#7c3aed;color:white;border-color:#7c3aed;font-weight:700">📄 Enviar relatório</button>`):''}
-        ${o.status==='concluido'&&!eVendas()?`<button class="tb" title="Versão interna — custo, valor vendido, margem" onclick="gerarRelatorioOS('${o.id}','interna')">📄 Interno</button>`:''}
+        ${o.status==='concluido'?`<button class="tb" title="Enviar relatório ao cliente (WhatsApp com link + PDF) e versão interna" onclick="abrirEnvioRelatorioOS('${o.id}')" ${o.relatorio_enviado_em?'':'style="background:#7c3aed;color:white;border-color:#7c3aed;font-weight:700"'}>📄 ${o.relatorio_enviado_em?'Relatório ✓':'Enviar relatório'}</button>`:''}
         ${o.status==='agendado'||atrasado?`<button class="tb" title="Lembrete de visita" style="background:var(--wa);color:white;border-color:var(--wa)" onclick="enviarNotifWA(notifVisita(getNC('${o.id}')), '${o.tel_cliente||''}')">📅💬</button>`:''}
         <button class="tb d" onclick="excluirOS('${o.id}')">🗑</button>
       </div></td>
@@ -5531,7 +5527,8 @@ function _osMontarTopoEstado(o){
       nota:souEuNoLocal?null:'Fechar pelo desktop é o que produzia OS concluída e vazia — evite concluir por quem está em campo.'};
   }else if(o.status==='concluido'){
     cfg={eyebrow:'Estado da OS', titulo:'Executada',
-      tituloSub:o.duracao_min?`${o.duracao_min} min · aguardando relatório`:'aguardando relatório'};
+      tituloSub:o.relatorio_enviado_em?('relatório enviado '+_dataBR(o.relatorio_enviado_em)):(o.duracao_min?`${o.duracao_min} min · aguardando relatório`:'aguardando relatório'),
+      acao:{label:o.relatorio_enviado_em?'📄 Relatório — reenviar / baixar':'📄 Enviar relatório ao cliente', onclick:`abrirEnvioRelatorioOS('${o.id}')`}};
   }else{
     cfg={eyebrow:'Estado da OS', titulo:'Agendada',
       tituloSub:o.data_servico?'para '+_dataBR(o.data_servico)+(o.hora?' às '+o.hora:''):'sem data definida'};
@@ -6182,9 +6179,7 @@ function verHistoricoCliente(cliId){
       <div class="chi-right">
         <div class="chi-val">${o.total?brl(o.total):'—'}</div>
         <span class="chi-badge" style="background:${stBg[o.status]||'var(--blue-bg)'};color:${stC[o.status]||'var(--blue)'}">${o.status||'agendado'}</span>
-        ${o.status==='concluido'?(o.relatorio_enviado_em
-          ?`<button class="tb" style="font-size:10px;margin-top:3px" onclick="gerarRelatorioOS('${o.id}','cliente')">📄 Relatório</button>`
-          :`<button class="tb" style="font-size:10px;margin-top:3px;background:#7c3aed;color:white;border-color:#7c3aed" onclick="enviarRelatorioOS('${o.id}')">📄 Enviar</button>`):''}
+        ${o.status==='concluido'?`<button class="tb" style="font-size:10px;margin-top:3px${o.relatorio_enviado_em?'':';background:#7c3aed;color:white;border-color:#7c3aed'}" onclick="event.stopPropagation();abrirEnvioRelatorioOS('${o.id}')">📄 ${o.relatorio_enviado_em?'Relatório ✓':'Enviar'}</button>`:''}
       </div>
     </div>`).join('')
     :'<div style="padding:10px 0;font-size:13px;color:var(--gray)">Nenhuma OS encontrada</div>';
@@ -9953,12 +9948,56 @@ function confirmarFinalizarOS(){
 function enviarRelatorioOS(id){
   const o=(todosOS||[]).find(x=>x.id===id); if(!o){ toast('OS não encontrada'); return; }
   gerarRelatorioOS(id,'cliente');
-  if(!o.relatorio_enviado_em){
-    const agora=new Date().toISOString();
-    o.relatorio_enviado_em=agora;
-    if(dbOk&&db&&!String(id).startsWith('local_')) dbUpdate('ordens_servico',{relatorio_enviado_em:agora},'id',id).catch(e=>console.warn('[relatorio enviar]',e?.message||e));
-    toast('✅ Relatório marcado como enviado');
-  }
+  _marcarRelatorioEnviado(id);
+}
+
+// ── Envio UNIFICADO do relatório de serviço ao cliente (pedido do Marcos:
+// "os dois"). Um ponto só no lugar dos botões separados (✅💬 / Enviar
+// relatório / Interno): o modal oferece WhatsApp (com link do portal, onde o
+// cliente vê o relatório com fotos antes/depois) E o PDF pronto pra anexar/
+// imprimir. Ele decide na hora o que mandar. Qualquer um dos dois marca o
+// relatório como enviado; só abrir o modal não marca (pode só estar olhando).
+function _marcarRelatorioEnviado(id){
+  const o=(todosOS||[]).find(x=>x.id===id); if(!o || o.relatorio_enviado_em) return;
+  const agora=new Date().toISOString();
+  o.relatorio_enviado_em=agora;
+  if(dbOk&&db&&!String(id).startsWith('local_')) dbUpdate('ordens_servico',{relatorio_enviado_em:agora},'id',id).catch(e=>console.warn('[relatorio]',e?.message||e));
+}
+function _relFecharModal(){ document.querySelectorAll('.rel-env-bg').forEach(x=>x.remove()); }
+function _relEnviarWhats(id){
+  const o=(todosOS||[]).find(x=>x.id===id); if(!o) return;
+  enviarNotifWA(notifConcluida(o), o.tel_cliente||'');
+  _marcarRelatorioEnviado(id);
+  _relFecharModal();
+  toast('💬 WhatsApp aberto · relatório marcado como enviado');
+  try{ renderOSTabela(); }catch(e){}
+}
+function _relBaixarPDF(id){
+  _relFecharModal();
+  gerarRelatorioOS(id,'cliente');
+  _marcarRelatorioEnviado(id);
+  try{ renderOSTabela(); }catch(e){}
+}
+function abrirEnvioRelatorioOS(id){
+  const o=(todosOS||[]).find(x=>x.id===id); if(!o){ toast('OS não encontrada'); return; }
+  const num=String(o.numero||'').padStart(3,'0');
+  const link=getPortalLinkCliente(o.cliente||'');
+  const enviado=o.relatorio_enviado_em;
+  const m=document.createElement('div');
+  m.className='rel-env-bg';
+  m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9500;display:flex;align-items:center;justify-content:center;padding:16px';
+  m.innerHTML=`<div style="background:var(--card,#fff);border-radius:16px;max-width:430px;width:100%;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <div style="font-size:17px;font-weight:700;color:var(--c2);margin-bottom:2px">📄 Relatório de serviço</div>
+    <div style="font-size:13px;color:var(--gray);margin-bottom:4px">${esc(o.cliente||'—')} · OS #${num}</div>
+    <div style="font-size:12px;color:${enviado?'#16a34a':'#d97706'};margin-bottom:18px">${enviado?('✅ Já enviado em '+_dataBR(enviado)):'Pronto pra enviar ao cliente'}</div>
+    <button type="button" class="btn-primary" style="width:100%;justify-content:center;margin-bottom:6px;background:var(--wa,#25D366);border:none" onclick="_relEnviarWhats('${id}')">💬 Enviar no WhatsApp</button>
+    <div style="font-size:11px;color:var(--gray);margin:0 0 16px;line-height:1.45">${link?'Abre o WhatsApp do cliente com a mensagem + link. Ele clica e vê o relatório com as fotos antes/depois, sem baixar nada.':'⚠️ Este cliente ainda não tem link de portal — o WhatsApp abre sem o link. Abra a ficha do cliente uma vez pra gerar o link.'}</div>
+    <button type="button" class="btn-sec" style="width:100%;justify-content:center;margin-bottom:${eVendas()?'16':'10'}px" onclick="_relBaixarPDF('${id}')">📄 Baixar / imprimir PDF</button>
+    ${!eVendas()?`<button type="button" class="btn-sec" style="width:100%;justify-content:center;margin-bottom:16px;font-size:12px;color:var(--gray)" onclick="_relFecharModal();gerarRelatorioOS('${id}','interna')">🔒 Versão interna (custo e margem) — só pra você</button>`:''}
+    <button type="button" class="tb" style="width:100%;justify-content:center" onclick="_relFecharModal()">Fechar</button>
+  </div>`;
+  m.addEventListener('click',e=>{ if(e.target===m) m.remove(); });
+  document.body.appendChild(m);
 }
 
 function fazerCheckout(){
