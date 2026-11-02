@@ -5067,7 +5067,15 @@ async function loadOSHist(){
       _osServidorOffset=data.length; _osTemMais=data.length===_OS_PAGE;
       const dbIds=new Set((data||[]).map(x=>x.id));
       const localArr=JSON.parse(ls('fluxa_os_hist')||'[]');
-      const soLocal=localArr.filter(x=>String(x.id).startsWith('local_')&&!dbIds.has(x.id));
+      // Autossaneamento de duplicata: uma OS local (local_) que é só o "esqueleto" de
+      // um orçamento que JÁ tem OS no banco (mesmo orcamento_id, status agendado e sem
+      // nenhuma execução — sem fotos/obs/materiais) é uma duplicata órfã (bug antigo do
+      // catch que criava OS nova ao editar). Descarta em vez de reinserir no banco.
+      const _temExec=o=>!!(o.obs_tecnica||o.materiais||(o.fotos&&(Array.isArray(o.fotos)?o.fotos.length:((o.fotos.antes?.length||0)+(o.fotos.depois?.length||0)))));
+      const dbOrcIds=new Set((data||[]).map(x=>x.orcamento_id).filter(Boolean));
+      const soLocal=localArr.filter(x=>String(x.id).startsWith('local_')&&!dbIds.has(x.id))
+        .filter(x=>{ const dup=x.orcamento_id&&dbOrcIds.has(x.orcamento_id)&&(x.status==='agendado'||!x.status)&&!_temExec(x);
+          if(dup) console.warn('[loadOSHist] descartando OS local duplicata órfã do orçamento', x.orcamento_id); return !dup; });
       // Edições de OS do banco que ainda não sincronizaram: a versão LOCAL (pendente)
       // tem que vencer a do banco, senão o reload apagaria a alteração.
       const pendUpd=localArr.filter(x=>x._pendUpd && dbIds.has(x.id));
