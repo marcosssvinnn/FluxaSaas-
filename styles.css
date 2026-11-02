@@ -420,7 +420,8 @@
     .foto-label{font-size:13px;color:var(--gray);font-weight:500}
     .foto-icon{font-size:28px;margin-bottom:6px}
     /* ── FOTOS DO ORÇAMENTO (form — fora do print) ── */
-    .fotos-orc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:4px}
+    .fotos-orc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:4px;border-radius:10px;transition:box-shadow .15s,background .15s}
+    .fotos-orc-grid.dragover{background:var(--c1-bg,rgba(255,106,0,.08));box-shadow:0 0 0 2px var(--c1)}
     .fotos-orc-slot{border:2px dashed var(--gray-mid);border-radius:10px;padding:10px 6px;text-align:center;cursor:pointer;position:relative;min-height:76px;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:border-color .2s,background .2s;background:var(--white)}
     .fotos-orc-slot:hover{border-color:var(--c1);background:var(--c1-light)}
     .fotos-orc-slot.filled{border-style:solid;border-color:var(--c1);background:var(--c1-light)}

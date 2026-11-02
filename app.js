@@ -2691,7 +2691,7 @@ function renderFotosOrcSlots(){
     const slot=document.createElement('div');
     slot.className='fotos-orc-slot'+(fotosB64[i]?' filled':'');
     slot.innerHTML=`
-      <input type="file" id="forc-inp-${i}" accept="image/*" style="display:none" onchange="carregarFotoOrc(this,${i})">
+      <input type="file" id="forc-inp-${i}" accept="image/*" multiple style="display:none" onchange="carregarFotoOrc(this,${i})">
       ${fotosB64[i]?`<img src="${fotosB64[i]}" alt="foto ${i+1}">`:'' }
       <div class="fotos-orc-slot-icon">📷</div>
       <div class="fotos-orc-slot-lbl">Foto ${i+1}</div>
@@ -2699,13 +2699,36 @@ function renderFotosOrcSlots(){
     slot.addEventListener('click',()=>document.getElementById(`forc-inp-${i}`).click());
     grid.appendChild(slot);
   }
+  if(!grid.dataset.dndBound){
+    grid.dataset.dndBound='1';
+    grid.addEventListener('dragover', e=>{ if(e.dataTransfer && [...(e.dataTransfer.types||[])].includes('Files')){ e.preventDefault(); grid.classList.add('dragover'); } });
+    grid.addEventListener('dragleave', e=>{ if(e.target===grid) grid.classList.remove('dragover'); });
+    grid.addEventListener('drop', e=>{ e.preventDefault(); grid.classList.remove('dragover'); const dt=e.dataTransfer; if(dt && dt.files && dt.files.length) _fotosOrcAdicionar(dt.files, null); });
+  }
 }
 function carregarFotoOrc(inp, idx){
-  const f=inp.files[0]; if(!f) return;
-  if(f.size > FOTO_MAX_BYTES){ toast('⚠️ Foto muito grande (máx 20 MB).'); inp.value=''; return; }
-  const r=new FileReader();
-  r.onload=async e=>{ fotosB64[idx]=await compressImage(e.target.result); renderFotosOrcSlots(); }; // fix #5: comprime antes de armazenar
-  r.readAsDataURL(f);
+  _fotosOrcAdicionar(inp.files, idx).finally(()=>{ try{ inp.value=''; }catch(e){} });
+}
+// Mesma lógica das fotos da OS: seleção múltipla + arrastar-e-soltar. 1 foto num
+// slot clicado = substitui; várias/drop = preenche os slots vazios (máx 6).
+async function _fotosOrcAdicionar(fileList, startIdx){
+  const files=[...(fileList||[])].filter(f=>f && (f.type? f.type.startsWith('image/') : true));
+  if(!files.length) return;
+  let pos;
+  if(startIdx!=null && files.length===1){ pos=startIdx; }
+  else { pos=(()=>{ for(let i=0;i<6;i++) if(!fotosB64[i]) return i; return 6; })(); }
+  let ignoradas=0, add=0;
+  for(const f of files){
+    if(pos>5){ ignoradas++; continue; }
+    if(f.size > FOTO_MAX_BYTES){ toast('⚠️ Uma foto passou de 20 MB e foi pulada.'); continue; }
+    try{
+      const dataUrl=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=e=>res(e.target.result); r.onerror=rej; r.readAsDataURL(f); });
+      fotosB64[pos]=await compressImage(dataUrl); pos++; add++;
+    }catch(e){ console.warn('[orcFoto]', e?.message||e); }
+  }
+  renderFotosOrcSlots();
+  if(ignoradas) toast('Máximo de 6 fotos — '+ignoradas+' não coube(ram).');
+  else if(add>1) toast('✅ '+add+' fotos adicionadas');
 }
 function removerFotoOrc(idx){
   fotosB64[idx]=null;
@@ -6063,7 +6086,7 @@ function renderOSFotosSlots(tipo){
     const slot=document.createElement('div');
     slot.className='fotos-orc-slot'+(arr[i]?' filled':'');
     slot.innerHTML=`
-      <input type="file" id="os-finp-${tipo}-${i}" accept="image/*" style="display:none" onchange="carregarFotoOS(this,${i},'${tipo}')">
+      <input type="file" id="os-finp-${tipo}-${i}" accept="image/*" multiple style="display:none" onchange="carregarFotoOS(this,${i},'${tipo}')">
       ${arr[i]?`<img src="${arr[i]}" alt="foto ${i+1}">`:''}
       <div class="fotos-orc-slot-icon">📷</div>
       <div class="fotos-orc-slot-lbl">Foto ${i+1}</div>
@@ -6071,13 +6094,41 @@ function renderOSFotosSlots(tipo){
     slot.addEventListener('click',()=>document.getElementById(`os-finp-${tipo}-${i}`).click());
     grid.appendChild(slot);
   }
+  // Arrastar-e-soltar fotos no grid (liga uma vez só — innerHTML limpa os filhos,
+  // não os listeners do próprio grid). Solta 1 ou várias → preenche os slots vazios.
+  if(!grid.dataset.dndBound){
+    grid.dataset.dndBound='1';
+    grid.addEventListener('dragover', e=>{ if(e.dataTransfer && [...(e.dataTransfer.types||[])].includes('Files')){ e.preventDefault(); grid.classList.add('dragover'); } });
+    grid.addEventListener('dragleave', e=>{ if(e.target===grid) grid.classList.remove('dragover'); });
+    grid.addEventListener('drop', e=>{ e.preventDefault(); grid.classList.remove('dragover'); const dt=e.dataTransfer; if(dt && dt.files && dt.files.length) _osFotosAdicionar(tipo, dt.files, null); });
+  }
 }
 function carregarFotoOS(inp, idx, tipo){
-  const f=inp.files[0]; if(!f) return;
-  if(f.size > FOTO_MAX_BYTES){ toast('⚠️ Foto muito grande (máx 20 MB).'); inp.value=''; return; }
-  const r=new FileReader();
-  r.onload=async e=>{ _osFotosArr(tipo)[idx]=await compressImage(e.target.result); renderOSFotosSlots(tipo); };
-  r.readAsDataURL(f);
+  _osFotosAdicionar(tipo, inp.files, idx).finally(()=>{ try{ inp.value=''; }catch(e){} });
+}
+// Adiciona N fotos de uma vez (seleção múltipla no seletor OU arrastar-e-soltar).
+// Regras: clicar num slot + escolher 1 foto = substitui AQUELE slot (comportamento
+// de sempre); escolher várias (ou soltar arquivos) = preenche a partir do 1º slot
+// vazio, até o limite de 6 por etapa (antes/depois).
+async function _osFotosAdicionar(tipo, fileList, startIdx){
+  const files=[...(fileList||[])].filter(f=>f && (f.type? f.type.startsWith('image/') : true));
+  if(!files.length) return;
+  const arr=_osFotosArr(tipo);
+  let pos;
+  if(startIdx!=null && files.length===1){ pos=startIdx; }           // 1 foto num slot clicado = substitui
+  else { pos=(()=>{ for(let i=0;i<6;i++) if(!arr[i]) return i; return 6; })(); } // várias/drop = 1º vazio
+  let ignoradas=0, add=0;
+  for(const f of files){
+    if(pos>5){ ignoradas++; continue; }
+    if(f.size > FOTO_MAX_BYTES){ toast('⚠️ Uma foto passou de 20 MB e foi pulada.'); continue; }
+    try{
+      const dataUrl=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=e=>res(e.target.result); r.onerror=rej; r.readAsDataURL(f); });
+      arr[pos]=await compressImage(dataUrl); pos++; add++;
+    }catch(e){ console.warn('[osFoto]', e?.message||e); }
+  }
+  renderOSFotosSlots(tipo);
+  if(ignoradas) toast('Máximo de 6 fotos por etapa — '+ignoradas+' não coube(ram).');
+  else if(add>1) toast('✅ '+add+' fotos adicionadas');
 }
 function removerFotoOS(idx, tipo){
   const arr=_osFotosArr(tipo);
