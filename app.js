@@ -714,7 +714,33 @@ async function _ativarEmpresa(emp){
 }
 
 // Aplica config + lojas da empresa ativa em toda a UI/estado.
+// Limpeza de localStorage legado: dados antigos SEM escopo de empresa (de antes do
+// namespacing) que o código atual não lê mais. Encheu o localStorage (perto do limite
+// de 5MB) e isso impedia o Supabase de SALVAR a sessão renovada → no mobile o app
+// deixava de logar automático ("não autorizou"). Regra segura: só remove uma chave
+// global se existir a MESMA chave COM escopo (fluxa:<EMPRESA>:<k>) — prova que é
+// duplicata órfã. Device-globais legítimos (biometria, banner, notif) não têm
+// contraparte com escopo e NUNCA entram aqui; a sessão (sb-*/sb_*) é protegida.
+let _ltLimpezaFeita=false;
+function _limparLocalStorageLegado(){
+  try{
+    if(!EMPRESA_ID || _ltLimpezaFeita) return;
+    _ltLimpezaFeita=true;
+    const pref='fluxa:'+EMPRESA_ID+':';
+    const remover=[];
+    for(let i=0;i<localStorage.length;i++){
+      const k=localStorage.key(i); if(!k) continue;
+      if(k.startsWith('fluxa:')||k.startsWith('sb-')||k.startsWith('sb_')) continue;
+      if(localStorage.getItem(pref+k)!==null) remover.push(k); // tem contraparte com escopo = duplicata legada
+    }
+    let freed=0;
+    remover.forEach(k=>{ try{ freed+=(localStorage.getItem(k)||'').length; localStorage.removeItem(k); }catch(e){} });
+    if(remover.length) console.info('[localStorage] '+remover.length+' chave(s) legada(s) removida(s) (~'+Math.round(freed/1024)+'KB liberados)');
+  }catch(e){ console.warn('[limparLegado]', e?.message||e); }
+}
+
 async function _aplicarContextoEmpresa(){
+  _limparLocalStorageLegado(); // libera espaço antes de cachear (evita quota cheia travando a sessão)
   // 1) CFG = defaults + empresas.config (jsonb) — substitui a antiga tabela empresa_config
   const cfg = (EMPRESA && EMPRESA.config) || {};
   CFG = { ...CFG_DEF, ...cfg };
