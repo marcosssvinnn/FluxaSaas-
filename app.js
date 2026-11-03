@@ -7298,8 +7298,8 @@ function _fmtBytes(n){
 
 async function loadPlataforma(){
   if(!isPlataformaAdmin){ toast('⚠️ Acesso restrito'); go('form'); return; }
-  const tbody=document.getElementById('plat-empresas-tbody');
-  if(tbody) tbody.innerHTML='<tr><td colspan="9" style="color:var(--gray);padding:10px">Carregando…</td></tr>';
+  const lista=document.getElementById('plat-empresas-lista');
+  if(lista) lista.innerHTML='<div style="color:var(--gray);padding:10px;font-size:13px">Carregando…</div>';
   // Resiliente: dado principal e métricas carregam separados — uma falha não
   // deixa o painel morto. Em erro, mostra "tentar de novo" em vez de um toast seco.
   try{
@@ -7311,7 +7311,7 @@ async function loadPlataforma(){
     renderPlataforma(empresasData||[], uso||{});
   }catch(e){
     console.warn('[loadPlataforma]', e?.message||e);
-    if(tbody) tbody.innerHTML='<tr><td colspan="9" style="padding:16px;text-align:center"><div style="color:var(--red);margin-bottom:8px;font-weight:600">Não deu pra carregar agora</div><button class="btn-sec" data-act="loadPlataforma">↻ Tentar de novo</button></td></tr>';
+    if(lista) lista.innerHTML='<div style="padding:16px;text-align:center"><div style="color:var(--red);margin-bottom:8px;font-weight:600">Não deu pra carregar agora</div><button class="btn-sec" data-act="loadPlataforma">↻ Tentar de novo</button></div>';
   }
   // Saúde do SaaS é best-effort — se falhar, só esconde o card (nunca derruba o resto).
   try{ const {data:met}=await db.rpc('admin_metricas_saas'); renderPlatSaude(met||null); }
@@ -7362,25 +7362,25 @@ function renderPlataforma(empresas, uso){
       : '<div style="color:var(--gray)">Nenhum arquivo enviado ainda</div>';
   }
 
-  const tbody=document.getElementById('plat-empresas-tbody');
-  if(!tbody) return;
-  if(!empresas.length){ tbody.innerHTML='<tr><td colspan="7" style="color:var(--gray);padding:10px">Nenhuma empresa cadastrada</td></tr>'; return; }
-  tbody.innerHTML = empresas.map(e=>{
+  const lista=document.getElementById('plat-empresas-lista');
+  if(!lista) return;
+  if(!empresas.length){ lista.innerHTML='<div style="color:var(--gray);padding:10px;font-size:13px">Nenhuma empresa cadastrada</div>'; return; }
+  const chip=(lbl,val)=>`<div style="text-align:center;flex:1;min-width:56px"><div style="font-weight:700;font-size:15px;color:var(--c2)">${val??0}</div><div style="font-size:9.5px;color:var(--gray);text-transform:uppercase;letter-spacing:.04em">${lbl}</div></div>`;
+  lista.innerHTML = empresas.map(e=>{
     const criado = e.created_at ? new Date(e.created_at).toLocaleDateString('pt-BR') : '—';
-    const statusBadge = e.ativo
-      ? '<span style="color:var(--green);font-weight:600">● Ativa</span>'
-      : '<span style="color:var(--red);font-weight:600">● Suspensa</span>';
-    return `<tr>
-      <td>${esc(e.nome||'—')}</td>
-      <td>${esc(e.plano||'free')}</td>
-      <td>${statusBadge}</td>
-      <td style="text-align:center">${e.membros_count??0}</td>
-      <td style="text-align:center">${e.orcamentos_count??0}</td>
-      <td style="text-align:center">${e.clientes_count??0}</td>
-      <td style="text-align:center">${e.produtos_count??0}</td>
-      <td>${criado}</td>
-      <td><button class="tb" onclick="_platToggleAtivo('${e.id}', ${!e.ativo})">${e.ativo?'Suspender':'Reativar'}</button></td>
-    </tr>`;
+    return `<div style="border:1px solid var(--gray-light);border-radius:12px;padding:12px 14px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px">
+        <div style="min-width:0">
+          <div style="font-weight:700;font-size:15px;color:var(--c2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.nome||'—')}</div>
+          <div style="font-size:11px;color:var(--gray)">${esc(e.plano||'free')} · criada ${criado}</div>
+        </div>
+        <span style="flex-shrink:0;font-weight:600;font-size:12px;color:var(--${e.ativo?'green':'red'})">${e.ativo?'● Ativa':'● Suspensa'}</span>
+      </div>
+      <div style="display:flex;gap:4px;background:var(--bg-app,#f7f9fc);border-radius:8px;padding:8px 6px;margin-bottom:10px">
+        ${chip('Membros',e.membros_count)}${chip('Orçam.',e.orcamentos_count)}${chip('Clientes',e.clientes_count)}${chip('Produtos',e.produtos_count)}
+      </div>
+      <button class="btn-sec" style="width:100%;justify-content:center;font-size:13px" onclick="_platToggleAtivo('${e.id}', ${!e.ativo})">${e.ativo?'Suspender empresa':'Reativar empresa'}</button>
+    </div>`;
   }).join('');
 }
 
