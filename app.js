@@ -5079,10 +5079,17 @@ async function _reenviarOSLocais(soLocal){
   let mudou=false;
   for(const rec of soLocal){
     try{
+      // Sobe as fotos base64 pro Storage ANTES de enviar. Sem isto, o reenvio ia
+      // com a base64 INTEIRA no payload (MBs) e o insert/update falhava/timeout,
+      // deixando a OS presa local pra sempre (bug real: OS de ~1,5MB que nunca
+      // sincronizava). O save normal já fazia isso; o reenvio não fazia.
+      let _fotosUp = rec.fotos;
+      try{ if(rec.fotos){ _fotosUp = await _osFotosParaStorage(rec.fotos, String(rec.id||('os_'+Date.now())).replace(/[^a-zA-Z0-9_]/g,'')); } }
+      catch(ef){ console.warn('[reenvioOS fotos]', ef?.message||ef); _fotosUp = rec.fotos; }
       if(rec._pendUpd && !String(rec.id).startsWith('local_')){
         // Edição de uma OS que JÁ existe no banco e não sincronizou → UPDATE pelo
         // mesmo id (nunca insert — senão duplicaria). Tira o flag ao conseguir.
-        const payload={...rec}; const upId=payload.id; delete payload.id; delete payload._pendUpd;
+        const payload={...rec, fotos:_fotosUp}; const upId=payload.id; delete payload.id; delete payload._pendUpd;
         const {error}=await db.from('ordens_servico').update(payload).eq('id',upId);
         if(error){ console.warn('[reenvioOSUpd] update falhou:', error.message); continue; }
         const lista=JSON.parse(ls('fluxa_os_hist')||'[]').map(x=>{ if(x.id!==upId) return x; const c={...x}; delete c._pendUpd; return c; });
@@ -5091,7 +5098,7 @@ async function _reenviarOSLocais(soLocal){
         mudou=true;
         continue;
       }
-      const payload={...rec}; delete payload.id; delete payload._pendUpd; // banco gera o id definitivo
+      const payload={...rec, fotos:_fotosUp}; delete payload.id; delete payload._pendUpd; // banco gera o id definitivo
       const {data:ins,error}=await dbInsertNumerado('ordens_servico',payload);
       if(error){ console.warn('[reenvioOSLocal] falhou #'+(rec.numero||'?')+':', error.message); continue; }
       if(ins){
@@ -5644,11 +5651,14 @@ function _osMontarTopoEstado(o){
 // readonly quando quem abriu não é técnico (_tecMode já existe e trava os
 // campos administrativos no sentido contrário — este é o complemento).
 function _osAplicarModoLeitura(_tecMode){
+  // Observações técnicas e materiais são campos de EXECUÇÃO: quem conclui a OS
+  // precisa preenchê-los — seja técnico ou o próprio dono (operação solo). Antes
+  // ficavam travados (só leitura) pro gestor, assumindo que um técnico ia preencher
+  // em campo; isso bloqueava o uso solo. Agora são sempre editáveis.
   ['os-mat','os-obs'].forEach(fid=>{
     const el=document.getElementById(fid);
     if(!el) return;
-    if(!_tecMode){ el.setAttribute('readonly',''); el.style.background='var(--gray-light)'; }
-    else{ el.removeAttribute('readonly'); el.style.background=''; }
+    el.removeAttribute('readonly'); el.style.background='';
   });
 }
 
@@ -9956,7 +9966,10 @@ function populaTecCheckIn(){
 
 let osCheckinId=null;
 function fazerCheckin(){
-  const tec=gV('os-tec-checkin'); if(!tec){ toast('⚠️ Selecione o técnico'); return; }
+  // Check-in é OPCIONAL (só faz sentido no uso em campo). Não bloqueia mais por
+  // falta de técnico selecionado — na operação solo usa o nome de quem está logado
+  // (ou o técnico já preenchido na OS). Antes travava com "Selecione o técnico".
+  const tec=gV('os-tec-checkin') || gV('os-tec') || (getSessao()&&getSessao().nome) || 'Responsável';
   checkinAt=new Date(); lsSet('fluxa_ultimo_tec',tec);
   osCheckinId=osEditId; // id da OS aberta (antes usava editId do orçamento — registro errado)
   document.getElementById('checkin-form').style.display='none';
