@@ -10021,7 +10021,11 @@ function fazerCheckin(){
 // mesma estrutura que já existe e já persiste, sem coluna nova.
 let _finalizarOSConf={}; // {idx: {feito:bool, motivo:string}}
 function abrirFinalizarOS(){
-  if(!checkinAt){ toast('⚠️ Faça o check-in primeiro'); return; }
+  // Check-in é OPCIONAL — não é mais pré-requisito pra concluir. Quem preenche a
+  // OS depois no computador (sem ir ao local) consegue finalizar normalmente.
+  // Sem check-in, a OS concluída fica sem duração registrada (tudo bem).
+  if(!osEditId){ toast('Salve a OS primeiro, aí finalize'); return; } // precisa existir pra concluir
+  if(!osCheckinId) osCheckinId = osEditId; // sem check-in: usa a OS aberta como referência
   _finalizarOSConf={};
   (osSvcs||[]).forEach((s,i)=>{ _finalizarOSConf[i]={feito:true, motivo:''}; });
   _finalizarOSRender();
@@ -10040,8 +10044,7 @@ function _finalizarOSSetMotivo(idx, val){ if(_finalizarOSConf[idx]) _finalizarOS
 function _finalizarOSSetDecisao(idx, val){ if(_finalizarOSConf[idx]) _finalizarOSConf[idx].decisao=val; }
 function _finalizarOSRender(){
   const el=document.getElementById('finalizar-os-conteudo'); if(!el) return;
-  const diffSeg=Math.max(0,Math.floor((new Date()-checkinAt)/1000));
-  const durMin=Math.round(diffSeg/60);
+  const durMin = checkinAt ? Math.round(Math.max(0,(new Date()-checkinAt))/60000) : null; // null = sem check-in
   // Materiais é texto livre (ordens_servico.materiais) — sem estrutura de
   // chips real hoje (limitação já registrada), contagem aproximada por
   // linha/vírgula não vazia.
@@ -10057,7 +10060,7 @@ function _finalizarOSRender(){
     </div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0">
       <div style="text-align:center;padding:10px;background:var(--bg-app,#F7F9FC);border-radius:10px">
-        <div style="font-size:20px;font-weight:600;color:var(--c2);font-variant-numeric:tabular-nums">${durMin}min</div>
+        <div style="font-size:20px;font-weight:600;color:var(--c2);font-variant-numeric:tabular-nums">${durMin!=null?durMin+'min':'—'}</div>
         <div style="font-size:10px;color:var(--tx3,#6B7686);text-transform:uppercase;letter-spacing:.06em;margin-top:2px">Duração</div>
       </div>
       <div style="text-align:center;padding:10px;background:var(--bg-app,#F7F9FC);border-radius:10px">
@@ -10220,11 +10223,11 @@ function _fazerCheckoutConfirmado(){
   if(_checkoutEmAndamento) return;
   _checkoutEmAndamento=true;
   const checkout=new Date();
-  const duracaoMin=Math.round((checkout-checkinAt)/60000);
+  const duracaoMin = checkinAt ? Math.round((checkout-checkinAt)/60000) : null; // sem check-in = sem duração
   if(checkinTimer){ clearInterval(checkinTimer); checkinTimer=null; }
-  document.getElementById('checkin-bar').style.display='none';
-  document.getElementById('checkin-form').style.display='flex';
-  document.getElementById('checkin-info').textContent=`✅ Duração: ${duracaoMin} min (${checkinAt.toLocaleTimeString('pt-BR')} → ${checkout.toLocaleTimeString('pt-BR')})`;
+  const _cb=document.getElementById('checkin-bar'); if(_cb) _cb.style.display='none';
+  const _cf=document.getElementById('checkin-form'); if(_cf) _cf.style.display='flex';
+  const _ci=document.getElementById('checkin-info'); if(_ci) _ci.textContent = checkinAt ? `✅ Duração: ${duracaoMin} min (${checkinAt.toLocaleTimeString('pt-BR')} → ${checkout.toLocaleTimeString('pt-BR')})` : '✅ Serviço concluído';
   // Captura o que o técnico preencheu na OS para salvar JUNTO com o check-out.
   // x.servico (Tarefa 3i.7, achado ao testar): itens de confirmação por
   // serviço vendido (Fiz/Não fiz) precisam ser salvos SEMPRE, feito ou
