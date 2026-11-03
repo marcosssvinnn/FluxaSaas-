@@ -746,6 +746,7 @@ async function _aplicarContextoEmpresa(){
   CFG = { ...CFG_DEF, ...cfg };
   if(!CFG.nome && EMPRESA?.nome) CFG.nome = EMPRESA.nome;
   lsSet('empresa_cfg', JSON.stringify(CFG));
+  _salvarBrandCache(); // marca pro login (device-global)
   // 2) Identidade (FLUXA_CONFIG) a partir do config
   FLUXA_CONFIG.appName        = CFG.appName || EMPRESA?.nome || 'Fluxa';
   FLUXA_CONFIG.todasLabel     = CFG.todasLabel || 'Todas';
@@ -1273,7 +1274,7 @@ async function fazerLogin(){
       aplicarPermissoesPerfil();
       atualizarHeaderLoja();
       logAcao('login', loginUserSelecionado.nome+' (gestor '+(getLojaNome(loginUserSelecionado.loja_id))+')');
-      go('painel');
+      go(_telaInicialPerfil(sessao));
     } else if(loginUserSelecionado.perfil==='tecnico' && !loginUserSelecionado.loja_id){
       // Técnico que atende mais de uma empresa → escolhe a empresa da sessão
       document.getElementById('login-step-pin').classList.remove('show');
@@ -1351,7 +1352,7 @@ function confirmarLojaGestor(lojaId){
   atualizarBadgeUsuario();
   aplicarPermissoesPerfil();
   atualizarHeaderLoja();
-  go('painel');
+  go(_telaInicialPerfil(sessao));
 }
 
 // v2: o técnico pertence a UMA empresa (tenant) — não há escolha de empresa no login
@@ -1850,17 +1851,29 @@ async function carregarClientesRemoto(){
 // de conta). Baseado só em authUser — o EMPRESA_ID pode estar no cache (offline)
 // de um login anterior e NÃO pode "vazar" o tema da empresa antes de re-autenticar.
 function _estaPreLogin(){ return !authUser && SUPABASE_URL!=='PREENCHER_DEPOIS'; }
+// Cache de marca do dispositivo (global, sobrevive à limpeza de localStorage — não
+// tem contraparte com escopo). Faz a TELA DE LOGIN mostrar a marca da última empresa
+// usada neste aparelho (nome/logo/cor), em vez do genérico "Fluxa" — pedido do Marcos
+// (ele usa como negócio próprio, não como revenda do SaaS). Aparelho novo = genérico.
+function _salvarBrandCache(){
+  try{ localStorage.setItem('fluxa_brand_cache', JSON.stringify({nome:CFG.nome, sub:CFG.sub, logoB64:CFG.logoB64, cor:CFG.cor, cor2:CFG.cor2, tagline:CFG.tagline})); }catch(e){}
+}
 function resetMarcaSaaS(){
   try{
-    document.documentElement.style.setProperty('--c1', SAAS_C1);
-    document.documentElement.style.setProperty('--c1-light', hexA(SAAS_C1,.1));
-    document.documentElement.style.setProperty('--c1-mid', hexA(SAAS_C1,.2));
-    document.documentElement.style.setProperty('--c2', SAAS_C2);
-    const ln=document.getElementById('login-brand-name'); if(ln) ln.textContent='Fluxa';
-    const li=document.getElementById('login-brand-initials'); if(li){ li.textContent='F'; li.style.display='flex'; }
-    const llogo=document.getElementById('login-logo-img'); if(llogo) llogo.style.display='none';
-    const lt=document.getElementById('login-brand-tagline'); if(lt) lt.textContent='Gestão para empresas de serviços';
-    document.title='Fluxa';
+    let br=null; try{ br=JSON.parse(localStorage.getItem('fluxa_brand_cache')||'null'); }catch(e){}
+    const c1=(br&&br.cor)||SAAS_C1, c2=(br&&br.cor2)||SAAS_C2;
+    document.documentElement.style.setProperty('--c1', c1);
+    document.documentElement.style.setProperty('--c1-light', hexA(c1,.1));
+    document.documentElement.style.setProperty('--c1-mid', hexA(c1,.2));
+    document.documentElement.style.setProperty('--c2', c2);
+    const nome=(br&&br.nome)||'Fluxa';
+    const ln=document.getElementById('login-brand-name'); if(ln) ln.textContent=nome;
+    const li=document.getElementById('login-brand-initials');
+    const llogo=document.getElementById('login-logo-img');
+    if(br&&br.logoB64){ if(llogo){ llogo.src=br.logoB64; llogo.style.display=''; } if(li) li.style.display='none'; }
+    else { if(li){ li.textContent=(nome.trim()[0]||'F').toUpperCase(); li.style.display='flex'; } if(llogo) llogo.style.display='none'; }
+    const lt=document.getElementById('login-brand-tagline'); if(lt) lt.textContent=(br&&(br.tagline||br.sub))||'Gestão para empresas de serviços';
+    document.title=nome;
   }catch(e){ console.warn('[resetMarcaSaaS]', e?.message||e); }
 }
 
@@ -5964,7 +5977,10 @@ function _telaInicialPerfil(sess){
   const p=(sess||getSessao())?.perfil;
   if(p==='tecnico') return 'minhas-os';
   if(p==='vendas')  return 'form';
-  if(p==='gestor'||p==='master') return 'painel';
+  // Gestor abre no Histórico (lista de orçamentos): prática, confiável e está na
+  // barra inferior do celular — diferente do Painel, que não tem item no mob-nav e
+  // abria em branco no primeiro load. O Painel continua acessível pela lateral.
+  if(p==='gestor'||p==='master') return 'history';
   return 'form';
 }
 async function loadMinhasOS(){
