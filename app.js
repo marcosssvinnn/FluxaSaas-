@@ -7299,17 +7299,23 @@ function _fmtBytes(n){
 async function loadPlataforma(){
   if(!isPlataformaAdmin){ toast('⚠️ Acesso restrito'); go('form'); return; }
   const tbody=document.getElementById('plat-empresas-tbody');
-  if(tbody) tbody.innerHTML='<tr><td colspan="7" style="color:var(--gray);padding:10px">Carregando…</td></tr>';
+  if(tbody) tbody.innerHTML='<tr><td colspan="9" style="color:var(--gray);padding:10px">Carregando…</td></tr>';
+  // Resiliente: dado principal e métricas carregam separados — uma falha não
+  // deixa o painel morto. Em erro, mostra "tentar de novo" em vez de um toast seco.
   try{
-    const [{data:empresasData,error:e1}, {data:uso,error:e2}, {data:met}] = await Promise.all([
+    const [{data:empresasData,error:e1}, {data:uso,error:e2}] = await Promise.all([
       db.rpc('admin_listar_empresas'),
-      db.rpc('admin_uso_plataforma'),
-      db.rpc('admin_metricas_saas').catch(()=>({data:null}))
+      db.rpc('admin_uso_plataforma')
     ]);
     if(e1) throw e1; if(e2) throw e2;
     renderPlataforma(empresasData||[], uso||{});
-    renderPlatSaude(met||null);
-  }catch(e){ console.warn('[loadPlataforma]', e?.message||e); toast('Erro ao carregar painel'); }
+  }catch(e){
+    console.warn('[loadPlataforma]', e?.message||e);
+    if(tbody) tbody.innerHTML='<tr><td colspan="9" style="padding:16px;text-align:center"><div style="color:var(--red);margin-bottom:8px;font-weight:600">Não deu pra carregar agora</div><button class="btn-sec" data-act="loadPlataforma">↻ Tentar de novo</button></td></tr>';
+  }
+  // Saúde do SaaS é best-effort — se falhar, só esconde o card (nunca derruba o resto).
+  try{ const {data:met}=await db.rpc('admin_metricas_saas'); renderPlatSaude(met||null); }
+  catch(e){ console.warn('[admin_metricas_saas]', e?.message||e); renderPlatSaude(null); }
 }
 
 // Saúde do SaaS (Fase 50) — crescimento, ativas de verdade, ativação.
