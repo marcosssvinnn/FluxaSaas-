@@ -216,6 +216,7 @@ function aplicarPermissoesPerfil(){
     'snb-despesas'     : gestor,
     'snb-estoque'      : gestor,
     'snb-produtividade': gestor,
+    'snb-gestao'       : gestor && flagAtiva('gestao'),
   };
   Object.entries(snbRules).forEach(([id,pode])=>{
     const el=document.getElementById(id); if(el) el.style.display=pode?'':'none';
@@ -2299,6 +2300,7 @@ function go(p){
   }
   if(p==='history'){ initOrcMes(); loadHist(); _recebGarantirCarregado(); }
   if(p==='crm'){ if(!_crmAtivo()){ toast('Funil desativado para esta empresa.'); go('painel'); return; } loadOSHist(); renderCRM(); }
+  if(p==='gestao'){ if(!flagAtiva('gestao')||!eGestor()){ toast('Acesso não disponível.'); go('painel'); return; } loadGestao(); }
   if(p==='form'){
     // Restaura rascunho APENAS quando se navega direto para a tela (nav/menu).
     // Nunca ao editar (abrirOrc), criar novo (novoOrc) ou duplicar — esses fluxos
@@ -2640,7 +2642,7 @@ function renderSvcs(){
       <input type="text" inputmode="decimal" class="pf" placeholder="0,00" value="${v>0?v.toFixed(2).replace('.',','):''}" data-id="${s.id}" oninput="updSvcP(this)" onblur="fmtP(this)">
       ${qty>1?`<span class="plabel" style="margin-left:8px">= ${brl(v*qty)}</span>`:''}
       <span style="margin-left:auto">${prodBadge}</span>
-    </div>`;
+    </div>${_gestaoHintHtml(s)}`;
     el.appendChild(r);
   });
 }
@@ -7500,6 +7502,296 @@ function renderAnalises(d){
       `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--gray-light)">
         <span>${esc(x.nome||'—')}</span><span style="color:var(--gray)">${x.dias_sem_saida} dias</span></div>`).join('')
       : '<div style="color:var(--gray)">Nenhum produto parado 🎉</div>';
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  GESTÃO — financeiro do dia a dia (só gestor/master, flagAtiva('gestao'))
+//  Blocos: (1) tabela de preços, (2) medidor do MEI, (3) caixa, (4) relatórios
+//  Tabela de preços vive em empresas.config.precificacao (CFG.precificacao),
+//  persistida por _persistirConfigEmpresa() — nada de tabela nova.
+// ══════════════════════════════════════════════════════════════════
+
+// Tetos de faturamento do MEI por ano (LC 238/2026). 2028+ = 140000.
+const _GESTAO_TETO_MEI = { 2026:81000, 2027:110000 };
+function _gestaoTetoMei(ano){ return _GESTAO_TETO_MEI[ano] || 140000; }
+
+let _gpFixos = [];   // [{nome, valor}]  — working array da tela
+let _gpSvcs  = [];   // [{nome, horas, km}]
+
+// Lê a precificação do CFG com defaults seguros (números, nunca undefined).
+function _precCfg(){
+  const p = (CFG && CFG.precificacao) || {};
+  return {
+    retirada:+p.retirada||0, dias:+p.dias||0, horas:+p.horas||0,
+    custoKm:+p.custoKm||0, velocidade:+p.velocidade||0,
+    taxaCartao:+p.taxaCartao||0, imposto:+p.imposto||0, margem:+p.margem||0,
+    fixos:Array.isArray(p.fixos)?p.fixos:[],
+    servicos:Array.isArray(p.servicos)?p.servicos:[]
+  };
+}
+
+// Arredonda PRA CIMA em múltiplos de R$ 5 (preço "redondo" de orçamento).
+function _arredondaCima5(v){ if(!isFinite(v)||v<=0) return 0; return Math.ceil(v/5)*5; }
+
+// custoHora = (retirada + soma dos fixos) / (dias × horas)
+function _gestaoCustoHora(c){
+  const somaFixos=(c.fixos||[]).reduce((a,f)=>a+(+f.valor||0),0);
+  const denom=(+c.dias||0)*(+c.horas||0);
+  if(denom<=0) return 0;
+  return ((+c.retirada||0)+somaFixos)/denom;
+}
+
+// Custo real + preço mínimo (sem lucro) + preço alvo (com margem) de um serviço.
+//   deslocamento = 2·km·custoKm + (2·km/velocidade)·custoHora   (ida e volta)
+//   custo        = horas·custoHora + deslocamento
+//   mínimo       = custo / (1 − (taxa+imposto)/100)
+//   alvo         = custo / (1 − (taxa+imposto+margem)/100)
+function _gestaoCalcServico(svc, c){
+  const custoHora=_gestaoCustoHora(c);
+  const km=+svc.km||0, horas=+svc.horas||0;
+  const tempoTrajeto=(+c.velocidade>0)?(2*km/(+c.velocidade)):0;
+  const deslocamento=2*km*(+c.custoKm||0)+tempoTrajeto*custoHora;
+  const custo=horas*custoHora+deslocamento;
+  const fatorMin=1-((+c.taxaCartao||0)+(+c.imposto||0))/100;
+  const fatorAlvo=1-((+c.taxaCartao||0)+(+c.imposto||0)+(+c.margem||0))/100;
+  const minimo=fatorMin>0?custo/fatorMin:custo;
+  const alvo=fatorAlvo>0?custo/fatorAlvo:custo;
+  return { custo, minimo:_arredondaCima5(minimo), alvo:_arredondaCima5(alvo), custoHora };
+}
+
+// ── Datas (locais, YYYY-MM-DD) ──
+function _gestaoDataOffset(days){
+  const base=new Date(_hojeLocal()+'T12:00:00'); base.setDate(base.getDate()+days);
+  return base.toISOString().slice(0,10);
+}
+function _gestaoFmtDiaMes(ymd){ if(!ymd) return ''; const p=String(ymd).split('-'); return p.length===3?`${p[2]}/${p[1]}`:''; }
+function _gestaoFmtData(iso){ try{ const d=new Date(iso); if(isNaN(d)) return ''; return d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } }
+
+// Markdown minimalista e seguro: escapa HTML, depois **negrito**. Quebra de
+// linha fica por conta do white-space:pre-wrap do CSS.
+function _gestaoMd(txt){ return esc(txt||'').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>'); }
+function _gestaoTipoLabel(t){ return ({resumo_semana:'Resumo da semana',caixa_sexta:'Caixa de sexta',radar_tributario:'Radar tributário'})[t]||''; }
+
+// ── Abas internas ──
+function gestaoTab(name){
+  document.querySelectorAll('.gestao-tab').forEach(b=>b.classList.toggle('on', b.dataset.gtab===name));
+  // Painéis controlados só por display — NÃO usar a classe global '.on' aqui
+  // (ela pinta todo o conteúdo de laranja/700 por herança, é da navegação).
+  document.querySelectorAll('.gestao-pane').forEach(p=>{ p.style.display=(p.id==='gpane-'+name)?'':'none'; });
+}
+
+// ── Entrada da tela ──
+async function loadGestao(){
+  if(!flagAtiva('gestao')||!eGestor()) return;
+  gestaoTab('precos');
+  _gpCarregarForm();
+  _gestaoRenderTabela();
+  try{ await Promise.all([ Promise.resolve(loadRecebimentos()), Promise.resolve(loadDespesas()) ]); }
+  catch(e){ console.warn('[loadGestao dados]', e?.message||e); }
+  _gestaoRenderMei();
+  _gestaoRenderCaixa();
+  _gestaoRenderRelatorios();
+}
+
+// ── Bloco 1: formulário da tabela de preços ──
+function _gpCarregarForm(){
+  const c=_precCfg();
+  const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v?String(v).replace('.',','):''; };
+  set('gp-retirada',c.retirada); set('gp-dias',c.dias); set('gp-horas',c.horas);
+  set('gp-custokm',c.custoKm); set('gp-velocidade',c.velocidade);
+  set('gp-taxacartao',c.taxaCartao); set('gp-imposto',c.imposto); set('gp-margem',c.margem);
+  _gpFixos=c.fixos.map(f=>({nome:f.nome||'', valor:+f.valor||0}));
+  _gpSvcs =c.servicos.map(s=>({nome:s.nome||'', horas:(s.horas!=null?s.horas:''), km:(s.km!=null?s.km:'')}));
+  _gestaoRenderFixos(); _gestaoRenderSvcsCfg();
+}
+function _gestaoRenderFixos(){
+  const el=document.getElementById('gp-fixos-list'); if(!el) return;
+  el.innerHTML=_gpFixos.map((f,i)=>`<div class="gp-fixo-row">
+    <input type="text" data-f="nome" placeholder="Ex.: aluguel, internet" value="${esc(f.nome||'')}">
+    <input type="text" inputmode="decimal" data-f="valor" placeholder="R$" value="${(+f.valor||0)?(+f.valor).toFixed(2).replace('.',','):''}" style="max-width:110px">
+    <button type="button" class="gp-rm" onclick="_gestaoRmFixo(${i})" aria-label="Remover">✕</button>
+  </div>`).join('') || '<div class="gp-mini">Nenhum custo fixo ainda.</div>';
+}
+function _gestaoRenderSvcsCfg(){
+  const el=document.getElementById('gp-svcs-list'); if(!el) return;
+  el.innerHTML=_gpSvcs.map((s,i)=>`<div class="gp-svc-row">
+    <input type="text" data-f="nome" placeholder="Nome do serviço" value="${esc(s.nome||'')}" style="flex:2">
+    <input type="text" inputmode="decimal" data-f="horas" placeholder="h" title="Horas no cliente" value="${s.horas!==''&&s.horas!=null?s.horas:''}" style="max-width:70px">
+    <input type="text" inputmode="decimal" data-f="km" placeholder="km" title="Km de ida" value="${s.km!==''&&s.km!=null?s.km:''}" style="max-width:70px">
+    <button type="button" class="gp-rm" onclick="_gestaoRmSvc(${i})" aria-label="Remover">✕</button>
+  </div>`).join('') || '<div class="gp-mini">Nenhum serviço cadastrado.</div>';
+}
+function _gestaoSyncFixosFromDOM(){
+  document.querySelectorAll('#gp-fixos-list .gp-fixo-row').forEach((row,i)=>{
+    if(!_gpFixos[i]) _gpFixos[i]={};
+    _gpFixos[i].nome=row.querySelector('[data-f="nome"]')?.value||'';
+    const raw=(row.querySelector('[data-f="valor"]')?.value||'').replace(',','.').replace(/[^\d.]/g,'');
+    _gpFixos[i].valor=parseFloat(raw)||0;
+  });
+}
+function _gestaoSyncSvcsFromDOM(){
+  document.querySelectorAll('#gp-svcs-list .gp-svc-row').forEach((row,i)=>{
+    if(!_gpSvcs[i]) _gpSvcs[i]={};
+    _gpSvcs[i].nome=row.querySelector('[data-f="nome"]')?.value||'';
+    const h=(row.querySelector('[data-f="horas"]')?.value||'').replace(',','.').replace(/[^\d.]/g,'');
+    const k=(row.querySelector('[data-f="km"]')?.value||'').replace(',','.').replace(/[^\d.]/g,'');
+    _gpSvcs[i].horas=h===''?'':(parseFloat(h)||0);
+    _gpSvcs[i].km=k===''?'':(parseFloat(k)||0);
+  });
+}
+function gestaoAddFixo(){ _gestaoSyncFixosFromDOM(); _gpFixos.push({nome:'',valor:''}); _gestaoRenderFixos(); }
+function gestaoAddServico(){ _gestaoSyncSvcsFromDOM(); _gpSvcs.push({nome:'',horas:'',km:''}); _gestaoRenderSvcsCfg(); }
+function _gestaoRmFixo(i){ _gestaoSyncFixosFromDOM(); _gpFixos.splice(i,1); _gestaoRenderFixos(); }
+function _gestaoRmSvc(i){ _gestaoSyncSvcsFromDOM(); _gpSvcs.splice(i,1); _gestaoRenderSvcsCfg(); }
+
+async function salvarPrecificacao(){
+  _gestaoSyncFixosFromDOM(); _gestaoSyncSvcsFromDOM();
+  const num=id=>{ const v=(gV(id)||'').replace(',','.').replace(/[^\d.]/g,''); return parseFloat(v)||0; };
+  CFG.precificacao={
+    retirada:num('gp-retirada'), dias:num('gp-dias'), horas:num('gp-horas'),
+    custoKm:num('gp-custokm'), velocidade:num('gp-velocidade'),
+    taxaCartao:num('gp-taxacartao'), imposto:num('gp-imposto'), margem:num('gp-margem'),
+    fixos:_gpFixos.filter(f=>(f.nome||'').trim()||(+f.valor||0)).map(f=>({nome:(f.nome||'').trim(), valor:+f.valor||0})),
+    servicos:_gpSvcs.filter(s=>(s.nome||'').trim()).map(s=>({nome:(s.nome||'').trim(), horas:+s.horas||0, km:+s.km||0}))
+  };
+  try{ lsSet('empresa_cfg', JSON.stringify(CFG)); }catch(e){ console.warn('[salvarPrecificacao ls]', e?.message||e); }
+  _gpCarregarForm(); _gestaoRenderTabela();
+  const ok=await _persistirConfigEmpresa();
+  toast(ok?'✅ Tabela de preços salva':'💾 Salvo no aparelho (sincroniza ao conectar)');
+}
+function _gestaoRenderTabela(){
+  const c=_precCfg();
+  const card=document.getElementById('gp-resultado-card');
+  const tbl=document.getElementById('gp-tabela');
+  const chEl=document.getElementById('gp-custohora');
+  if(!tbl||!card) return;
+  if(!c.servicos.length){ card.style.display='none'; return; }
+  const ch=_gestaoCustoHora(c);
+  if(chEl) chEl.textContent = ch>0 ? ('Custo da sua hora de trabalho: '+brl(ch)) : 'Preencha retirada, dias e horas para calcular o custo da hora.';
+  const rows=c.servicos.map(s=>{
+    const r=_gestaoCalcServico(s,c);
+    return `<tr><td>${esc(s.nome||'—')}</td><td>${brl(r.custo)}</td><td>${brl(r.minimo)}</td><td class="g-alvo">${brl(r.alvo)}</td></tr>`;
+  }).join('');
+  tbl.innerHTML=`<thead><tr><th>Serviço</th><th>Custo</th><th>Mínimo</th><th>Alvo</th></tr></thead><tbody>${rows}</tbody>`;
+  card.style.display='';
+}
+
+// ── Bloco 2: medidor do MEI ──
+function _gestaoRenderMei(){
+  const el=document.getElementById('gp-mei'); if(!el) return;
+  const ano=new Date().getFullYear();
+  const teto=_gestaoTetoMei(ano);
+  const pagos=(todosReceb||[]).filter(r=>r.data_pagamento && String(r.data_pagamento).slice(0,4)===String(ano));
+  const fat=pagos.reduce((a,r)=>a+(+r.valor||0),0);
+  const pct=teto>0?(fat/teto*100):0;
+  const cor=pct>90?'#ef4444':(pct>=70?'#f59e0b':'#16a34a');
+  const porMes={};
+  pagos.forEach(r=>{ const m=String(r.data_pagamento).slice(0,7); porMes[m]=(porMes[m]||0)+(+r.valor||0); });
+  const mesAtual=new Date().getMonth()+1;
+  const ultimos=[];
+  for(let m=mesAtual;m>=1 && ultimos.length<3;m--){ ultimos.push(porMes[`${ano}-${String(m).padStart(2,'0')}`]||0); }
+  const ritmo=ultimos.length?ultimos.reduce((a,b)=>a+b,0)/ultimos.length:0;
+  const mesesFaltam=Math.max(0,12-mesAtual);
+  const projDez=fat+ritmo*mesesFaltam;
+  const pctProj=teto>0?(projDez/teto*100):0;
+  const corProj=pctProj>90?'#ef4444':(pctProj>=70?'#f59e0b':'var(--c2)');
+  el.innerHTML=`<div class="ct">Medidor do MEI — ${ano}</div>
+    <p class="gp-mini" style="margin:-4px 0 8px">Faturamento recebido no ano vs. teto de ${brl(teto)}.</p>
+    <div style="display:flex;justify-content:space-between;align-items:baseline">
+      <span style="font-size:22px;font-weight:800;color:${cor}">${brl(fat)}</span>
+      <span class="gp-mini">${pct.toFixed(1)}% do teto</span>
+    </div>
+    <div class="gp-gauge-track"><div class="gp-gauge-fill" style="width:${Math.min(100,pct).toFixed(1)}%;background:${cor}"></div></div>
+    <div class="gp-mini">Faltam ${brl(Math.max(0,teto-fat))} para o limite.</div>
+    <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)">
+      <div class="gp-mini">Projeção para dezembro (ritmo dos últimos 3 meses):</div>
+      <div style="font-size:16px;font-weight:700;color:${corProj}">${brl(projDez)} <span class="gp-mini" style="font-weight:400">· ${pctProj.toFixed(0)}% do teto</span></div>
+      ${pctProj>100?'<div class="gp-mini" style="color:#ef4444;margin-top:4px">⚠️ No ritmo atual, você ultrapassa o teto do MEI neste ano.</div>':''}
+    </div>`;
+}
+
+// ── Bloco 3: caixa ──
+function _gestaoRenderCaixa(){
+  const el=document.getElementById('gp-caixa'); if(!el) return;
+  const hoje=_hojeLocal();
+  const d7=_gestaoDataOffset(-7), d30=_gestaoDataOffset(-30), v30=_gestaoDataOffset(30);
+  const receb=todosReceb||[], desp=todasDesp||[];
+  const entrou=(desde)=>receb.filter(r=>r.data_pagamento && r.data_pagamento>=desde && r.data_pagamento<=hoje).reduce((a,r)=>a+(+r.valor||0),0);
+  const saiu  =(desde)=>desp.filter(x=>x.data && x.data>=desde && x.data<=hoje).reduce((a,x)=>a+(+x.valor||0),0);
+  const entrou7=entrou(d7), entrou30=entrou(d30), saiu7=saiu(d7), saiu30=saiu(d30);
+  const vencidos=receb.filter(r=>!r.data_pagamento && r.vencimento && r.vencimento<hoje).sort((a,b)=>a.vencimento<b.vencimento?-1:1);
+  const aVencer =receb.filter(r=>!r.data_pagamento && r.vencimento && r.vencimento>=hoje && r.vencimento<=v30).sort((a,b)=>a.vencimento<b.vencimento?-1:1);
+  const totVencido=vencidos.reduce((a,r)=>a+(+r.valor||0),0);
+  const totVencer =aVencer.reduce((a,r)=>a+(+r.valor||0),0);
+  const rotulo=(r)=>{ const o=(todosOrc||[]).find(x=>String(x.id)===String(r.orcamento_id)); return o?('#'+String(o.numero||'').padStart(3,'0')+(o.cliente?' · '+o.cliente:'')):'Recebimento'; };
+  const linha=(r,cor)=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--line)">
+    <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(rotulo(r))}</span>
+    <span style="flex:0 0 auto;color:${cor};font-weight:600">${brl(+r.valor||0)} <span class="gp-mini" style="font-weight:400">${_gestaoFmtDiaMes(r.vencimento)}</span></span></div>`;
+  el.innerHTML=`
+    <div class="card">
+      <div class="ct">Fluxo de caixa</div>
+      <div class="row">
+        <div class="gp-stat"><div class="gp-stat-v" style="color:#16a34a">${brl(entrou7)}</div><div class="gp-stat-l">Entrou · 7 dias</div></div>
+        <div class="gp-stat"><div class="gp-stat-v" style="color:#ef4444">${brl(saiu7)}</div><div class="gp-stat-l">Saiu · 7 dias</div></div>
+      </div>
+      <div class="row">
+        <div class="gp-stat"><div class="gp-stat-v" style="color:#16a34a">${brl(entrou30)}</div><div class="gp-stat-l">Entrou · 30 dias</div></div>
+        <div class="gp-stat"><div class="gp-stat-v" style="color:#ef4444">${brl(saiu30)}</div><div class="gp-stat-l">Saiu · 30 dias</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="ct">A receber vencido${vencidos.length?` · ${brl(totVencido)}`:''}</div>
+      ${vencidos.length?vencidos.map(r=>linha(r,'#ef4444')).join(''):'<div class="gp-mini">Nada vencido 🎉</div>'}
+    </div>
+    <div class="card">
+      <div class="ct">A vencer · próximos 30 dias${aVencer.length?` · ${brl(totVencer)}`:''}</div>
+      ${aVencer.length?aVencer.map(r=>linha(r,'var(--c2)')).join(''):'<div class="gp-mini">Nada a vencer nos próximos 30 dias.</div>'}
+    </div>`;
+}
+
+// ── Bloco 4: relatórios (lê a tabela insights; rotinas agendadas escrevem lá) ──
+async function _gestaoRenderRelatorios(){
+  const el=document.getElementById('gp-relatorios'); if(!el) return;
+  el.innerHTML='<div class="gp-mini">Carregando…</div>';
+  if(!(dbOk&&db&&EMPRESA_ID)){ el.innerHTML='<div class="gp-mini">Conecte-se para ver os relatórios.</div>'; return; }
+  try{
+    const {data,error}=await db.from('insights').select('*').eq('empresa_id',EMPRESA_ID).order('created_at',{ascending:false}).limit(50);
+    if(error) throw error;
+    const lista=(data||[]).filter(r=>(r.texto&&r.texto.trim())||(r.titulo&&r.titulo.trim())||(r.conteudo&&r.conteudo.resumo));
+    if(!lista.length){ el.innerHTML='<div class="gp-mini">Nenhum relatório ainda. Eles aparecem aqui automaticamente.</div>'; return; }
+    el.innerHTML=lista.map(r=>{
+      const corpo=(r.texto&&r.texto.trim())?_gestaoMd(r.texto):(r.conteudo&&r.conteudo.resumo?_gestaoMd(r.conteudo.resumo):'');
+      return `<div class="gp-rel-item">
+        <h4>${esc(r.titulo||_gestaoTipoLabel(r.tipo)||'Relatório')}</h4>
+        <div class="gp-rel-date">${_gestaoFmtData(r.created_at)}</div>
+        ${corpo?`<div class="gp-rel-body">${corpo}</div>`:''}
+      </div>`;
+    }).join('');
+  }catch(e){ console.warn('[gestaoRelatorios]', e?.message||e); el.innerHTML='<div class="gp-mini">Não foi possível carregar os relatórios.</div>'; }
+}
+
+// ── Dica de preço no formulário de orçamento (injetada em renderSvcs) ──
+// Discreta e NUNCA muda o preço sozinha: só sugere mínimo/alvo e dá um botão.
+function _precoServicoMatch(desc){
+  if(!flagAtiva('gestao')) return null;
+  const d=(desc||'').trim().toLowerCase(); if(!d) return null;
+  return (_precCfg().servicos||[]).find(s=>(s.nome||'').trim().toLowerCase()===d)||null;
+}
+function _gestaoHintHtml(s){
+  try{
+    const svc=_precoServicoMatch(s.d); if(!svc) return '';
+    const r=_gestaoCalcServico(svc,_precCfg());
+    if(!(r.alvo>0)) return '';
+    return `<div style="padding:4px 2px 2px;font-size:11px;color:var(--gray);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span>💡 mínimo ${brl(r.minimo)} · alvo <strong style="color:var(--c1)">${brl(r.alvo)}</strong></span>
+      <button type="button" onclick="_gestaoUsarAlvo(${s.id}, ${r.alvo})" style="background:var(--c1-light);color:var(--c1);border:1px solid var(--c1);border-radius:50px;padding:2px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">usar alvo</button>
+    </div>`;
+  }catch(e){ console.warn('[gestaoHint]', e?.message||e); return ''; }
+}
+function _gestaoUsarAlvo(id, alvo){
+  const s=svcs.find(x=>x.id===id); if(!s) return;
+  s.p=String(alvo); renderSvcs(); if(typeof upd==='function') upd();
+  toast('Preço alvo aplicado');
 }
 
 // Config de uma subscription realtime, filtrada pela empresa ativa. Sem EMPRESA_ID

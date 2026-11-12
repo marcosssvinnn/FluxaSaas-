@@ -467,6 +467,45 @@ em produção, servida por HTTPS de verdade).
 
 ---
 
+## Sessão 2026-11-12 — Aba GESTÃO (financeiro do dia a dia) — só na Fluxa piscinas
+
+Nova tela `page-gestao` (só gestor/master, atrás de `flagAtiva('gestao')` — flag
+ligada **só** na Fluxa piscinas via SQL). Botão `snb-gestao` na sidebar
+("Cadastros e análise"); `go('gestao')` com gate de flag+perfil → `loadGestao()`.
+Em `app.js`, bloco "GESTÃO" logo após `renderAnalises`. 4 abas internas
+(`gestaoTab`): **tabela de preços** (custo real da hora + preço mínimo/alvo,
+arredondado pra cima em múltiplos de R$5; salvo em `empresas.config.precificacao`
+via `_persistirConfigEmpresa`, sem tabela nova), **medidor do MEI** (faturado no
+ano vs teto LC 238/2026 — 2026=81k, 2027=110k, 2028+=140k — + projeção de dezembro
+pelo ritmo dos últimos 3 meses), **caixa** (entrou/saiu 7d e 30d, a receber vencido,
+a vencer 30d — reusa `todosReceb`/`todasDesp`), **relatórios** (lê a tabela
+`insights`, mostra `titulo`+`texto`+`created_at`, markdown mínimo e XSS-safe via
+`esc()`). No form de orçamento, `renderSvcs` injeta uma dica discreta
+`mínimo/alvo` + botão "usar alvo" quando o item casa com um serviço da tabela
+(`_precoServicoMatch`/`_gestaoHintHtml`) — **nunca** muda o preço sozinho, e é
+inerte quando a flag está off (verificado).
+
+- **Migração `setup-v2-delta43.sql` (aplicada via Management API, 100% aditiva):**
+  `alter table insights add column if not exists texto text;` + ligar
+  `config.flags.gestao=true` só na Fluxa (`1b2b5a31-...`). Convenção pras rotinas
+  agendadas escreverem em `insights`: `empresa_id`(uuid, obrigatório), `tipo`(text),
+  `titulo`(text), `texto`(text markdown — é o corpo que a tela mostra),
+  `created_at`(timestamptz default now()). O card de IA do Painel
+  (`renderAnalises`) continua lendo `conteudo.resumo` — não quebrou.
+- ⚠️ **Gotcha de CSS reaproveitável:** a regra global `.on{color:var(--c1);
+  font-weight:700}` (nav) vaza por herança pra TODO texto sem cor própria da página
+  ativa (que recebe `.on`). Reancora com `#page-gestao{color:var(--c2);
+  font-weight:400}` (id vence `.on`); tabelas novas precisam de `color` explícito,
+  igual `.ht`/`.prod-tabela`. **Não** usei a classe `on` nos painéis internos.
+- Validado no navegador (375px, dbOk=false): matemática das fórmulas, os 4 blocos
+  com dados mockados, cores/limiares do MEI, janelas do caixa, markdown dos
+  relatórios, dica inerte com flag off, zero overflow lateral, sem erro de console.
+  sw `fluxa-v107`→`v108`. **Tudo na `dev`, SEM merge na main e SEM deploy** (aguarda
+  ok do Marcos). Falta só o clique-teste logado de verdade na Fluxa (único passo que
+  o Claude não faz).
+
+---
+
 ## Sessão 2026-09-04/05 — porte do Forthemp (v1) pro Fluxa: 10 recursos
 
 > Pedido do Marcos: *"dê uma olhada no estado que tá no sistema da Fortemp,

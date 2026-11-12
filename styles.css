@@ -598,6 +598,40 @@
               border-radius:50%;font-size:0!important;line-height:0;vertical-align:middle;overflow:hidden}
     }
 
+    /* ── GESTÃO (aba financeira — flagAtiva('gestao')) ── */
+    /* A página ativa recebe .on, e a regra global '.on{color:var(--c1);font-weight:700}'
+       vaza por herança pra todo texto sem cor própria. Especificidade de id (1,0,0)
+       vence '.on' (0,1,0) e reancora o padrão da página; elementos com cor explícita
+       (títulos .ct, g-alvo, etc.) continuam valendo. */
+    #page-gestao{color:var(--c2);font-weight:400}
+    .gestao-tab{flex:0 0 auto;background:#fff;border:1px solid var(--line,#e2e6ee);color:var(--c2);
+      border-radius:999px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;
+      min-height:40px}
+    .gestao-tab.on{background:var(--c1);border-color:var(--c1);color:#fff}
+    .gestao-tbl{width:100%;border-collapse:collapse;font-size:13px}
+    .gestao-tbl th,.gestao-tbl td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--line,#eef0f5)}
+    .gestao-tbl th:first-child,.gestao-tbl td:first-child{text-align:left}
+    .gestao-tbl th{font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--gray);font-weight:700}
+    /* cor/peso explícitos — a página ativa tem .on (regra global pinta de laranja/700
+       por herança), então toda célula precisa definir a sua, igual .ht/.prod-tabela */
+    .gestao-tbl tbody td{color:var(--c2);font-weight:400}
+    .gestao-tbl td.g-alvo{font-weight:800;color:var(--c1)}
+    .gp-fixo-row,.gp-svc-row{display:flex;gap:6px;align-items:center;margin-bottom:6px}
+    .gp-fixo-row input,.gp-svc-row input{flex:1;min-width:0}
+    .gp-rm{flex:0 0 auto;background:none;border:none;color:var(--red,#d14343);font-size:18px;font-weight:700;
+      cursor:pointer;line-height:1;padding:4px 8px}
+    .gp-gauge-track{height:22px;border-radius:999px;background:#eef0f5;overflow:hidden;margin:8px 0 4px}
+    .gp-gauge-fill{height:100%;border-radius:999px;transition:width .4s}
+    .gp-mini{font-size:12px;color:var(--gray)}
+    .gp-stat{text-align:center;padding:12px 8px}
+    .gp-stat-v{font-size:20px;font-weight:800}
+    .gp-stat-l{font-size:11px;color:var(--gray);text-transform:uppercase;letter-spacing:.03em;margin-top:3px}
+    .gp-rel-item{border-left:3px solid var(--c1);padding:8px 12px;margin-bottom:12px;background:#f8f9fc;border-radius:0 8px 8px 0}
+    .gp-rel-item h4{margin:0 0 2px;font-size:14px;color:var(--c2)}
+    .gp-rel-date{font-size:11px;color:var(--gray);margin-bottom:6px}
+    .gp-rel-body{font-size:13px;color:var(--c2);white-space:pre-wrap;line-height:1.5}
+    .gp-rel-body strong{color:var(--c2)}
+
     /* ── PRINT ── */
     .pdoc{display:none}
     @media print{

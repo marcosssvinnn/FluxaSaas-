@@ -360,6 +360,10 @@
         <svg class="sicon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20V10M12 20V4M19 20v-7"></path></svg>
         <span class="slabel">Produtividade</span>
       </button>
+      <button class="snb" id="snb-gestao" data-act="go" data-a="gestao" style="display:none">
+        <svg class="sicon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18M7 14l3-3 3 3 5-6"></path></svg>
+        <span class="slabel">Gestão</span>
+      </button>
     </div>
   </nav>
 
@@ -2167,6 +2171,84 @@
 </div>
 
 <!-- ══ PAGE: DESPESAS ══ -->
+<div class="page" id="page-gestao">
+  <div class="wrap">
+    <button class="btn-voltar" data-act="voltar">← Voltar</button>
+    <h2 style="margin:4px 0 2px;font-size:20px;color:var(--c2)">Gestão</h2>
+    <p style="margin:0 0 14px;color:var(--gray);font-size:13px">O dia a dia financeiro da empresa num lugar só.</p>
+
+    <!-- Abas internas -->
+    <div class="gestao-tabs" style="display:flex;gap:6px;overflow-x:auto;margin-bottom:14px;-webkit-overflow-scrolling:touch">
+      <button class="gestao-tab on" data-gtab="precos" onclick="gestaoTab('precos')">💰 Tabela de preços</button>
+      <button class="gestao-tab" data-gtab="mei" onclick="gestaoTab('mei')">📊 Medidor do MEI</button>
+      <button class="gestao-tab" data-gtab="caixa" onclick="gestaoTab('caixa')">🏦 Caixa</button>
+      <button class="gestao-tab" data-gtab="relatorios" onclick="gestaoTab('relatorios')">📄 Relatórios</button>
+    </div>
+
+    <!-- ── BLOCO 1 — TABELA DE PREÇOS ───────────────────────────── -->
+    <div class="gestao-pane" id="gpane-precos">
+      <div class="card">
+        <div class="ct">Parâmetros da empresa</div>
+        <p style="margin:-4px 0 10px;color:var(--gray);font-size:12px">A partir desses números o sistema calcula o custo real de cada serviço e sugere o preço mínimo (sem prejuízo) e o preço alvo (com a sua margem).</p>
+        <div class="row">
+          <div class="fl"><label>Retirada mensal (R$)</label><input type="text" inputmode="decimal" id="gp-retirada" placeholder="pró-labore / seu salário"></div>
+          <div class="fl"><label>Dias de trabalho / mês</label><input type="text" inputmode="decimal" id="gp-dias" placeholder="ex.: 22"></div>
+        </div>
+        <div class="row">
+          <div class="fl"><label>Horas no cliente / dia</label><input type="text" inputmode="decimal" id="gp-horas" placeholder="ex.: 6"></div>
+          <div class="fl"><label>Custo por km (R$)</label><input type="text" inputmode="decimal" id="gp-custokm" placeholder="combustível + desgaste"></div>
+        </div>
+        <div class="row">
+          <div class="fl"><label>Velocidade média (km/h)</label><input type="text" inputmode="decimal" id="gp-velocidade" placeholder="ex.: 40"></div>
+          <div class="fl"><label>Taxa de cartão (%)</label><input type="text" inputmode="decimal" id="gp-taxacartao" placeholder="ex.: 3"></div>
+        </div>
+        <div class="row">
+          <div class="fl"><label>Imposto sobre a nota (%)</label><input type="text" inputmode="decimal" id="gp-imposto" placeholder="ex.: 0 (MEI)"></div>
+          <div class="fl"><label>Margem de lucro (%)</label><input type="text" inputmode="decimal" id="gp-margem" placeholder="ex.: 30"></div>
+        </div>
+
+        <div class="ct" style="margin-top:14px">Custos fixos mensais</div>
+        <div id="gp-fixos-list"></div>
+        <button type="button" class="tb" onclick="gestaoAddFixo()" style="margin-top:6px">＋ Adicionar custo fixo</button>
+
+        <div class="ct" style="margin-top:14px">Serviços</div>
+        <div id="gp-svcs-list"></div>
+        <button type="button" class="tb" onclick="gestaoAddServico()" style="margin-top:6px">＋ Adicionar serviço</button>
+
+        <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" class="btn-primary" onclick="salvarPrecificacao()">Salvar e calcular</button>
+        </div>
+      </div>
+
+      <div class="card" id="gp-resultado-card" style="display:none">
+        <div class="ct">Preços calculados</div>
+        <div id="gp-custohora" style="font-size:12px;color:var(--gray);margin:-4px 0 10px"></div>
+        <div style="overflow-x:auto"><table class="gestao-tbl" id="gp-tabela"></table></div>
+        <p style="margin:10px 0 0;color:var(--gray);font-size:11px">Mínimo = cobre o custo sem lucro. Alvo = custo + sua margem. Valores arredondados para cima em múltiplos de R$ 5.</p>
+      </div>
+    </div>
+
+    <!-- ── BLOCO 2 — MEDIDOR DO MEI ─────────────────────────────── -->
+    <div class="gestao-pane" id="gpane-mei" style="display:none">
+      <div class="card" id="gp-mei"></div>
+    </div>
+
+    <!-- ── BLOCO 3 — CAIXA ──────────────────────────────────────── -->
+    <div class="gestao-pane" id="gpane-caixa" style="display:none">
+      <div id="gp-caixa"></div>
+    </div>
+
+    <!-- ── BLOCO 4 — RELATÓRIOS ─────────────────────────────────── -->
+    <div class="gestao-pane" id="gpane-relatorios" style="display:none">
+      <div class="card">
+        <div class="ct">Relatórios da Fluxa</div>
+        <p style="margin:-4px 0 10px;color:var(--gray);font-size:12px">Resumos gerados automaticamente (semana, caixa de sexta, radar tributário). Atualiza sozinho.</p>
+        <div id="gp-relatorios"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="page" id="page-despesas">
   <div class="wrap">
     <button class="btn-voltar" data-act="voltar">← Voltar</button>
