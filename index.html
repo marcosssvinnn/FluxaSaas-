@@ -20,6 +20,7 @@
   <script src="libs/emailjs.min.js"></script>
   <script src="libs/html2pdf.bundle.min.js"></script>
   <script src="libs/chart.umd.min.js"></script>
+  <script src="libs/qrcode.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <!-- Inter: telas ainda não migradas pro redesign (regra hardcoded font-family:'Inter').
        Instrument Sans: fonte do redesign (portado do fluxa-app v1, 15/08) — body usa ela
@@ -363,6 +364,7 @@
       <button class="snb" id="snb-gestao" data-act="go" data-a="gestao" style="display:none">
         <svg class="sicon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18M7 14l3-3 3 3 5-6"></path></svg>
         <span class="slabel">Gestão</span>
+        <span class="sbadge" id="snb-gestao-badge" style="display:none">0</span>
       </button>
     </div>
   </nav>
@@ -642,6 +644,23 @@
         <div class="fl" style="margin-bottom:8px"><label>Dias após concluir a OS <span style="font-weight:400;color:var(--gray);text-transform:none;letter-spacing:0">(0 = desligar o pós-serviço)</span></label><input type="number" id="cfg-pos-servico-dias" min="0" max="365" inputmode="numeric" style="max-width:130px"></div>
         <textarea id="cfg-notif-pos-servico" rows="5"></textarea>
       </div>
+      <div class="notif-template" id="cfg-cobranca-wrap">
+        <div class="notif-template-label">💰 Cobrança (usada no botão "Cobrar no WhatsApp" da Gestão)</div>
+        <div class="notif-vars" style="margin-bottom:8px">Variáveis extras: <code>{valor}</code> <code>{vencimento}</code> <code>{orcamento}</code></div>
+        <textarea id="cfg-notif-cobranca" rows="5"></textarea>
+      </div>
+    </div>
+
+    <!-- COBRANÇA POR PIX + AVALIAÇÃO (Gestão) -->
+    <div class="card" id="cfg-card-cobranca">
+      <div class="ct">💠 Recebimento por Pix e avaliação</div>
+      <p style="font-size:13px;color:var(--gray);margin-bottom:14px">Usado na aba Gestão para gerar o Pix copia-e-cola e o QR na hora de cobrar. Fica tudo no seu aparelho — a chave não é enviada pra nenhum serviço externo.</p>
+      <div class="fl" style="margin-bottom:10px"><label>Chave Pix</label><input type="text" id="cfg-pix-chave" placeholder="CPF/CNPJ, e-mail, telefone ou chave aleatória"></div>
+      <div class="row">
+        <div class="fl"><label>Nome do recebedor <span style="font-weight:400;color:var(--gray);text-transform:none;letter-spacing:0">(máx. 25)</span></label><input type="text" id="cfg-pix-nome" maxlength="25" placeholder="como aparece na conta"></div>
+        <div class="fl"><label>Cidade <span style="font-weight:400;color:var(--gray);text-transform:none;letter-spacing:0">(máx. 15)</span></label><input type="text" id="cfg-pix-cidade" maxlength="15" placeholder="ex.: ITAPEMA"></div>
+      </div>
+      <div class="fl" style="margin-top:10px"><label>Link de avaliação do Google <span style="font-weight:400;color:var(--gray);text-transform:none;letter-spacing:0">(opcional — entra na mensagem de pós-serviço)</span></label><input type="text" id="cfg-avaliacao-google" inputmode="url" placeholder="https://g.page/r/..."></div>
     </div>
 
     <button class="btn-primary" data-act="salvarEmpresa" style="margin-bottom:20px">💾 Salvar Configurações</button>
@@ -2182,7 +2201,8 @@
       <button class="gestao-tab on" data-gtab="precos" onclick="gestaoTab('precos')">💰 Tabela de preços</button>
       <button class="gestao-tab" data-gtab="mei" onclick="gestaoTab('mei')">📊 Medidor do MEI</button>
       <button class="gestao-tab" data-gtab="caixa" onclick="gestaoTab('caixa')">🏦 Caixa</button>
-      <button class="gestao-tab" data-gtab="relatorios" onclick="gestaoTab('relatorios')">📄 Relatórios</button>
+      <button class="gestao-tab" data-gtab="revisoes" onclick="gestaoTab('revisoes')">🔧 Revisões</button>
+      <button class="gestao-tab" data-gtab="relatorios" onclick="gestaoTab('relatorios')">📄 Relatórios <span id="gp-rel-badge" class="gp-badge" style="display:none">0</span></button>
     </div>
 
     <!-- ── BLOCO 1 — TABELA DE PREÇOS ───────────────────────────── -->
@@ -2238,11 +2258,24 @@
       <div id="gp-caixa"></div>
     </div>
 
+    <!-- ── BLOCO 5 — REVISÕES E GARANTIAS ───────────────────────── -->
+    <div class="gestao-pane" id="gpane-revisoes" style="display:none">
+      <div id="gp-revisoes"></div>
+    </div>
+
     <!-- ── BLOCO 4 — RELATÓRIOS ─────────────────────────────────── -->
     <div class="gestao-pane" id="gpane-relatorios" style="display:none">
       <div class="card">
         <div class="ct">Relatórios da Fluxa</div>
-        <p style="margin:-4px 0 10px;color:var(--gray);font-size:12px">Resumos gerados automaticamente (semana, caixa de sexta, radar tributário). Atualiza sozinho.</p>
+        <p style="margin:-4px 0 10px;color:var(--gray);font-size:12px">Resumos gerados automaticamente (semana, caixa de sexta, radar tributário). Atualiza sozinho. Toque num relatório novo para marcá-lo como lido.</p>
+        <div class="fl" style="margin-bottom:12px"><label>Filtrar por tipo</label>
+          <select id="gp-rel-filtro" onchange="gestaoRelFiltrar(this.value)">
+            <option value="todos">Todos</option>
+            <option value="resumo_semana">Resumo da semana</option>
+            <option value="caixa_sexta">Caixa de sexta</option>
+            <option value="radar_tributario">Radar tributário</option>
+          </select>
+        </div>
         <div id="gp-relatorios"></div>
       </div>
     </div>

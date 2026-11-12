@@ -221,6 +221,9 @@ function aplicarPermissoesPerfil(){
   Object.entries(snbRules).forEach(([id,pode])=>{
     const el=document.getElementById(id); if(el) el.style.display=pode?'':'none';
   });
+  // Contador de relatórios novos no botão Gestão (atrás da flag). Deferido porque
+  // dbOk/EMPRESA_ID podem ainda não estar prontos no login; reconfere ao abrir a tela.
+  if(gestor && flagAtiva('gestao')){ setTimeout(()=>{ try{ _gestaoContarNovosSidebar(); }catch(e){ console.warn('[gestao badge boot]', e?.message||e); } }, 1800); }
   // Botão "← Minhas OS" no topo da página de Vistorias (só técnico precisa)
   const visBack=document.getElementById('vis-back-os'); if(visBack) visBack.style.display=tecnico?'':'none';
   // Reveal sidebar now that user is logged in
@@ -1408,6 +1411,9 @@ const CFG_DEF = {
   // está tudo certo. pos_servico_dias=0 desliga a feature. Diferencial do Marcos.
   pos_servico_dias: 15,
   notif_pos_servico: 'Olá, {nome}! 😊\n\nAqui é da {empresa}. Faz alguns dias que concluímos o serviço e eu queria saber: está tudo certo? Surgiu alguma dúvida ou alguma coisa em que eu possa ajudar?\n\nFaço questão de acompanhar depois do serviço — qualquer necessidade, é só me chamar por aqui.\n\n*{empresa}*\n📞 {tel_empresa}',
+  // GESTÃO leva 2 — cobrança (Pix) e avaliação. Tudo em empresas.config (CFG).
+  notif_cobranca: 'Olá, {nome}! 😊\n\nPassando só pra lembrar do pagamento do orçamento {orcamento}, no valor de {valor}, com vencimento em {vencimento}.\n\nSe já tiver pago, pode desconsiderar. Qualquer coisa estou à disposição!\n\n*{empresa}*\n📞 {tel_empresa}',
+  pix_chave:'', pix_nome:'', pix_cidade:'', avaliacao_google:'',
   // v2: SEM chaves EmailJS chumbadas. Cada empresa configura as suas em Empresa →
   // E-mail Automático; ficam em empresas.config.emailjs = {pubkey, service, template}.
   emailjs: {}
@@ -1947,6 +1953,11 @@ function preencherFormEmpresa(){
   setV('cfg-notif-garantia', CFG.notif_garantia || CFG_DEF.notif_garantia);
   setV('cfg-notif-pos-servico', CFG.notif_pos_servico || CFG_DEF.notif_pos_servico);
   setV('cfg-pos-servico-dias', CFG.pos_servico_dias ?? CFG_DEF.pos_servico_dias);
+  setV('cfg-notif-cobranca', CFG.notif_cobranca || CFG_DEF.notif_cobranca);
+  setV('cfg-pix-chave', CFG.pix_chave || '');
+  setV('cfg-pix-nome', CFG.pix_nome || '');
+  setV('cfg-pix-cidade', CFG.pix_cidade || '');
+  setV('cfg-avaliacao-google', CFG.avaliacao_google || '');
   // Nota Fiscal (v2: sem token no cliente — só dados fiscais não-secretos)
   setV('cfg-nfe-cnpj', CFG.nfe_cnpj||'');
   setV('cfg-nfe-iss', CFG.nfe_iss||'2.0');
@@ -2103,6 +2114,11 @@ async function salvarEmpresa(){
   CFG.notif_garantia = gV('cfg-notif-garantia') || CFG_DEF.notif_garantia;
   CFG.notif_pos_servico = gV('cfg-notif-pos-servico') || CFG_DEF.notif_pos_servico;
   CFG.pos_servico_dias = (()=>{ const v=gV('cfg-pos-servico-dias'); if(v==='') return CFG_DEF.pos_servico_dias; const n=parseInt(v); return isNaN(n)?CFG_DEF.pos_servico_dias:Math.max(0,Math.min(365,n)); })();
+  CFG.notif_cobranca = gV('cfg-notif-cobranca') || CFG_DEF.notif_cobranca;
+  CFG.pix_chave = (gV('cfg-pix-chave')||'').trim();
+  CFG.pix_nome = (gV('cfg-pix-nome')||'').trim().slice(0,25);
+  CFG.pix_cidade = (gV('cfg-pix-cidade')||'').trim().slice(0,15);
+  CFG.avaliacao_google = (gV('cfg-avaliacao-google')||'').trim();
   // Nota Fiscal
   // v2: NÃO guardar token fiscal no cliente (era CFG.nfe_token_prod/hom).
   CFG.nfe_cnpj       = gV('cfg-nfe-cnpj').trim();
@@ -7517,6 +7533,8 @@ function _gestaoTetoMei(ano){ return _GESTAO_TETO_MEI[ano] || 140000; }
 
 let _gpFixos = [];   // [{nome, valor}]  — working array da tela
 let _gpSvcs  = [];   // [{nome, horas, km}]
+let _gestaoInsights = [];        // relatórios (insights) carregados
+let _gestaoRelFiltro = 'todos';  // filtro de tipo do bloco Relatórios
 
 // Lê a precificação do CFG com defaults seguros (números, nunca undefined).
 function _precCfg(){
@@ -7567,9 +7585,56 @@ function _gestaoDataOffset(days){
 function _gestaoFmtDiaMes(ymd){ if(!ymd) return ''; const p=String(ymd).split('-'); return p.length===3?`${p[2]}/${p[1]}`:''; }
 function _gestaoFmtData(iso){ try{ const d=new Date(iso); if(isNaN(d)) return ''; return d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } }
 
-// Markdown minimalista e seguro: escapa HTML, depois **negrito**. Quebra de
-// linha fica por conta do white-space:pre-wrap do CSS.
-function _gestaoMd(txt){ return esc(txt||'').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>'); }
+// Markdown pequeno e SEGURO para os relatórios (as rotinas gravam em
+// insights.texto). Escapa TUDO primeiro (esc cobre & < > " '), depois converte
+// por blocos: tabelas (| … | + linha separadora |---|), títulos (#..######),
+// listas (- / * / 1.), negrito/itálico/código e links (só http/https, nova aba,
+// rel=noopener). Como nada é convertido antes do esc, não há como injetar HTML.
+function _mdRowCels(line){
+  return String(line).trim().replace(/^\|/,'').replace(/\|$/,'').split('|').map(c=>c.trim());
+}
+function _mdInline(s){ // s já vem escapado por esc()
+  return s
+    .replace(/`([^`]+)`/g,'<code>$1</code>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,'<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+    .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*\s][^*]*)\*/g,'$1<em>$2</em>');
+}
+function _gestaoMd(src){
+  const lines=String(src||'').replace(/\r\n?/g,'\n').split('\n');
+  const inline=(s)=>_mdInline(esc(s));
+  const isSep=(l)=> l!=null && /\|/.test(l) && /^\s*\|?[\s:]*-{2,}[-\s:|]*$/.test(l);
+  const isTblStart=(i)=> /\|/.test(lines[i]||'') && isSep(lines[i+1]);
+  const isBlock=(l)=> /^\s*#{1,6}\s+/.test(l) || /^\s*[-*]\s+/.test(l) || /^\s*\d+\.\s+/.test(l);
+  let html='', i=0;
+  while(i<lines.length){
+    const ln=lines[i];
+    if(isTblStart(i)){
+      const head=_mdRowCels(ln); i+=2; const rows=[];
+      while(i<lines.length && /\|/.test(lines[i]) && lines[i].trim()!==''){ rows.push(_mdRowCels(lines[i])); i++; }
+      html+='<div class="gp-md-tblwrap"><table class="gp-md-tbl"><thead><tr>'+
+        head.map(c=>`<th>${inline(c)}</th>`).join('')+'</tr></thead><tbody>'+
+        rows.map(r=>'<tr>'+r.map(c=>`<td>${inline(c)}</td>`).join('')+'</tr>').join('')+
+        '</tbody></table></div>';
+      continue;
+    }
+    const h=ln.match(/^\s*(#{1,6})\s+(.*)$/);
+    if(h){ const lvl=h[1].length; const tag=lvl<=1?'h3':(lvl===2?'h4':'h5'); html+=`<${tag} class="gp-md-h">${inline(h[2])}</${tag}>`; i++; continue; }
+    if(/^\s*[-*]\s+/.test(ln)){
+      const items=[]; while(i<lines.length && /^\s*[-*]\s+/.test(lines[i])){ items.push(lines[i].replace(/^\s*[-*]\s+/,'')); i++; }
+      html+='<ul class="gp-md-ul">'+items.map(it=>`<li>${inline(it)}</li>`).join('')+'</ul>'; continue;
+    }
+    if(/^\s*\d+\.\s+/.test(ln)){
+      const items=[]; while(i<lines.length && /^\s*\d+\.\s+/.test(lines[i])){ items.push(lines[i].replace(/^\s*\d+\.\s+/,'')); i++; }
+      html+='<ol class="gp-md-ol">'+items.map(it=>`<li>${inline(it)}</li>`).join('')+'</ol>'; continue;
+    }
+    if(ln.trim()===''){ i++; continue; }
+    const para=[];
+    while(i<lines.length && lines[i].trim()!=='' && !isBlock(lines[i]) && !isTblStart(i)){ para.push(lines[i]); i++; }
+    html+=`<p class="gp-md-p">${para.map(inline).join('<br>')}</p>`;
+  }
+  return html;
+}
 function _gestaoTipoLabel(t){ return ({resumo_semana:'Resumo da semana',caixa_sexta:'Caixa de sexta',radar_tributario:'Radar tributário'})[t]||''; }
 
 // ── Abas internas ──
@@ -7590,6 +7655,14 @@ async function loadGestao(){
   catch(e){ console.warn('[loadGestao dados]', e?.message||e); }
   _gestaoRenderMei();
   _gestaoRenderCaixa();
+  // Revisões — equipamentos (garantias) + planos de vistoria
+  try{
+    await Promise.all([
+      (typeof loadEquipamentos==='function')?Promise.resolve(loadEquipamentos()).catch(()=>{}):null,
+      (typeof loadLocais==='function')?Promise.resolve(loadLocais()).catch(()=>{}):null
+    ].filter(Boolean));
+  }catch(e){ console.warn('[loadGestao revisoes]', e?.message||e); }
+  _gestaoRenderRevisoes();
   _gestaoRenderRelatorios();
 }
 
@@ -7724,9 +7797,13 @@ function _gestaoRenderCaixa(){
   const totVencido=vencidos.reduce((a,r)=>a+(+r.valor||0),0);
   const totVencer =aVencer.reduce((a,r)=>a+(+r.valor||0),0);
   const rotulo=(r)=>{ const o=(todosOrc||[]).find(x=>String(x.id)===String(r.orcamento_id)); return o?('#'+String(o.numero||'').padStart(3,'0')+(o.cliente?' · '+o.cliente:'')):'Recebimento'; };
-  const linha=(r,cor)=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--line)">
-    <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(rotulo(r))}</span>
-    <span style="flex:0 0 auto;color:${cor};font-weight:600">${brl(+r.valor||0)} <span class="gp-mini" style="font-weight:400">${_gestaoFmtDiaMes(r.vencimento)}</span></span></div>`;
+  const linha=(r,cor)=>`<div style="padding:8px 0;border-bottom:1px solid var(--line)">
+    <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${esc(rotulo(r))}</span>
+      <span style="flex:0 0 auto;color:${cor};font-weight:600">${brl(+r.valor||0)} <span class="gp-mini" style="font-weight:400">${_gestaoFmtDiaMes(r.vencimento)}</span></span>
+    </div>
+    <div style="margin-top:6px"><button type="button" class="tb" style="background:var(--wa);color:#fff;border-color:var(--wa);font-size:12px" onclick="_gestaoCobrar('${esc(String(r.id))}')">💬 Cobrar no WhatsApp</button></div>
+  </div>`;
   el.innerHTML=`
     <div class="card">
       <div class="ct">Fluxo de caixa</div>
@@ -7749,25 +7826,219 @@ function _gestaoRenderCaixa(){
     </div>`;
 }
 
+// ── Cobrança (Pix) — "Cobrar em um toque" ──────────────────────────
+// BR Code estático do Banco Central (EMV + CRC16-CCITT), gerado no aparelho,
+// sem API externa. A chave Pix nunca sai do dispositivo.
+function _crc16ccitt(str){
+  let crc=0xFFFF;
+  for(let i=0;i<str.length;i++){
+    crc ^= (str.charCodeAt(i)&0xFF)<<8;
+    for(let j=0;j<8;j++){ crc = (crc&0x8000) ? ((crc<<1)^0x1021) : (crc<<1); crc&=0xFFFF; }
+  }
+  return crc.toString(16).toUpperCase().padStart(4,'0');
+}
+function _emvTlv(id, val){ const s=String(val); return id + String(s.length).padStart(2,'0') + s; }
+// Nome/cidade do recebedor viram ASCII sem acento (o comprimento TLV conta bytes;
+// acento quebraria o payload).
+function _pixSan(s, max){
+  return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^\x20-\x7E]/g,'').trim().slice(0,max);
+}
+function _pixPayload({chave, nome, cidade, valor, txid}){
+  const mai = _emvTlv('26', _emvTlv('00','br.gov.bcb.pix') + _emvTlv('01', String(chave||'').trim()));
+  const amt = (valor && valor>0) ? _emvTlv('54', (Math.round(valor*100)/100).toFixed(2)) : '';
+  const name= _emvTlv('59', _pixSan(nome,25) || 'RECEBEDOR');
+  const city= _emvTlv('60', _pixSan(cidade,15) || 'BRASIL');
+  const adf = _emvTlv('62', _emvTlv('05', (txid||'***')));
+  const base = '000201' + '010211' + mai + _emvTlv('52','0000') + _emvTlv('53','986') + amt + _emvTlv('58','BR') + name + city + adf + '6304';
+  return base + _crc16ccitt(base);
+}
+function _pixConfigurado(){ return !!(CFG.pix_chave||'').trim(); }
+
+let _gestaoCobrancaAtual=null; // {msg, tel}
+function _gestaoCobrar(recId){
+  const r=(todosReceb||[]).find(x=>String(x.id)===String(recId)); if(!r){ toast('Recebimento não encontrado'); return; }
+  const o=(todosOrc||[]).find(x=>String(x.id)===String(r.orcamento_id));
+  const nome=((o?.cliente)||'').split(' ')[0]||'';
+  const tel=(o?.tel_cliente)||'';
+  const valor=+r.valor||0;
+  const orcNum = o?('#'+String(o.numero||'').padStart(3,'0')):'';
+  const msg=aplicarVars(CFG.notif_cobranca||CFG_DEF.notif_cobranca,
+    { nome, valor:brl(valor), vencimento:_gestaoDataBR(r.vencimento), orcamento:orcNum }, o?.loja_id);
+  _gestaoCobrancaAtual={ msg, tel };
+  _gestaoAbrirModalCobranca({ nome:(o?.cliente)||nome||'cliente', valor });
+}
+function _gestaoDataBR(ymd){ if(!ymd) return ''; const p=String(ymd).split('-'); return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:String(ymd); }
+function _gestaoCobrarWA(){
+  const c=_gestaoCobrancaAtual; if(!c) return;
+  let tel=(c.tel||'').replace(/\D/g,'');
+  if(tel && !tel.startsWith('55')) tel='55'+tel;
+  const url = tel ? `https://wa.me/${tel}?text=${encodeURIComponent(c.msg)}` : `https://wa.me/?text=${encodeURIComponent(c.msg)}`;
+  if(!tel) toast('Cliente sem telefone — abrindo WhatsApp para você escolher o contato');
+  window.open(url,'_blank');
+}
+function _gestaoCopiarPix(){
+  const ta=document.getElementById('gestao-pix-code'); if(!ta) return;
+  const txt=ta.value;
+  navigator.clipboard?.writeText(txt).then(()=>toast('✅ Código Pix copiado!')).catch(()=>{ ta.select(); try{document.execCommand('copy'); toast('✅ Copiado!');}catch(e){ toast('Selecione e copie o código'); } });
+}
+function _gestaoRenderQR(elId, payload){
+  const box=document.getElementById(elId); if(!box) return;
+  try{
+    const qr=qrcode(0,'M'); qr.addData(payload); qr.make();
+    box.innerHTML=qr.createImgTag(4,8);   // cellSize 4, margin 8px
+    const img=box.querySelector('img'); if(img){ img.style.maxWidth='210px'; img.style.width='100%'; img.style.height='auto'; }
+  }catch(e){ console.warn('[pixQR]', e?.message||e); box.innerHTML='<div class="gp-mini">Não foi possível gerar o QR (use o copia e cola).</div>'; }
+}
+function _gestaoAbrirModalCobranca(o){
+  const old=document.getElementById('gestao-cobranca-modal'); if(old) old.remove();
+  let payload='';
+  if(_pixConfigurado()){ try{ payload=_pixPayload({ chave:CFG.pix_chave, nome:CFG.pix_nome, cidade:CFG.pix_cidade, valor:o.valor }); }catch(e){ console.warn('[pixPayload]', e?.message||e); } }
+  const m=document.createElement('div');
+  m.id='gestao-cobranca-modal'; m.className='cli-hist-overlay'; m.style.zIndex='1200';
+  m.innerHTML=`<div class="cli-hist-box" style="max-width:420px">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line)">
+      <strong style="color:var(--c2)">Cobrar ${esc(o.nome||'cliente')} · ${brl(+o.valor||0)}</strong>
+      <button aria-label="Fechar" onclick="document.getElementById('gestao-cobranca-modal').remove()" style="background:none;border:none;font-size:22px;font-weight:700;color:var(--gray);cursor:pointer;line-height:1">×</button>
+    </div>
+    <div style="padding:16px;overflow-y:auto">
+      <button type="button" class="btn-primary" style="width:100%;background:var(--wa);border-color:var(--wa);margin-bottom:14px" onclick="_gestaoCobrarWA()">💬 Cobrar no WhatsApp</button>
+      ${(_pixConfigurado() && payload) ? `
+        <div class="ct" style="margin-top:0">Pix copia e cola</div>
+        <div id="gestao-pix-qr" style="text-align:center;margin:10px 0"></div>
+        <textarea id="gestao-pix-code" readonly rows="3" style="width:100%;font-size:11px;font-family:monospace;word-break:break-all">${esc(payload)}</textarea>
+        <button type="button" class="tb" style="margin-top:8px" onclick="_gestaoCopiarPix()">📋 Copiar código Pix</button>
+        <p class="gp-mini" style="margin-top:8px">Mostre o QR para o cliente escanear, ou mande o código pelo WhatsApp.</p>
+      ` : `<div class="gp-mini">Para gerar o Pix copia-e-cola e o QR aqui, configure sua chave Pix em <strong>Empresa → Recebimento por Pix</strong>.</div>`}
+    </div>
+  </div>`;
+  document.body.appendChild(m);
+  m.addEventListener('click', e=>{ if(e.target===m) m.remove(); });
+  if(_pixConfigurado() && payload) _gestaoRenderQR('gestao-pix-qr', payload);
+}
+
 // ── Bloco 4: relatórios (lê a tabela insights; rotinas agendadas escrevem lá) ──
+function _relNovo(r){ return (r.status||'novo')!=='lido'; }
 async function _gestaoRenderRelatorios(){
   const el=document.getElementById('gp-relatorios'); if(!el) return;
   el.innerHTML='<div class="gp-mini">Carregando…</div>';
-  if(!(dbOk&&db&&EMPRESA_ID)){ el.innerHTML='<div class="gp-mini">Conecte-se para ver os relatórios.</div>'; return; }
+  if(!(dbOk&&db&&EMPRESA_ID)){ _gestaoInsights=[]; _gestaoAtualizarBadge(); el.innerHTML='<div class="gp-mini">Conecte-se para ver os relatórios.</div>'; return; }
   try{
     const {data,error}=await db.from('insights').select('*').eq('empresa_id',EMPRESA_ID).order('created_at',{ascending:false}).limit(50);
     if(error) throw error;
-    const lista=(data||[]).filter(r=>(r.texto&&r.texto.trim())||(r.titulo&&r.titulo.trim())||(r.conteudo&&r.conteudo.resumo));
-    if(!lista.length){ el.innerHTML='<div class="gp-mini">Nenhum relatório ainda. Eles aparecem aqui automaticamente.</div>'; return; }
-    el.innerHTML=lista.map(r=>{
-      const corpo=(r.texto&&r.texto.trim())?_gestaoMd(r.texto):(r.conteudo&&r.conteudo.resumo?_gestaoMd(r.conteudo.resumo):'');
-      return `<div class="gp-rel-item">
-        <h4>${esc(r.titulo||_gestaoTipoLabel(r.tipo)||'Relatório')}</h4>
-        <div class="gp-rel-date">${_gestaoFmtData(r.created_at)}</div>
-        ${corpo?`<div class="gp-rel-body">${corpo}</div>`:''}
-      </div>`;
-    }).join('');
+    _gestaoInsights=(data||[]).filter(r=>(r.texto&&r.texto.trim())||(r.titulo&&r.titulo.trim())||(r.conteudo&&r.conteudo.resumo));
+    _gestaoRenderRelLista();
+    _gestaoAtualizarBadge();
   }catch(e){ console.warn('[gestaoRelatorios]', e?.message||e); el.innerHTML='<div class="gp-mini">Não foi possível carregar os relatórios.</div>'; }
+}
+function _gestaoRenderRelLista(){
+  const el=document.getElementById('gp-relatorios'); if(!el) return;
+  let lista=_gestaoInsights;
+  if(_gestaoRelFiltro!=='todos') lista=lista.filter(r=>(r.tipo||'')===_gestaoRelFiltro);
+  if(!lista.length){ el.innerHTML='<div class="gp-mini">Nenhum relatório'+(_gestaoRelFiltro!=='todos'?' desse tipo':'')+' ainda. Eles aparecem aqui automaticamente.</div>'; return; }
+  el.innerHTML=lista.map(r=>{
+    const corpo=(r.texto&&r.texto.trim())?_gestaoMd(r.texto):(r.conteudo&&r.conteudo.resumo?_gestaoMd(r.conteudo.resumo):'');
+    const novo=_relNovo(r);
+    return `<div class="gp-rel-item${novo?' gp-novo':''}"${novo?` onclick="_gestaoMarcarLido('${esc(String(r.id))}')" title="Toque para marcar como lido"`:''}>
+      <h4>${esc(r.titulo||_gestaoTipoLabel(r.tipo)||'Relatório')}${novo?'<span class="gp-rel-novo-tag">novo</span>':''}</h4>
+      <div class="gp-rel-date">${_gestaoFmtData(r.created_at)}</div>
+      ${corpo?`<div class="gp-rel-body">${corpo}</div>`:''}
+    </div>`;
+  }).join('');
+}
+function gestaoRelFiltrar(v){ _gestaoRelFiltro=v||'todos'; _gestaoRenderRelLista(); }
+async function _gestaoMarcarLido(id){
+  const r=_gestaoInsights.find(x=>String(x.id)===String(id)); if(!r||!_relNovo(r)) return;
+  r.status='lido';                 // otimista — UI responde na hora
+  _gestaoRenderRelLista(); _gestaoAtualizarBadge();
+  if(!(dbOk&&db)) return;
+  try{
+    const {data,error}=await db.rpc('marcar_insight_lido',{p_id:id});
+    if(error) throw error;
+    if(data!==true){ console.warn('[marcarLido] não aplicou (empresa/rls)'); }
+  }catch(e){ console.warn('[marcarLido]', e?.message||e); } // mantém otimista; recarrega certo no próximo loadGestao
+}
+// Contador de relatórios novos — na aba Relatórios e no botão Gestão da sidebar.
+function _gestaoAtualizarBadge(){
+  const n=(_gestaoInsights||[]).filter(_relNovo).length;
+  const tab=document.getElementById('gp-rel-badge');
+  if(tab){ tab.textContent=n; tab.style.display=n>0?'':'none'; }
+  const snb=document.getElementById('snb-gestao-badge');
+  if(snb){ snb.textContent=n; snb.style.display=n>0?'':'none'; }
+}
+// Conta os novos SEM carregar a tela inteira (chamado no login/boot do gestor).
+async function _gestaoContarNovosSidebar(){
+  const snb=document.getElementById('snb-gestao-badge'); if(!snb) return;
+  if(!(dbOk&&db&&EMPRESA_ID&&flagAtiva('gestao')&&eGestor())){ snb.style.display='none'; return; }
+  try{
+    const {count,error}=await db.from('insights').select('id',{count:'exact',head:true}).eq('empresa_id',EMPRESA_ID).eq('status','novo');
+    if(error) throw error;
+    const n=count||0; snb.textContent=n; snb.style.display=n>0?'':'none';
+  }catch(e){ console.warn('[gestaoBadgeSidebar]', e?.message||e); }
+}
+
+// ── Bloco 5: Revisões e garantias ──────────────────────────────────
+function _gestaoTelCliente(nome, cliId){
+  const lista=(typeof lsCliLer==='function'?lsCliLer():[])||[];
+  let c = cliId ? lista.find(x=>String(x.id)===String(cliId)) : null;
+  if(!c && nome){ const n=(nome||'').trim().toLowerCase(); c=lista.find(x=>(x.nome||'').trim().toLowerCase()===n); }
+  return (c&&c.tel)||'';
+}
+function _gestaoRenderRevisoes(){
+  const el=document.getElementById('gp-revisoes'); if(!el) return;
+  const hoje=new Date(_hojeLocal()+'T12:00:00');
+  // (1) Garantias vencidas ou vencendo em até 30 dias
+  const eqs=filtrarPorLoja(((typeof todosEq!=='undefined'&&todosEq)?todosEq:[]))
+    .map(e=>{ if(!e.garantia_vencimento) return null; const dd=Math.ceil((new Date(e.garantia_vencimento+'T12:00:00')-hoje)/86400000); return (dd<=30)?{e,dd}:null; })
+    .filter(Boolean).sort((a,b)=>a.dd-b.dd);
+  // (2) Vistorias recorrentes atrasadas (plano ativo sem visita há >35 dias, ou nunca)
+  const vis=(typeof lsVisLer==='function'?lsVisLer():[])||[];
+  const ultimaVisLocal=(cliente, local)=>{
+    const c=(cliente||'').trim().toLowerCase(), l=(local||'').trim().toLowerCase(); let maxd='';
+    vis.forEach(v=>{ if((v.cliente||'').trim().toLowerCase()===c && (v.local||'').trim().toLowerCase()===l){ const d=v.data||''; if(d>maxd) maxd=d; } });
+    return maxd;
+  };
+  const limite35=_gestaoDataOffset(-35);
+  const planos=((typeof locaisVistoria!=='undefined'&&locaisVistoria)?locaisVistoria:[])
+    .filter(l=>l && l.ativo!==false && (typeof escopoEmpresaMatch!=='function'||escopoEmpresaMatch(l.loja_id)))
+    .map(l=>{ const u=ultimaVisLocal(l.cliente,l.local); return ((!u)||(u<limite35))?{l,ultima:u}:null; })
+    .filter(Boolean).sort((a,b)=>(a.ultima||'').localeCompare(b.ultima||''));
+
+  const cardGar=`<div class="card">
+    <div class="ct">Garantias${eqs.length?` · ${eqs.length}`:''}</div>
+    <p class="gp-mini" style="margin:-4px 0 8px">Equipamentos com garantia vencida ou vencendo em até 30 dias.</p>
+    ${eqs.length? eqs.map(({e,dd})=>{
+      const status = dd<0 ? `<span style="color:var(--red)">vencida há ${Math.abs(dd)}d</span>` : (dd===0?'<span style="color:var(--yellow)">vence hoje</span>':`<span style="color:var(--yellow)">vence em ${dd}d</span>`);
+      return `<div style="padding:8px 0;border-bottom:1px solid var(--line)">
+        <div style="display:flex;justify-content:space-between;gap:8px">
+          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${esc((e.cliente_nome||'Cliente')+' · '+(e.marca||'')+' '+(e.modelo||'')+' ('+(e.tipo||'')+')')}</span>
+          <span style="flex:0 0 auto;font-size:12px">${status}</span>
+        </div>
+        <div style="margin-top:6px"><button type="button" class="tb" style="background:var(--wa);color:#fff;border-color:var(--wa);font-size:12px" onclick="_gestaoWaGarantia('${esc(String(e.id))}')">💬 Avisar no WhatsApp</button></div>
+      </div>`;
+    }).join('') : '<div class="gp-mini">Nenhuma garantia vencendo nos próximos 30 dias.</div>'}
+  </div>`;
+
+  const cardVis=`<div class="card">
+    <div class="ct">Vistorias atrasadas${planos.length?` · ${planos.length}`:''}</div>
+    <p class="gp-mini" style="margin:-4px 0 8px">Planos de vistoria recorrente sem visita há mais de 35 dias.</p>
+    ${planos.length? planos.map(({l,ultima})=>`<div style="padding:8px 0;border-bottom:1px solid var(--line)">
+        <div style="display:flex;justify-content:space-between;gap:8px">
+          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${esc((l.cliente||'Cliente')+' · '+(l.local||''))}</span>
+          <span class="gp-mini" style="flex:0 0 auto">${ultima?('última '+_gestaoFmtDiaMes(ultima)):'nunca'}</span>
+        </div>
+        <div style="margin-top:6px"><button type="button" class="tb" style="background:var(--wa);color:#fff;border-color:var(--wa);font-size:12px" onclick="_gestaoWaVistoria('${esc(String(l.id||''))}')">💬 Agendar no WhatsApp</button></div>
+      </div>`).join('') : '<div class="gp-mini">Nenhuma vistoria recorrente atrasada 🎉</div>'}
+  </div>`;
+  el.innerHTML=cardGar+cardVis;
+}
+function _gestaoWaGarantia(eqId){
+  const e=((typeof todosEq!=='undefined'&&todosEq)?todosEq:[]).find(x=>String(x.id)===String(eqId)); if(!e){ toast('Equipamento não encontrado'); return; }
+  enviarNotifWA(notifGarantia(e), _gestaoTelCliente(e.cliente_nome, e.cliente_id));
+}
+function _gestaoWaVistoria(localId){
+  const l=((typeof locaisVistoria!=='undefined'&&locaisVistoria)?locaisVistoria:[]).find(x=>String(x.id||'')===String(localId)); if(!l){ toast('Plano não encontrado'); return; }
+  const vars={ nome:(l.cliente||'').split(' ')[0], hora:l.hora_pref||'', tecnico:l.tecnico||'', servico:'manutenção preventiva da piscina' };
+  enviarNotifWA(aplicarVars(CFG.notif_visita||CFG_DEF.notif_visita, vars, l.loja_id), _gestaoTelCliente(l.cliente));
 }
 
 // ── Dica de preço no formulário de orçamento (injetada em renderSvcs) ──
@@ -8178,7 +8449,10 @@ function aplicarVars(template, vars, lojaId){
     .replace(/\{tecnico\}/g, vars.tecnico||'')
     .replace(/\{servico\}/g, vars.servico||'')
     .replace(/\{valor\}/g, vars.valor||'')
+    .replace(/\{vencimento\}/g, vars.vencimento||'')
+    .replace(/\{orcamento\}/g, vars.orcamento||'')
     .replace(/\{link_portal\}/g, vars.link_portal||'')
+    .replace(/\{link_avaliacao\}/g, vars.link_avaliacao||'')
     .replace(/\{empresa\}/g, empresa)
     .replace(/\{tel_empresa\}/g, tel);
 }
@@ -8210,13 +8484,21 @@ function notifConcluida(os){
 function _posServicoDias(){ const n=parseInt(CFG.pos_servico_dias ?? CFG_DEF.pos_servico_dias); return isNaN(n)?15:n; }
 function notifPosServico(os){
   const template=CFG.notif_pos_servico||CFG_DEF.notif_pos_servico;
+  const linkAval=(CFG.avaliacao_google||'').trim();
   const vars={
     nome:(os.cliente||'').split(' ')[0],
     servico:Array.isArray(os.servicos)?os.servicos.map(s=>typeof s==='string'?s:(s.desc||s)).join(', '):'',
     tecnico:os.tecnico||'',
-    link_portal:getPortalLinkCliente(os.cliente||'')
+    link_portal:getPortalLinkCliente(os.cliente||''),
+    link_avaliacao:linkAval
   };
-  return aplicarVars(template, vars, os.loja_id);
+  let msg=aplicarVars(template, vars, os.loja_id);
+  // Link de avaliação do Google (item E): se configurado e o template não usa o
+  // placeholder {link_avaliacao} explicitamente, acrescenta um convite ao final.
+  if(linkAval && !/\{link_avaliacao\}/.test(template)){
+    msg += `\n\n⭐ Se puder, avalie nosso atendimento no Google — leva 1 minutinho e ajuda demais:\n${linkAval}`;
+  }
+  return msg;
 }
 // Data-base do pós-serviço = dia do serviço (ou criação, fallback). Retorna 'YYYY-MM-DD' do vencimento.
 function _posServicoVenc(os){
