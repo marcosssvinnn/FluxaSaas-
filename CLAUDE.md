@@ -504,6 +504,42 @@ inerte quando a flag está off (verificado).
   ok do Marcos). Falta só o clique-teste logado de verdade na Fluxa (único passo que
   o Claude não faz).
 
+### Leva 1 PUBLICADA + Leva 2 (2026-11-12/13)
+
+**Leva 1 foi pra `main` e está no ar** (`c878888`, sw `v108`, confirmado em produção).
+
+**Leva 2 (commit `a13b6ee`, na `dev`, PUBLICADA depois com ok do Marcos), sw
+`v108→v109`** — 5 itens, todos atrás da flag `gestao`:
+- **(A) Markdown dos relatórios:** `_gestaoMd` virou renderizador por blocos
+  (`_mdInline`/`_mdRowCels`): tabelas `|…|`+`|---|` (com rolagem lateral própria,
+  `.gp-md-tblwrap`), títulos `#..######`, listas `-`/`1.`, negrito/itálico/código,
+  links só `http/https` em nova aba `rel=noopener`. Escapa TUDO com `esc()` antes de
+  converter (sem brecha de HTML). `.gp-rel-body` perdeu o `white-space:pre-wrap`.
+- **(B) Relatórios lidos:** RPC **`marcar_insight_lido(p_id)`** (SECURITY DEFINER,
+  confere empresa via `minhas_empresas()` — a RLS de `insights` só tinha SELECT).
+  `_gestaoMarcarLido` é otimista; badge de novos (`status!=='lido'`) na aba e no botão
+  Gestão da sidebar (`_gestaoContarNovosSidebar` no login + `_gestaoAtualizarBadge`);
+  filtro por tipo (`gestaoRelFiltrar`).
+- **(C) Cobrar num toque:** config `pix_chave/pix_nome/pix_cidade` + template
+  `notif_cobranca` (Empresa). No Caixa, `_gestaoCobrar` abre modal com WhatsApp +
+  **Pix copia-e-cola** (`_pixPayload`: EMV/BR Code estático + `_crc16ccitt`) + **QR
+  local**. QR via lib **`libs/qrcode.min.js` (qrcode-generator, MIT)** vendorizada —
+  a chave Pix NUNCA vai pra serviço externo (por isso NÃO usei api.qrserver aqui).
+  CRC testado contra o vetor-padrão `"123456789"→29B1`; payload revalidado (CRC fecha,
+  escaneável). Nome/cidade viram ASCII sem acento (`_pixSan`) pq o TLV conta bytes.
+- **(D) Revisões:** aba nova — garantias vencidas/vencendo em 30d (de `todosEq`) +
+  vistorias recorrentes atrasadas (plano ativo sem visita há >35d, de `locaisVistoria`
+  × `lsVisLer`), cada uma com WhatsApp (`notifGarantia` / `notif_visita`). Telefone do
+  cliente resolvido por `_gestaoTelCliente` (lsCliLer por id/nome).
+- **(E) Avaliação Google:** config `avaliacao_google`; se preenchida, `notifPosServico`
+  acrescenta o link ao final (ou usa `{link_avaliacao}` se o template tiver o token).
+  `aplicarVars` ganhou `{vencimento}`, `{orcamento}`, `{link_avaliacao}`.
+
+Migração: **`setup-v2-delta44.sql`** (só a RPC; C/D/E vivem em `empresas.config`).
+Verificado no navegador (375px): markdown/tabela, Pix (CRC+QR+modal), Revisões com
+dados, pós-serviço com link, badge/filtro — sem erro de console. Nada envia sozinho:
+tudo abre o WhatsApp pro Marcos apertar enviar.
+
 ---
 
 ## Sessão 2026-09-04/05 — porte do Forthemp (v1) pro Fluxa: 10 recursos
