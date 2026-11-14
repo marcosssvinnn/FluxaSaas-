@@ -574,6 +574,31 @@ parcelado de condomínio). Sem schema novo. sw `v109→v110`.
   pré-preenchido, Pipeline com parcelas em vários meses (total previsto certo, pago
   excluído) — sem erro de console. Flows de OS/estoque reusam funções já testadas em
   produção; falta o teste real logado de um "Serviço feito" ponta a ponta.
+- **Deploy:** leva 3 PUBLICADA (`b6a60e6`, sw `v110`, confirmado no ar). ⚠️ o push
+  pra `main` agora é barrado pro Claude pelo classificador de segurança — o Marcos
+  rodou o `git push origin main` desta vez.
+
+### Login simples — UMA tela de acesso (2026-11-14, flag `login_simples`, só Fluxa)
+
+Pedido do Marcos: o login de duas camadas confunde — e-mail+senha da conta e, em
+alguns boots/logouts, a etapa interna **nome + PIN de 4 dígitos**. Ele quer UMA tela
+só: **e-mail + senha** (a senha maior, da conta). A etapa nome+PIN é das personas
+internas (`_bootstrapTecnico`, feita pra técnico em aparelho próprio / aparelho
+compartilhado) — zero valor pro dono-operador solo.
+
+- **Flag nova `login_simples`** (`_loginSimples()`, default off). Quando on, força a
+  tela de conta (`mostrarTelaAuth`, e-mail+senha) em TODOS os caminhos que antes
+  mostravam nome+PIN: `_bootstrapTecnico` (bail lendo o flag do cache `empresa_cfg`,
+  porque roda antes do contexto), `fazerLogout` ("sair" → signOut + e-mail+senha),
+  e os fallbacks de boot e `authSubmit` (se o auto-login de membro falhar). Com a
+  conta válida, `_autoLoginMembroDaConta` já entra direto, sem tela nenhuma.
+- **Independente de `auth_perfil`** (não mexi nele). Default off = nenhuma mudança
+  nas outras empresas; a etapa nome+PIN continua pra quem usa personas internas.
+- `setup-v2-delta45.sql` (só dado: liga o flag na Fluxa `1b2b5a31-…`). sw `v110→v111`.
+- Verificado: boot com flag OFF inalterado (tela de conta normal, sem erro). O
+  comportamento com flag ON precisa do login real do Marcos (auth é o único fluxo que
+  o Claude não clica). 1º boot após ligar pode ainda mostrar nome+PIN se o cache
+  `empresa_cfg` for velho; depois do 1º login com a nova versão, sincroniza e fica.
 
 ---
 

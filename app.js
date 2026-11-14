@@ -338,8 +338,10 @@ function fazerLogout(){
   clearSessao();
   // Opção A (flag on): a persona é uma SESSÃO real → trocar de usuário encerra a
   // sessão do funcionário. (Voltar a ser o dono/gestor = login pela conta, e-mail+senha.)
-  if(_authPerfilAtivo() && db){ try{ db.auth.signOut(); authUser=null; }catch(e){ console.warn('[fazerLogout:signOut]', e?.message||e); } }
+  if((_authPerfilAtivo()||_loginSimples()) && db){ try{ db.auth.signOut(); authUser=null; }catch(e){ console.warn('[fazerLogout:signOut]', e?.message||e); } }
   loginUserSelecionado=null;
+  // Login simples: sair = voltar pra UMA tela só (e-mail+senha), sem nome+PIN.
+  if(_loginSimples()){ mostrarTelaAuth(); return; }
   // Resetar passos
   const su=document.getElementById('login-step-users');
   const sp=document.getElementById('login-step-pin');
@@ -391,6 +393,14 @@ function _senhaDePin(pin){ return 'fluxa_'+String(pin||''); }
 function _authPerfilAtivo(){
   try{ return (FLUXA_CONFIG.flags && FLUXA_CONFIG.flags.auth_perfil) !== false; }
   catch(e){ return true; }
+}
+// Login simples (flag por empresa): UMA tela de acesso só — e-mail+senha.
+// Sem a etapa interna nome+PIN em lugar nenhum (nem no boot após a conta
+// expirar, nem no "sair"). Pensado pro dono-operador que trabalha sozinho e
+// não usa personas internas. Default off = nenhuma mudança nas outras empresas.
+function _loginSimples(){
+  try{ return !!(FLUXA_CONFIG.flags && FLUXA_CONFIG.flags.login_simples); }
+  catch(e){ return false; }
 }
 
 // Entra como o funcionário: signIn (ou signUp no 1º acesso) + vincula pelo PIN, e
@@ -463,6 +473,11 @@ async function _bootstrapTecnico(){
     EMPRESA_ID=empId;
     EMPRESA={ id:empId, slug:empSlug, nome:empNome, config:(branding||{}) };
     lsSet('fluxa_empresa_id',empId); lsSet('fluxa_empresa_slug',empSlug);
+    // Login simples: este dono não usa a etapa interna nome+PIN. Volta pra tela
+    // de conta (e-mail+senha). Lê o flag do cache da empresa (contexto ainda não
+    // carregado aqui — sem sessão de conta). EMPRESA_ID já está setado acima, então
+    // ls('empresa_cfg') resolve pro cache namespaced desta empresa.
+    try{ const _cfgc=JSON.parse(ls('empresa_cfg')||'{}'); if(_cfgc.flags && _cfgc.flags.login_simples){ EMPRESA_ID=null; EMPRESA=null; return false; } }catch(e){}
     try{
       CFG={ ...CFG_DEF, ...(branding||{}) }; if(!CFG.nome) CFG.nome=empNome; FLUXA_CONFIG.flags={}; aplicarCFG();
       // marca da EMPRESA na tela de login (o link #e/<slug> já confirma a empresa certa,
@@ -580,6 +595,9 @@ async function authSubmit(){
     // gestor da empresa, sem passar pela tela de PIN interno (essa é só para
     // perfis criados DEPOIS pelo gestor: vendas/técnico/gestores adicionais).
     if(await _autoLoginMembroDaConta()) return;
+    // Login simples: nunca cai no nome+PIN. Se o vínculo de membro falhar (raro),
+    // mostra a própria tela de conta com um aviso em vez da etapa interna.
+    if(_loginSimples()){ mostrarTelaAuth(); err.textContent='Não foi possível entrar nesta empresa com esta conta.'; return; }
     try{ todosUsuarios=JSON.parse(ls('fluxa_usuarios')||'[]'); }catch(e){ todosUsuarios=[]; }
     renderLoginUsers();
   }catch(e){
@@ -1603,6 +1621,9 @@ function lsOrcProxNum(){ return lsOrcLer().reduce((a,o)=>Math.max(a,o.numero||0)
         // Sessão interna (sessionStorage) não sobrevive a fechar a aba, mas a
         // conta (Supabase Auth) sim — quem já provou quem é por e-mail+senha
         // entra direto como membro da empresa, sem PIN.
+      } else if(_loginSimples()){
+        // Login simples: UMA tela só (e-mail+senha), nunca nome+PIN.
+        mostrarTelaAuth();
       } else {
         try{ todosUsuarios=JSON.parse(ls('fluxa_usuarios')||'[]'); }catch(e){ todosUsuarios=[]; }
         renderLoginUsers();
