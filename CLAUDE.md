@@ -540,6 +540,41 @@ Verificado no navegador (375px): markdown/tabela, Pix (CRC+QR+modal), Revisões 
 dados, pós-serviço com link, badge/filtro — sem erro de console. Nada envia sozinho:
 tudo abre o WhatsApp pro Marcos apertar enviar.
 
+### Leva 3 (2026-11-14) — precificação autônoma + pipeline financeiro + serviço feito sem OS
+
+Pedido do Marcos: "máximo de autonomia, menos coisa passando pela minha mão";
+dor central = ver o dinheiro (fechado no mês + o que vai cair nos próximos meses,
+parcelado de condomínio). Sem schema novo. sw `v109→v110`.
+
+- **Precificação (tabela de preços, flag gestao):** "horas no cliente/dia" virou
+  **"horas de trabalho por dia"** (jornada — só pra ratear custos fixos). O "custo
+  por km" cru saiu: agora 3 campos (**consumo km/l, preço do litro, desgaste R$/km**)
+  e o sistema calcula o custo/km sozinho (`_gestaoCustoKmDe`; `_precCfg` deriva
+  `custoKm`, com fallback pro `custoKm` antigo). Defaults do Space Fox 1.6 pré-
+  preenchidos quando vazio (`_PREC_DEF`: 11 km/l, R$6,46/l gasolina SC nov/26,
+  R$0,30/km desgaste, jornada 8h). **Imposto = 0 explicado (MEI: ISS no DAS fixo,
+  nota sai 0%)** — não existe % por nota nem API de governo pra isso; só muda se
+  virar ME.
+- **Pipeline (aba nova 📈 na Gestão):** "Fechado no mês" = Σ orçamentos aprovados por
+  `data_aprovacao` (3 meses) — resolve o "aprovado não aparece". "A receber por mês
+  (previsto)" = parcelas em aberto agrupadas por mês de vencimento (vencido + 6
+  meses) — o provisionamento do parcelado. Mais "Aprovados sem cobrança lançada"
+  (`_orcAprovadosSemReceb`) com toque → `abrirModalReceb` (fecha o furo do "decidir
+  depois"). `_recebConfirmarModal` reatualiza Pipeline/Caixa se a Gestão estiver aberta.
+- **Forma de pagamento em TODA aprovação:** confirmado que já dispara (criarOSdeAprovacao
+  chama fecharAprovOS → abrirModalReceb); o furo era só o "decidir depois", agora
+  recuperável no Pipeline.
+- **Relatório de serviço SEM OS (`registrarServicoFeitoDeOrc`):** botão **"✅ Serviço
+  feito"** no histórico, em orçamento aprovado sem OS → cria OS já **concluída**
+  (data=hoje, `_criarOSDeOrcamento` ganhou `opts.status`+retorna `id`), dá baixa de
+  estoque pelo mesmo caminho da conclusão normal (`_entregarPelaOS`) e abre o
+  `abrirEnvioRelatorioOS` (WhatsApp/PDF) que já existia. Se já houver OS, só manda o
+  relatório dela. **Não é flag-gated** (feature geral de vendas).
+- Verificado no navegador: matemática (custoKm 0,89; custoHora; min/alvo), form
+  pré-preenchido, Pipeline com parcelas em vários meses (total previsto certo, pago
+  excluído) — sem erro de console. Flows de OS/estoque reusam funções já testadas em
+  produção; falta o teste real logado de um "Serviço feito" ponta a ponta.
+
 ---
 
 ## Sessão 2026-09-04/05 — porte do Forthemp (v1) pro Fluxa: 10 recursos

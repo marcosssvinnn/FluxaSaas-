@@ -2201,6 +2201,7 @@
       <button class="gestao-tab on" data-gtab="precos" onclick="gestaoTab('precos')">💰 Tabela de preços</button>
       <button class="gestao-tab" data-gtab="mei" onclick="gestaoTab('mei')">📊 Medidor do MEI</button>
       <button class="gestao-tab" data-gtab="caixa" onclick="gestaoTab('caixa')">🏦 Caixa</button>
+      <button class="gestao-tab" data-gtab="pipeline" onclick="gestaoTab('pipeline')">📈 Pipeline</button>
       <button class="gestao-tab" data-gtab="revisoes" onclick="gestaoTab('revisoes')">🔧 Revisões</button>
       <button class="gestao-tab" data-gtab="relatorios" onclick="gestaoTab('relatorios')">📄 Relatórios <span id="gp-rel-badge" class="gp-badge" style="display:none">0</span></button>
     </div>
@@ -2215,16 +2216,26 @@
           <div class="fl"><label>Dias de trabalho / mês</label><input type="text" inputmode="decimal" id="gp-dias" placeholder="ex.: 22"></div>
         </div>
         <div class="row">
-          <div class="fl"><label>Horas no cliente / dia</label><input type="text" inputmode="decimal" id="gp-horas" placeholder="ex.: 6"></div>
-          <div class="fl"><label>Custo por km (R$)</label><input type="text" inputmode="decimal" id="gp-custokm" placeholder="combustível + desgaste"></div>
+          <div class="fl"><label>Horas de trabalho por dia</label><input type="text" inputmode="decimal" id="gp-horas" placeholder="ex.: 8"></div>
+          <div class="fl"><label>Velocidade média no trânsito (km/h)</label><input type="text" inputmode="decimal" id="gp-velocidade" placeholder="ex.: 40"></div>
         </div>
-        <div class="row">
-          <div class="fl"><label>Velocidade média (km/h)</label><input type="text" inputmode="decimal" id="gp-velocidade" placeholder="ex.: 40"></div>
+        <p style="margin:2px 0 10px;color:var(--gray);font-size:11px">A jornada por dia serve só pra dividir seus custos fixos pelo tempo disponível — não é "tempo com cliente". Cada serviço tem as horas estimadas dele lá embaixo.</p>
+
+        <div class="ct" style="margin-top:4px">Custo do deslocamento (calculado)</div>
+        <p style="margin:-4px 0 10px;color:var(--gray);font-size:12px">O sistema calcula o custo por km do seu carro sozinho. Mantenha só o preço do litro atualizado de vez em quando.</p>
+        <div class="row f3">
+          <div class="fl"><label>Consumo (km/l)</label><input type="text" inputmode="decimal" id="gp-kmlitro" placeholder="ex.: 11" oninput="_gpAtualizaCustoKm()"></div>
+          <div class="fl"><label>Preço do litro (R$)</label><input type="text" inputmode="decimal" id="gp-precolitro" placeholder="ex.: 6,46" oninput="_gpAtualizaCustoKm()"></div>
+          <div class="fl"><label>Desgaste (R$/km)</label><input type="text" inputmode="decimal" id="gp-desgaste" placeholder="ex.: 0,30" oninput="_gpAtualizaCustoKm()"></div>
+        </div>
+        <div id="gp-custokm-calc" class="gp-mini" style="margin:-2px 0 2px"></div>
+
+        <div class="row" style="margin-top:12px">
           <div class="fl"><label>Taxa de cartão (%)</label><input type="text" inputmode="decimal" id="gp-taxacartao" placeholder="ex.: 3"></div>
-        </div>
-        <div class="row">
-          <div class="fl"><label>Imposto sobre a nota (%)</label><input type="text" inputmode="decimal" id="gp-imposto" placeholder="ex.: 0 (MEI)"></div>
           <div class="fl"><label>Margem de lucro (%)</label><input type="text" inputmode="decimal" id="gp-margem" placeholder="ex.: 30"></div>
+        </div>
+        <div class="fl" style="margin-top:4px"><label>Imposto sobre a nota (%)</label><input type="text" inputmode="decimal" id="gp-imposto" placeholder="0" style="max-width:120px">
+          <span style="display:block;margin-top:4px;color:var(--gray);font-size:11px">Você é MEI: o ISS já está no DAS fixo e a nota sai com 0%. Deixe em 0 (só muda se um dia virar ME).</span>
         </div>
 
         <div class="ct" style="margin-top:14px">Custos fixos mensais</div>
@@ -2256,6 +2267,11 @@
     <!-- ── BLOCO 3 — CAIXA ──────────────────────────────────────── -->
     <div class="gestao-pane" id="gpane-caixa" style="display:none">
       <div id="gp-caixa"></div>
+    </div>
+
+    <!-- ── BLOCO 6 — PIPELINE (fechado no mês + a receber por mês) ─ -->
+    <div class="gestao-pane" id="gpane-pipeline" style="display:none">
+      <div id="gp-pipeline"></div>
     </div>
 
     <!-- ── BLOCO 5 — REVISÕES E GARANTIAS ───────────────────────── -->

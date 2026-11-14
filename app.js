@@ -2499,36 +2499,60 @@ function fecharAprovOS(){
 // em lote "Agendar as N aprovadas sem OS" (_orcAgendarLoteExecutar). Mesma
 // lógica de sempre (insert numerado, fallback local se offline/falhar), só
 // parametrizada em vez de ler de inputs fixos do modal de aprovação.
-async function _criarOSDeOrcamento(orc, data, hora, tec){
+async function _criarOSDeOrcamento(orc, data, hora, tec, opts){
+  opts=opts||{};
   const osSvcs=(orc.servicos||[]).map(s=>({desc:s.desc||s.d||'',produto_id:s.produto_id||null,qty:s.qty||1,precoUnit:parseFloat(s.p||s.preco||0)||0}));
   const camposBase={
     orcamento_id:String(orc.id).startsWith('local_')?null:orc.id,
     cliente:orc.cliente, cliente_id:orc.cliente_id||null, local_servico:orc.local_servico,
     data_servico:data, hora:hora||'08:00', tecnico:tec||'',
     servicos:osSvcs, materiais:'', obs_tecnica:'',
-    total:orc.total, status:'agendado', loja_id:orc.loja_id||LOJA_PADRAO_ID
+    total:orc.total, status:opts.status||'agendado', loja_id:orc.loja_id||LOJA_PADRAO_ID
   };
-  let numStr='???', offline=false;
+  let numStr='???', offline=false, id=null;
   if(dbOk&&db){
     try{
       const {data:insOS,error}=await dbInsertNumerado('ordens_servico',camposBase);
       if(error) throw error;
       const num=insOS?.numero||1;
       numStr=String(num).padStart(3,'0');
-      if(insOS){ todosOS.unshift(insOS); _pushOSTecnico(insOS.id); }
+      if(insOS){ id=insOS.id; todosOS.unshift(insOS); _pushOSTecnico(insOS.id); }
     }catch(e){
       console.warn('[_criarOSDeOrcamento] falha ao salvar no banco:', e?.message||e);
       const n=(parseInt(ls('fluxa_os_num')||'0'))+1; lsSet('fluxa_os_num',String(n));
-      _salvarOSLocal(camposBase, 'local_'+Date.now(), n);
+      id='local_'+Date.now(); _salvarOSLocal(camposBase, id, n);
       numStr=String(n).padStart(3,'0'); offline=true;
     }
   }else{
     const n=(parseInt(ls('fluxa_os_num')||'0'))+1; lsSet('fluxa_os_num',String(n));
-    _salvarOSLocal(camposBase, 'local_'+Date.now(), n);
+    id='local_'+Date.now(); _salvarOSLocal(camposBase, id, n);
     numStr=String(n).padStart(3,'0'); offline=true;
   }
-  logAcao('os_criada',`#${numStr} via aprovação do orçamento #${String(orc.numero||'?').padStart(3,'0')}`);
-  return {numStr, offline};
+  logAcao('os_criada',`#${numStr} via ${opts.origem||'aprovação'} do orçamento #${String(orc.numero||'?').padStart(3,'0')}`);
+  return {numStr, offline, id};
+}
+// "Serviço feito sem OS": aprovei, fiz, e quero mandar o relatório agora.
+// Cria a OS já CONCLUÍDA (data=hoje), dá baixa no estoque pelo mesmo caminho da
+// conclusão normal e abre o fluxo de relatório (WhatsApp/PDF) que já existe.
+async function registrarServicoFeitoDeOrc(orcId){
+  const orc=todosOrc.find(x=>x.id===orcId);
+  if(!orc){ toast('⚠️ Orçamento não encontrado'); return; }
+  const jaTem=(todosOS||[]).find(x=>String(x.orcamento_id)===String(orcId));
+  if(jaTem){ abrirEnvioRelatorioOS(jaTem.id); return; }  // já existe OS — manda o relatório dela
+  confirmar(
+    `Registrar o serviço do orçamento #${String(orc.numero||'').padStart(3,'0')} como FEITO hoje e abrir o relatório pro cliente?`,
+    async ()=>{
+      const tec=(getSessao()?.nome)||(getTecnicos()[0])||'';
+      let r;
+      try{ r=await _criarOSDeOrcamento(orc, _hojeLocal(), '08:00', tec, {status:'concluido', origem:'serviço feito'}); }
+      catch(e){ console.warn('[servicoFeito]', e?.message||e); toast('⚠️ Erro ao registrar o serviço'); return; }
+      try{ if(r?.id) _entregarPelaOS(r.id); }catch(e){ console.warn('[servicoFeito baixa]', e?.message||e); }
+      try{ await loadOSHist(); }catch(e){}
+      toast(`✅ Serviço do #${String(orc.numero||'').padStart(3,'0')} registrado — OS #${r?.numStr||''} concluída`);
+      if(r?.id) setTimeout(()=>abrirEnvioRelatorioOS(r.id), 300);
+    },
+    'Serviço feito'
+  );
 }
 
 async function criarOSdeAprovacao(){
@@ -4567,6 +4591,7 @@ function renderTabela(){
         <button class="tb" title="Editar" onclick="abrirOrc('${o.id}')">✎</button>
         <button class="tb" title="Duplicar" onclick="duplicarOrc('${o.id}')">⧉</button>
         ${(()=>{ const osVinc=(todosOS||[]).find(x=>x.orcamento_id===o.id); if(osVinc){ const stOS=osVinc.status||'agendado'; const stLabel={agendado:'agendada',em_andamento:'em andamento',concluido:'concluída'}[stOS]||stOS; return `<button class="tb" title="OS #${String(osVinc.numero||'').padStart(3,'0')} — ${stLabel}" onclick="verDetalhesOS('${osVinc.id}')" style="background:#16a34a;color:white;border-color:#16a34a;font-weight:700">✅ OS#${String(osVinc.numero||'').padStart(3,'0')}</button>`; } if(o.status==='aprovado') return `<button class="tb" title="Gerar Ordem de Serviço" onclick="gerarOS_deOrc('${o.id}')" style="background:#FF6A00;color:white;border-color:#FF6A00;font-weight:700">📋 Gerar OS</button>`; return `<button class="tb" title="Gerar OS" onclick="gerarOS_deOrc('${o.id}')">📋</button>`; })()}
+        ${o.status==='aprovado' && !eVendas() && !(todosOS||[]).find(x=>String(x.orcamento_id)===String(o.id)) ? `<button class="tb" title="Já fiz o serviço — registrar como feito e mandar o relatório ao cliente" onclick="registrarServicoFeitoDeOrc('${o.id}')" style="background:#16a34a;color:white;border-color:#16a34a">✅ Serviço feito</button>` : ''}
         ${orcTemEntregaPendente(o)?`<button class="tb g" title="Marcar como entregue (baixa do estoque)" onclick="entregarOrcamento(getNC('${o.id}'),'manual')">📦 Entregar</button>`:''}
         ${o.status==='aprovado'&&(o.servicos||[]).length?`<button class="tb" title="Ordem de Entrega — papel que vai junto com o material, pra quem recebe conferir e assinar" onclick="gerarOrdemEntrega('${o.id}')">🧾 Entrega</button>`:''}
         ${ocultarFinanceiro?'':(_recebDoOrc(o.id).length
@@ -7539,13 +7564,30 @@ let _gestaoRelFiltro = 'todos';  // filtro de tipo do bloco Relatórios
 // Lê a precificação do CFG com defaults seguros (números, nunca undefined).
 function _precCfg(){
   const p = (CFG && CFG.precificacao) || {};
+  // Custo por km = combustível (preço do litro / consumo) + provisão de desgaste.
+  // Compat: config antiga tinha só custoKm cru — usa como fallback.
+  const kml=+p.kmPorLitro||0, pl=+p.precoLitro||0, dg=+p.desgasteKm||0;
+  let custoKm = (kml>0?pl/kml:0) + dg;
+  if(!custoKm && p.custoKm) custoKm=+p.custoKm||0;
   return {
     retirada:+p.retirada||0, dias:+p.dias||0, horas:+p.horas||0,
-    custoKm:+p.custoKm||0, velocidade:+p.velocidade||0,
+    kmPorLitro:kml, precoLitro:pl, desgasteKm:dg, custoKm,
+    velocidade:+p.velocidade||0,
     taxaCartao:+p.taxaCartao||0, imposto:+p.imposto||0, margem:+p.margem||0,
     fixos:Array.isArray(p.fixos)?p.fixos:[],
     servicos:Array.isArray(p.servicos)?p.servicos:[]
   };
+}
+// Defaults sugeridos quando o campo está vazio (autonomia: abre já preenchido).
+// Space Fox 1.6 ~11 km/l (gasolina); gasolina SC ~R$6,46/l (nov/2026);
+// provisão de desgaste ~R$0,30/km (pneu, óleo, freio, revisão).
+const _PREC_DEF = { horas:8, kmPorLitro:11, precoLitro:6.46, desgasteKm:0.30, velocidade:40, imposto:0 };
+function _gestaoCustoKmDe(kml, pl, dg){ return (kml>0?pl/kml:0) + (dg||0); }
+function _gpAtualizaCustoKm(){
+  const num=id=>{ const v=(gV(id)||'').replace(',','.').replace(/[^\d.]/g,''); return parseFloat(v)||0; };
+  const ck=_gestaoCustoKmDe(num('gp-kmlitro'), num('gp-precolitro'), num('gp-desgaste'));
+  const el=document.getElementById('gp-custokm-calc');
+  if(el) el.textContent = ck>0 ? ('→ Custo por km do carro: '+brl(ck)+'  (ida e volta entra no preço de cada serviço)') : '';
 }
 
 // Arredonda PRA CIMA em múltiplos de R$ 5 (preço "redondo" de orçamento).
@@ -7655,6 +7697,7 @@ async function loadGestao(){
   catch(e){ console.warn('[loadGestao dados]', e?.message||e); }
   _gestaoRenderMei();
   _gestaoRenderCaixa();
+  _gestaoRenderPipeline();
   // Revisões — equipamentos (garantias) + planos de vistoria
   try{
     await Promise.all([
@@ -7670,9 +7713,18 @@ async function loadGestao(){
 function _gpCarregarForm(){
   const c=_precCfg();
   const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v?String(v).replace('.',','):''; };
-  set('gp-retirada',c.retirada); set('gp-dias',c.dias); set('gp-horas',c.horas);
-  set('gp-custokm',c.custoKm); set('gp-velocidade',c.velocidade);
-  set('gp-taxacartao',c.taxaCartao); set('gp-imposto',c.imposto); set('gp-margem',c.margem);
+  // Campos com default sugerido quando ainda não preenchidos (autonomia).
+  const sugere=(id,val,def)=>{ const el=document.getElementById(id); if(el) el.value = (val&&+val!==0)?String(val).replace('.',',') : String(def).replace('.',','); };
+  set('gp-retirada',c.retirada); set('gp-dias',c.dias);
+  sugere('gp-horas',c.horas,_PREC_DEF.horas);
+  sugere('gp-velocidade',c.velocidade,_PREC_DEF.velocidade);
+  sugere('gp-kmlitro',c.kmPorLitro,_PREC_DEF.kmPorLitro);
+  sugere('gp-precolitro',c.precoLitro,_PREC_DEF.precoLitro);
+  sugere('gp-desgaste',c.desgasteKm,_PREC_DEF.desgasteKm);
+  set('gp-taxacartao',c.taxaCartao);
+  { const el=document.getElementById('gp-imposto'); if(el) el.value = c.imposto?String(c.imposto).replace('.',','):'0'; }
+  set('gp-margem',c.margem);
+  _gpAtualizaCustoKm();
   _gpFixos=c.fixos.map(f=>({nome:f.nome||'', valor:+f.valor||0}));
   _gpSvcs =c.servicos.map(s=>({nome:s.nome||'', horas:(s.horas!=null?s.horas:''), km:(s.km!=null?s.km:'')}));
   _gestaoRenderFixos(); _gestaoRenderSvcsCfg();
@@ -7720,9 +7772,12 @@ function _gestaoRmSvc(i){ _gestaoSyncSvcsFromDOM(); _gpSvcs.splice(i,1); _gestao
 async function salvarPrecificacao(){
   _gestaoSyncFixosFromDOM(); _gestaoSyncSvcsFromDOM();
   const num=id=>{ const v=(gV(id)||'').replace(',','.').replace(/[^\d.]/g,''); return parseFloat(v)||0; };
+  const kml=num('gp-kmlitro'), pl=num('gp-precolitro'), dg=num('gp-desgaste');
   CFG.precificacao={
     retirada:num('gp-retirada'), dias:num('gp-dias'), horas:num('gp-horas'),
-    custoKm:num('gp-custokm'), velocidade:num('gp-velocidade'),
+    kmPorLitro:kml, precoLitro:pl, desgasteKm:dg,
+    custoKm:_gestaoCustoKmDe(kml,pl,dg),   // derivado, guardado pra leitura simples/compat
+    velocidade:num('gp-velocidade'),
     taxaCartao:num('gp-taxacartao'), imposto:num('gp-imposto'), margem:num('gp-margem'),
     fixos:_gpFixos.filter(f=>(f.nome||'').trim()||(+f.valor||0)).map(f=>({nome:(f.nome||'').trim(), valor:+f.valor||0})),
     servicos:_gpSvcs.filter(s=>(s.nome||'').trim()).map(s=>({nome:(s.nome||'').trim(), horas:+s.horas||0, km:+s.km||0}))
@@ -7824,6 +7879,76 @@ function _gestaoRenderCaixa(){
       <div class="ct">A vencer · próximos 30 dias${aVencer.length?` · ${brl(totVencer)}`:''}</div>
       ${aVencer.length?aVencer.map(r=>linha(r,'var(--c2)')).join(''):'<div class="gp-mini">Nada a vencer nos próximos 30 dias.</div>'}
     </div>`;
+}
+
+// ── Bloco 6: Pipeline — fechado no mês (aprovado) + a receber por mês ──
+function _gestaoMesLabel(ym){
+  const meses=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  const [y,m]=String(ym).split('-'); return (meses[(+m)-1]||'?')+'/'+String(y).slice(2);
+}
+function _gestaoRenderPipeline(){
+  const el=document.getElementById('gp-pipeline'); if(!el) return;
+  const hoje=_hojeLocal(); const mesAtual=hoje.slice(0,7);
+  const receb=todosReceb||[], orc=todosOrc||[];
+  // Fechado (aprovado) por mês — pelo data_aprovacao
+  const fechadoPorMes={};
+  orc.filter(o=>o.status==='aprovado'&&o.data_aprovacao).forEach(o=>{ const m=String(o.data_aprovacao).slice(0,7); fechadoPorMes[m]=(fechadoPorMes[m]||0)+(+o.total||0); });
+  const mesesRecentes=[];
+  for(let i=2;i>=0;i--){ const d=new Date(hoje+'T12:00:00'); d.setDate(1); d.setMonth(d.getMonth()-i); mesesRecentes.push(d.toISOString().slice(0,7)); }
+  const fechadoMes=fechadoPorMes[mesAtual]||0;
+  const maxFechado=Math.max(1,...mesesRecentes.map(m=>fechadoPorMes[m]||0));
+  // A receber (aberto, com vencimento) — vencido + próximos 6 meses
+  const abertos=receb.filter(r=>!r.data_pagamento && r.vencimento);
+  const vencido=abertos.filter(r=>r.vencimento<hoje).reduce((a,r)=>a+(+r.valor||0),0);
+  const futuros=[];
+  for(let i=0;i<6;i++){
+    const d=new Date(hoje+'T12:00:00'); d.setDate(1); d.setMonth(d.getMonth()+i); const ym=d.toISOString().slice(0,7);
+    const tot=abertos.filter(r=>String(r.vencimento).slice(0,7)===ym && r.vencimento>=hoje).reduce((a,r)=>a+(+r.valor||0),0);
+    futuros.push({ym,total:tot});
+  }
+  const totalPrevisto=vencido+futuros.reduce((a,f)=>a+f.total,0);
+  const maxBar=Math.max(1,vencido,...futuros.map(f=>f.total));
+  const barra=(label,val,cor,maxv,extra)=>`<div style="margin-bottom:9px">
+    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
+      <span style="color:var(--c2);font-weight:600">${esc(label)}</span><span style="color:${cor};font-weight:700">${brl(val)}</span></div>
+    <div style="height:14px;border-radius:999px;background:#eef0f5;overflow:hidden"><div style="height:100%;width:${Math.max(val>0?6:0,val/maxv*100).toFixed(1)}%;background:${cor};border-radius:999px"></div></div>
+    ${extra?`<div class="gp-mini" style="margin-top:2px">${extra}</div>`:''}
+  </div>`;
+
+  el.innerHTML=`
+    <div class="card">
+      <div class="ct">Fechado no mês (vendas aprovadas)</div>
+      <p class="gp-mini" style="margin:-4px 0 10px">Soma dos orçamentos que você <b>aprovou</b> em cada mês (mês do fechamento, não do pagamento).</p>
+      <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:12px">
+        <span style="font-size:24px;font-weight:800;color:var(--c1)">${brl(fechadoMes)}</span>
+        <span class="gp-mini">fechado em ${_gestaoMesLabel(mesAtual)}</span>
+      </div>
+      ${mesesRecentes.map(m=>barra(_gestaoMesLabel(m),(fechadoPorMes[m]||0),m===mesAtual?'var(--c1)':'#94a3b8',maxFechado,'')).join('')}
+    </div>
+    <div class="card">
+      <div class="ct">A receber por mês (previsto)</div>
+      <p class="gp-mini" style="margin:-4px 0 10px">Parcelas em aberto pela data de vencimento — o provisionamento do que vai cair, inclusive o parcelado no boleto. Total previsto: <b>${brl(totalPrevisto)}</b>.</p>
+      ${vencido>0?barra('⚠️ Vencido',vencido,'#ef4444',maxBar,'cobre pela aba Caixa'):''}
+      ${futuros.map((f,i)=>barra(_gestaoMesLabel(f.ym)+(i===0?' (este mês)':''),f.total,'#16a34a',maxBar,'')).join('')}
+      ${totalPrevisto<=0?'<div class="gp-mini">Nada em aberto. Quando você aprovar um orçamento e lançar a cobrança (parcelas + vencimento), os valores aparecem aqui por mês.</div>':''}
+    </div>
+    ${_gestaoPipelineGapHtml()}`;
+}
+// Orçamentos aprovados que ficaram SEM cobrança lançada ("decidir depois") —
+// é o dinheiro que não entra no provisionamento. Um toque lança as parcelas.
+function _gestaoPipelineGapHtml(){
+  let gap=[];
+  try{ gap=(typeof _orcAprovadosSemReceb==='function')?_orcAprovadosSemReceb():[]; }catch(e){ console.warn('[pipeline gap]', e?.message||e); }
+  if(!gap.length) return '';
+  const saldo=(o)=>{ try{ return (typeof _orcSaldoAReceber==='function')?_orcSaldoAReceber(o):(+o.total||0); }catch(e){ return +o.total||0; } };
+  const soma=gap.reduce((a,o)=>a+saldo(o),0);
+  return `<div class="card" style="border:1px solid var(--yellow)">
+    <div class="ct" style="color:var(--yellow)">Aprovados sem cobrança lançada · ${brl(soma)}</div>
+    <p class="gp-mini" style="margin:-4px 0 10px">Você aprovou e marcou "decidir depois" — por isso não entram no provisionamento. Toque pra lançar as parcelas (valor, vencimento, forma):</p>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      ${gap.slice(0,20).map(o=>`<button type="button" class="tb" style="text-align:left" onclick="abrirModalReceb('${esc(String(o.id))}')">#${String(o.numero||'').padStart(3,'0')} · ${esc((o.cliente||'cliente').slice(0,24))} — ${brl(saldo(o))}</button>`).join('')}
+    </div>
+  </div>`;
 }
 
 // ── Cobrança (Pix) — "Cobrar em um toque" ──────────────────────────
@@ -9245,6 +9370,10 @@ async function _recebConfirmarModal(orcId){
   const criadas=await _recebCriarParcelas(orcId,{n, primeiroVenc:venc, forma});
   if(criadas) toast(`✅ ${criadas} parcela${criadas!==1?'s':''} lançada${criadas!==1?'s':''}`);
   renderContasReceber();
+  // Se a Gestão estiver aberta, atualiza Pipeline/Caixa na hora.
+  if(document.getElementById('page-gestao')?.classList.contains('on')){
+    try{ _gestaoRenderPipeline(); _gestaoRenderCaixa(); }catch(e){ console.warn('[receb->gestao]', e?.message||e); }
+  }
 }
 
 // ══════════════════════════════════════════════════
