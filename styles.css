@@ -608,6 +608,13 @@
       border-radius:999px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;
       min-height:40px}
     .gestao-tab.on{background:var(--c1);border-color:var(--c1);color:#fff}
+    .calc-modo{flex:1;background:#fff;border:1px solid var(--line);color:var(--c2);border-radius:10px;padding:10px;font-size:13px;font-weight:600;cursor:pointer;min-height:42px}
+    .calc-modo.on{background:var(--c1);border-color:var(--c1);color:#fff}
+    .calc-res{margin-top:12px;padding:12px 14px;border-radius:10px}
+    .calc-res-v{font-size:22px;font-weight:800}
+    .calc-res-l{font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--gray)}
+    .calc-vd{margin-top:12px;padding:10px 14px;border-radius:10px;font-weight:700;font-size:14px}
+    .calc-mini{font-size:12px;color:var(--gray);margin-top:6px;line-height:1.5}
     .gp-badge{display:inline-block;min-width:16px;text-align:center;font-size:10px;font-weight:700;
       padding:1px 5px;border-radius:999px;background:var(--red,#ef4444);color:#fff;line-height:1.4}
     .gestao-tab.on .gp-badge{background:#fff;color:var(--c1)}

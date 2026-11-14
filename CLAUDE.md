@@ -540,6 +540,31 @@ Verificado no navegador (375px): markdown/tabela, Pix (CRC+QR+modal), Revisões 
 dados, pós-serviço com link, badge/filtro — sem erro de console. Nada envia sozinho:
 tudo abre o WhatsApp pro Marcos apertar enviar.
 
+### Calculadora de preço + reorg do painel (2026-11-14, flag gestao)
+
+Marcos: a "tabela de preços" era passiva; ele quer **inteligência de precificação**
+que dê o veredito na hora. Também permitiu o Claude publicar sozinho (regra de
+permissão no settings dele p/ `git push origin main` da Fluxa). sw `v111→v112`.
+
+- Aba **"Tabela de preços" → "Precificação"**, com uma **Calculadora de preço** no
+  topo (`calcModo` produto/serviço):
+  - **Produto:** custo de compra + margem → `_precoVendaProduto` (= custo/(1−(margem+
+    taxa+imposto)/100), arredondado R$5) + lucro/margem real. Ex.: R$100 custo, 30% →
+    R$150.
+  - **Serviço:** escolhe serviço salvo (`calc-svc-sel`) ou digita horas+km, e opcional
+    "quanto quero cobrar" → custo/mínimo/alvo + **veredito** (`calcServico`): 🔴
+    prejuízo (lucro<0) / 🟡 abaixo da margem (preço<alvo) / 🟢 vale a pena (≥alvo),
+    com a margem real. `_calcInit` roda no `_gpCarregarForm`.
+- **Cadastro de produto:** botão **"💡 Sugerir"** ao lado do Preço de venda
+  (`sugerirPrecoProduto`, usa o Custo + margem do CFG), visível só com flag gestao
+  (toggle em `abrirProdutoModal`).
+- **Painel:** atalhos do topo (`.painel-acoes`) trocados pro que o Marcos mais usa —
+  **Novo Orçamento · Histórico · Nova OS · Gestão · Funil** (botão Gestão gated por
+  `painel-acao-gestao` no snbRules).
+- Sem schema novo. Verificado no navegador (375px): produto (R$100→R$150), os 3
+  vereditos de serviço (🔴/🟡/🟢 com números certos), sugerir produto (R$80→R$120),
+  atalhos do painel — sem erro de console.
+
 ### Leva 3 (2026-11-14) — precificação autônoma + pipeline financeiro + serviço feito sem OS
 
 Pedido do Marcos: "máximo de autonomia, menos coisa passando pela minha mão";

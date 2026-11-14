@@ -419,9 +419,10 @@
 
     <div class="painel-acoes">
       <button class="painel-acao-btn" data-act="irNovoOrc"><span class="sicon">＋</span> Novo Orçamento</button>
+      <button class="painel-acao-btn" data-act="go" data-a="history"><span class="sicon">📄</span> Histórico</button>
       <button class="painel-acao-btn" data-act="irNovaOS"><span class="sicon">📋</span> Nova OS</button>
-      <button class="painel-acao-btn" data-act="go" data-a="crm"><span class="sicon">🎯</span> Ver Funil</button>
-      <button class="painel-acao-btn" data-act="go" data-a="estoque"><span class="sicon">📦</span> Ver Estoque</button>
+      <button class="painel-acao-btn" id="painel-acao-gestao" data-act="go" data-a="gestao" style="display:none"><span class="sicon">📊</span> Gestão</button>
+      <button class="painel-acao-btn" data-act="go" data-a="crm"><span class="sicon">🎯</span> Funil</button>
     </div>
 
     <!-- Onboarding (Fase 46): guia da empresa nova até o primeiro uso.
@@ -2198,7 +2199,7 @@
 
     <!-- Abas internas -->
     <div class="gestao-tabs" style="display:flex;gap:6px;overflow-x:auto;margin-bottom:14px;-webkit-overflow-scrolling:touch">
-      <button class="gestao-tab on" data-gtab="precos" onclick="gestaoTab('precos')">💰 Tabela de preços</button>
+      <button class="gestao-tab on" data-gtab="precos" onclick="gestaoTab('precos')">💰 Precificação</button>
       <button class="gestao-tab" data-gtab="mei" onclick="gestaoTab('mei')">📊 Medidor do MEI</button>
       <button class="gestao-tab" data-gtab="caixa" onclick="gestaoTab('caixa')">🏦 Caixa</button>
       <button class="gestao-tab" data-gtab="pipeline" onclick="gestaoTab('pipeline')">📈 Pipeline</button>
@@ -2206,8 +2207,41 @@
       <button class="gestao-tab" data-gtab="relatorios" onclick="gestaoTab('relatorios')">📄 Relatórios <span id="gp-rel-badge" class="gp-badge" style="display:none">0</span></button>
     </div>
 
-    <!-- ── BLOCO 1 — TABELA DE PREÇOS ───────────────────────────── -->
+    <!-- ── BLOCO 1 — PRECIFICAÇÃO (calculadora + parâmetros) ──────── -->
     <div class="gestao-pane" id="gpane-precos">
+
+      <!-- Calculadora inteligente: joga o custo/serviço, recebe o veredito -->
+      <div class="card">
+        <div class="ct">Calculadora de preço</div>
+        <p style="margin:-4px 0 10px;color:var(--gray);font-size:12px">Joga o número aqui e o sistema te diz quanto cobrar — ou se o preço que você pensou vale a pena.</p>
+        <div style="display:flex;gap:6px;margin-bottom:14px">
+          <button type="button" class="calc-modo on" id="calc-modo-produto" onclick="calcModo('produto')">📦 Produto</button>
+          <button type="button" class="calc-modo" id="calc-modo-servico" onclick="calcModo('servico')">🔧 Serviço</button>
+        </div>
+
+        <!-- Modo Produto -->
+        <div id="calc-produto">
+          <div class="row">
+            <div class="fl"><label>Quanto você pagou (custo R$)</label><input type="text" inputmode="decimal" id="calc-prod-custo" placeholder="0,00" oninput="calcProduto()"></div>
+            <div class="fl"><label>Margem desejada (%)</label><input type="text" inputmode="decimal" id="calc-prod-margem" placeholder="ex.: 30" oninput="calcProduto()"></div>
+          </div>
+          <div id="calc-prod-res"></div>
+        </div>
+
+        <!-- Modo Serviço -->
+        <div id="calc-servico" style="display:none">
+          <div class="fl" style="margin-bottom:8px"><label>Serviço</label>
+            <select id="calc-svc-sel" onchange="calcSvcSelecionar()"><option value="">— digitar na mão —</option></select>
+          </div>
+          <div class="row">
+            <div class="fl"><label>Horas no cliente</label><input type="text" inputmode="decimal" id="calc-svc-horas" placeholder="ex.: 2" oninput="calcServico()"></div>
+            <div class="fl"><label>Km de ida</label><input type="text" inputmode="decimal" id="calc-svc-km" placeholder="ex.: 10" oninput="calcServico()"></div>
+          </div>
+          <div class="fl" style="margin-top:4px"><label>Quanto quero cobrar (R$) <span style="font-weight:400;color:var(--gray);text-transform:none;letter-spacing:0">— opcional, pra ver se vale a pena</span></label><input type="text" inputmode="decimal" id="calc-svc-preco" placeholder="deixe em branco pra ver só a sugestão" oninput="calcServico()"></div>
+          <div id="calc-svc-res"></div>
+        </div>
+      </div>
+
       <div class="card">
         <div class="ct">Parâmetros da empresa</div>
         <p style="margin:-4px 0 10px;color:var(--gray);font-size:12px">A partir desses números o sistema calcula o custo real de cada serviço e sugere o preço mínimo (sem prejuízo) e o preço alvo (com a sua margem).</p>
@@ -2564,7 +2598,7 @@
       </div>
     </div>
     <div class="row f4">
-      <div class="fl"><label>Preço de venda (R$)</label><input type="text" inputmode="decimal" id="prod-preco" placeholder="0,00"></div>
+      <div class="fl"><label>Preço de venda (R$) <button type="button" id="prod-sugerir-btn" onclick="sugerirPrecoProduto()" style="display:none;background:var(--c1-light);color:var(--c1);border:1px solid var(--c1);border-radius:50px;padding:1px 9px;font-size:11px;font-weight:600;cursor:pointer;margin-left:6px;text-transform:none;letter-spacing:0;font-family:'Inter',sans-serif">💡 Sugerir</button></label><input type="text" inputmode="decimal" id="prod-preco" placeholder="0,00"></div>
       <div class="fl"><label>Custo (R$)</label><input type="text" inputmode="decimal" id="prod-custo" placeholder="0,00"></div>
       <div class="fl"><label title="Avisar quando a quantidade cair abaixo desse número">Alerta de quantidade baixa</label><input type="text" inputmode="decimal" id="prod-min" placeholder="0"></div>
       <div class="fl" id="prod-inicial-wrap"><label>Quantidade em estoque hoje</label><input type="text" inputmode="decimal" id="prod-inicial" placeholder="0"></div>

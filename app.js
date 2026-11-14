@@ -217,6 +217,7 @@ function aplicarPermissoesPerfil(){
     'snb-estoque'      : gestor,
     'snb-produtividade': gestor,
     'snb-gestao'       : gestor && flagAtiva('gestao'),
+    'painel-acao-gestao': gestor && flagAtiva('gestao'),
   };
   Object.entries(snbRules).forEach(([id,pode])=>{
     const el=document.getElementById(id); if(el) el.style.display=pode?'':'none';
@@ -7749,6 +7750,7 @@ function _gpCarregarForm(){
   _gpFixos=c.fixos.map(f=>({nome:f.nome||'', valor:+f.valor||0}));
   _gpSvcs =c.servicos.map(s=>({nome:s.nome||'', horas:(s.horas!=null?s.horas:''), km:(s.km!=null?s.km:'')}));
   _gestaoRenderFixos(); _gestaoRenderSvcsCfg();
+  try{ _calcInit(); }catch(e){ console.warn('[calcInit]', e?.message||e); }
 }
 function _gestaoRenderFixos(){
   const el=document.getElementById('gp-fixos-list'); if(!el) return;
@@ -7823,6 +7825,92 @@ function _gestaoRenderTabela(){
   }).join('');
   tbl.innerHTML=`<thead><tr><th>Serviço</th><th>Custo</th><th>Mínimo</th><th>Alvo</th></tr></thead><tbody>${rows}</tbody>`;
   card.style.display='';
+}
+
+// ── Calculadora de preço (produto: custo→venda; serviço: vale a pena?) ──
+function calcModo(m){
+  document.getElementById('calc-modo-produto')?.classList.toggle('on', m==='produto');
+  document.getElementById('calc-modo-servico')?.classList.toggle('on', m==='servico');
+  const p=document.getElementById('calc-produto'); if(p) p.style.display=(m==='produto')?'':'none';
+  const s=document.getElementById('calc-servico'); if(s) s.style.display=(m==='servico')?'':'none';
+}
+// Preço de venda sugerido: custo + margem, embutindo taxa de cartão e imposto.
+// preço = custo / (1 − (margem+taxa+imposto)/100), arredondado pra cima em R$5.
+function _precoVendaProduto(custo, margemPct){
+  const c=_precCfg();
+  const fator = 1 - ((+margemPct||0)+(+c.taxaCartao||0)+(+c.imposto||0))/100;
+  return _arredondaCima5((fator>0)?custo/fator:custo);
+}
+function _calcNum(id){ const v=(gV(id)||'').replace(',','.').replace(/[^\d.]/g,''); return parseFloat(v)||0; }
+function calcProduto(){
+  const el=document.getElementById('calc-prod-res'); if(!el) return;
+  const custo=_calcNum('calc-prod-custo'), margem=_calcNum('calc-prod-margem');
+  if(!(custo>0)){ el.innerHTML=''; return; }
+  const c=_precCfg();
+  const preco=_precoVendaProduto(custo, margem);
+  const taxaImp=((+c.taxaCartao||0)+(+c.imposto||0))/100;
+  const lucro=preco*(1-taxaImp)-custo;
+  const margemReal=preco>0?(lucro/preco*100):0;
+  const txDesc=(+c.taxaCartao||0)+(+c.imposto||0);
+  el.innerHTML=`<div class="calc-res" style="background:var(--c1-light)">
+    <div class="calc-res-l">Venda por</div>
+    <div class="calc-res-v" style="color:var(--c1)">${brl(preco)}</div>
+    <div class="calc-mini">Lucro de ${brl(lucro)} por unidade (${margemReal.toFixed(0)}% do preço)${txDesc>0?`, já descontando ${txDesc.toFixed(0)}% de taxa de cartão + imposto`:''}. Arredondado pra cima em múltiplos de R$5.</div>
+  </div>`;
+}
+function _gpPreencherCalcSvcSel(){
+  const sel=document.getElementById('calc-svc-sel'); if(!sel) return;
+  const atual=sel.value;
+  const c=_precCfg();
+  sel.innerHTML='<option value="">— digitar na mão —</option>'+c.servicos.map((s,i)=>`<option value="${i}">${esc(s.nome||('Serviço '+(i+1)))}</option>`).join('');
+  if(atual) sel.value=atual;
+}
+function calcSvcSelecionar(){
+  const sel=document.getElementById('calc-svc-sel'); if(!sel) return;
+  const i=parseInt(sel.value); if(isNaN(i)) return;
+  const s=_precCfg().servicos[i]; if(!s) return;
+  setV('calc-svc-horas', (s.horas!=null&&s.horas!=='')?String(s.horas).replace('.',','):'');
+  setV('calc-svc-km', (s.km!=null&&s.km!=='')?String(s.km).replace('.',','):'');
+  calcServico();
+}
+function calcServico(){
+  const el=document.getElementById('calc-svc-res'); if(!el) return;
+  const horas=_calcNum('calc-svc-horas'), km=_calcNum('calc-svc-km'), preco=_calcNum('calc-svc-preco');
+  const c=_precCfg();
+  if(!(horas>0)){ el.innerHTML='<div class="calc-mini">Preencha as horas do serviço. (O custo da sua hora sai dos parâmetros da empresa, lá embaixo.)</div>'; return; }
+  const r=_gestaoCalcServico({horas,km}, c);
+  if(!(r.custo>0)){ el.innerHTML='<div class="calc-mini">Falta configurar os parâmetros da empresa (retirada, dias, jornada) pra calcular o custo da hora — role a tela pra baixo.</div>'; return; }
+  let html=`<div class="calc-res" style="background:#f3f5f9">
+    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px"><span>Seu custo</span><span style="font-weight:700;color:var(--c2)">${brl(r.custo)}</span></div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px"><span>Mínimo (sem prejuízo)</span><span style="font-weight:700;color:var(--c2)">${brl(r.minimo)}</span></div>
+    <div style="display:flex;justify-content:space-between;font-size:13px"><span>Alvo (com sua margem)</span><span style="font-weight:800;color:var(--c1)">${brl(r.alvo)}</span></div>
+  </div>`;
+  if(preco>0){
+    const taxaImp=((+c.taxaCartao||0)+(+c.imposto||0))/100;
+    const lucro=preco*(1-taxaImp)-r.custo;
+    const margemReal=preco>0?(lucro/preco*100):0;
+    let cor,icon,txt;
+    if(lucro<0){ cor='#ef4444'; icon='🔴'; txt=`Prejuízo — você perde ${brl(-lucro)} nesse preço.`; }
+    else if(preco<r.alvo){ cor='#f59e0b'; icon='🟡'; txt=`Dá lucro (${brl(lucro)}, ${margemReal.toFixed(0)}%), mas abaixo da sua margem — o ideal era ${brl(r.alvo)}.`; }
+    else { cor='#16a34a'; icon='🟢'; txt=`Vale a pena! Lucro de ${brl(lucro)} (${margemReal.toFixed(0)}% do preço), na sua margem ou acima.`; }
+    html+=`<div class="calc-vd" style="background:${cor}1a;color:${cor}">${icon} ${txt}</div>`;
+  }
+  el.innerHTML=html;
+}
+function _calcInit(){
+  const c=_precCfg();
+  const mg=document.getElementById('calc-prod-margem'); if(mg && !mg.value) mg.value = c.margem?String(c.margem).replace('.',','):'30';
+  _gpPreencherCalcSvcSel();
+  calcModo('produto');
+}
+// Botão "Sugerir" no cadastro de produto: preço de venda a partir do custo.
+function sugerirPrecoProduto(){
+  const custo=_calcNum('prod-custo');
+  if(!(custo>0)){ toast('⚠️ Preencha o custo primeiro'); return; }
+  const c=_precCfg();
+  const preco=_precoVendaProduto(custo, c.margem||30);
+  setV('prod-preco', preco.toFixed(2).replace('.',','));
+  toast('💡 Preço sugerido com sua margem');
 }
 
 // ── Bloco 2: medidor do MEI ──
@@ -16790,6 +16878,7 @@ function abrirProdutoModal(id){
       wrap.innerHTML=`<div style="margin-bottom:12px"><label style="font-size:11px;font-weight:700;color:var(--c1);text-transform:uppercase;letter-spacing:.5px">🏪 Em qual unidade cadastrar?</label><select id="prod-loja-select" style="width:100%;margin-top:4px;padding:9px 12px;border:2px solid var(--c1);border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;color:var(--c2)">${opcs}</select></div>`;
     }
   }
+  { const sb=document.getElementById('prod-sugerir-btn'); if(sb) sb.style.display = flagAtiva('gestao')?'':'none'; }
   document.getElementById('prod-modal').style.display='flex';
 }
 function fecharProdutoModal(){ document.getElementById('prod-modal').style.display='none'; }
