@@ -44,9 +44,14 @@ antes de trabalhar** (ver seção 6).
 
 ### Supabase
 - **Project ref:** `auoklaiffalbdgazrbdu`
-- **URL + anon key:** estão **hardcoded no topo do `app.js`** (`SUPABASE_URL` /
-  `SUPABASE_ANON_KEY`). A **anon key é PÚBLICA** por natureza (vai no cliente) — pode
-  usar à vontade, não é segredo. A segurança real é a **RLS** no banco.
+- **URL do projeto:** `https://auoklaiffalbdgazrbdu.supabase.co`
+- **Anon key (PÚBLICA — pode usar à vontade, já vai no cliente/site):**
+  ```
+  eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF1b2tsYWlmZmFsYmRnYXpyYmR1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzNDU5OTMsImV4cCI6MjA5OTkyMTk5M30.VvEhdTy0wsV0VkRM_rY6sYBSaVTRx9_Xb9WGfFMp-WY
+  ```
+  (também está hardcoded no topo do `app.js` como `SUPABASE_URL`/`SUPABASE_ANON_KEY`.)
+  A segurança real é a **RLS** no banco — a anon key sozinha só lê/escreve o que a RLS
+  permitir (nada sem um JWT de usuário válido).
 - **Rodar SQL / migrações (Management API):** há um **Personal Access Token (PAT)**
   do Supabase com acesso direto ao projeto. **⚠️ ESSE PAT É SEGREDO — dá acesso
   TOTAL ao banco de todas as empresas. NUNCA escreva ele num arquivo, num commit,
